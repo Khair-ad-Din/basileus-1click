@@ -211,11 +211,11 @@ function generateMap(){
     while(stack.length){
       const k=stack.pop();size++;
       const x=k%MW;
-      for(const j of[k-1,k+1,k-MW,k+MW]){
-        if(j<0||j>=MW*MH)continue;
-        if(Math.abs((j%MW)-x)>1)continue;
-        if(countryAt[j]===c&&compAt[j]<0){compAt[j]=id;stack.push(j)}
-      }
+      let j;
+      if(x>0){j=k-1;if(countryAt[j]===c&&compAt[j]<0){compAt[j]=id;stack.push(j)}}
+      if(x<MW-1){j=k+1;if(countryAt[j]===c&&compAt[j]<0){compAt[j]=id;stack.push(j)}}
+      if(k>=MW){j=k-MW;if(countryAt[j]===c&&compAt[j]<0){compAt[j]=id;stack.push(j)}}
+      if(k<MW*MH-MW){j=k+MW;if(countryAt[j]===c&&compAt[j]<0){compAt[j]=id;stack.push(j)}}
     }
     comps.push({c,size});
   }
@@ -227,32 +227,26 @@ function generateMap(){
     if(c>0){citySeedIdx.push(seeds.length);seeds.push({x:cx,y:cy,c,comp:compAt[cy*MW+cx],aname:name})}
     else citySeedIdx.push(-1);
   }
-  let provAnchors=MAPDATA.provinces||[];
-  try{
-    if(typeof localStorage!=="undefined"){
-      const ls=localStorage.getItem("basileus_anchors");
-      if(ls)provAnchors=JSON.parse(ls);
-    }
-  }catch(e){}
+  const provAnchors=MAPDATA.provinces||[];
   for(const[name,ax,ay]of provAnchors){
     const x=Math.max(1,Math.min(MW-2,Math.round(ax))), y=Math.max(1,Math.min(MH-2,Math.round(ay)));
     if(countryAt[y*MW+x]<=0)continue;
     let ok=true;
-    for(const s of seeds){const dx=s.x-x,dy=s.y-y;if(dx*dx+dy*dy<8*8){ok=false;break}}
+    for(const s of seeds){const dx=s.x-x,dy=s.y-y;if(dx*dx+dy*dy<16*16){ok=false;break}}
     if(ok)seeds.push({x,y,c:countryAt[y*MW+x],comp:compAt[y*MW+x],aname:name});
   }
   // relleno procedural (rejilla con jitter hasta los bordes; si cae en mar se reintenta),
   // dejando sitio alrededor de las anclas
   const anchorCount=seeds.length;
-  for(let gy=14;gy<MH-5;gy+=29){
-    for(let gx=14;gx<MW-5;gx+=29){
+  for(let gy=28;gy<MH-10;gy+=58){
+    for(let gx=28;gx<MW-10;gx+=58){
       for(let t=0;t<5;t++){
-        const x=Math.max(1,Math.min(MW-2,Math.round(gx+(rand()-0.5)*22)));
-        const y=Math.max(1,Math.min(MH-2,Math.round(gy+(rand()-0.5)*22)));
+        const x=Math.max(1,Math.min(MW-2,Math.round(gx+(rand()-0.5)*44)));
+        const y=Math.max(1,Math.min(MH-2,Math.round(gy+(rand()-0.5)*44)));
         const c=countryAt[y*MW+x];
         if(c>0){
           let ok=true;
-          for(let s=0;s<anchorCount;s++){const dx=seeds[s].x-x,dy=seeds[s].y-y;if(dx*dx+dy*dy<14*14){ok=false;break}}
+          for(let s=0;s<anchorCount;s++){const dx=seeds[s].x-x,dy=seeds[s].y-y;if(dx*dx+dy*dy<28*28){ok=false;break}}
           if(ok)seeds.push({x,y,c,comp:compAt[y*MW+x]});
           break;
         }
@@ -262,7 +256,7 @@ function generateMap(){
   // garantizar al menos una semilla por componente con territorio suficiente
   const haveSeed=new Set(seeds.map(s=>s.comp));
   const wantPix=new Map();
-  comps.forEach((cm,id)=>{if(cm.size>=40&&!haveSeed.has(id))wantPix.set(id,(cm.size/2)|0)});
+  comps.forEach((cm,id)=>{if(cm.size>=160&&!haveSeed.has(id))wantPix.set(id,(cm.size/2)|0)});
   if(wantPix.size){
     const seen=new Map();
     for(let i=0;i<MW*MH;i++){
@@ -276,27 +270,49 @@ function generateMap(){
       }
     }
   }
-  // buckets para vecino más cercano de la misma componente
+  // vecino más cercano de la misma componente: listas de candidatos por celda sobre arrays
+  // planos (los objetos y la búsqueda por anillos eran ~20x más lentos a esta resolución)
   const CS=64,bw=Math.ceil(MW/CS),bh=Math.ceil(MH/CS);
-  const buckets=Array.from({length:bw*bh},()=>[]);
-  seeds.forEach((s,i)=>buckets[((s.y/CS)|0)*bw+((s.x/CS)|0)].push(i));
-  const maxR=bw+bh;
-  function nearestSeed(x,y,comp){
-    let best=-1,bd=1e18;
-    const cx=(x/CS)|0, cy=(y/CS)|0;
-    for(let r=0;r<maxR;r++){
-      if(best>=0 && (r-1)*CS>Math.sqrt(bd))break;
-      for(let by=cy-r;by<=cy+r;by++)for(let bx=cx-r;bx<=cx+r;bx++){
-        if(Math.max(Math.abs(bx-cx),Math.abs(by-cy))!==r)continue;
-        if(bx<0||by<0||bx>=bw||by>=bh)continue;
-        const cell=buckets[by*bw+bx];
-        for(let k=0;k<cell.length;k++){
-          const s=seeds[cell[k]];
-          if(s.comp!==comp)continue;
-          const dx=s.x-x,dy=s.y-y,d=dx*dx+dy*dy;
-          if(d<bd){bd=d;best=cell[k]}
+  const nSeeds=seeds.length;
+  const seedX=new Float64Array(nSeeds),seedY=new Float64Array(nSeeds),seedComp=new Int32Array(nSeeds);
+  for(let i=0;i<nSeeds;i++){seedX[i]=seeds[i].x;seedY[i]=seeds[i].y;seedComp[i]=seeds[i].comp}
+  // cada celda conoce las semillas de las celdas a ±2 (cubre un radio de 128px desde el píxel)
+  const candCount=new Int32Array(bw*bh);
+  for(let i=0;i<nSeeds;i++){
+    const sx=(seedX[i]/CS)|0,sy=(seedY[i]/CS)|0;
+    for(let by=Math.max(0,sy-2);by<=Math.min(bh-1,sy+2);by++)
+      for(let bx=Math.max(0,sx-2);bx<=Math.min(bw-1,sx+2);bx++)
+        candCount[by*bw+bx]++;
+  }
+  const candStart=new Int32Array(bw*bh+1);
+  for(let b=0;b<bw*bh;b++)candStart[b+1]=candStart[b]+candCount[b];
+  const candSeed=new Int32Array(candStart[bw*bh]);
+  {
+    const fill=new Int32Array(bw*bh);
+    for(let i=0;i<nSeeds;i++){
+      const sx=(seedX[i]/CS)|0,sy=(seedY[i]/CS)|0;
+      for(let by=Math.max(0,sy-2);by<=Math.min(bh-1,sy+2);by++)
+        for(let bx=Math.max(0,sx-2);bx<=Math.min(bw-1,sx+2);bx++){
+          const b=by*bw+bx;
+          candSeed[candStart[b]+fill[b]++]=i;
         }
-      }
+    }
+  }
+  function nearestSeed(x,y,comp){
+    const b=((y/CS)|0)*bw+((x/CS)|0);
+    let best=-1,bd=1e18;
+    for(let k=candStart[b],e=candStart[b+1];k<e;k++){
+      const si=candSeed[k];
+      if(seedComp[si]!==comp)continue;
+      const dx=seedX[si]-x,dy=seedY[si]-y,d=dx*dx+dy*dy;
+      if(d<bd){bd=d;best=si}
+    }
+    if(best>=0&&bd<=16384)return best; // exacto: nada más cercano puede quedar fuera de ±2 celdas
+    // caso raro (componente con semillas lejanas): barrido completo
+    for(let si=0;si<nSeeds;si++){
+      if(seedComp[si]!==comp)continue;
+      const dx=seedX[si]-x,dy=seedY[si]-y,d=dx*dx+dy*dy;
+      if(d<bd){bd=d;best=si}
     }
     return best;
   }
@@ -313,9 +329,9 @@ function generateMap(){
       return a+(b-a)*tx+(c-a)*ty+(a-b-c+e)*tx*ty;
     };
   }
-  const nx1=makeNoise(48),nx2=makeNoise(16),ny1=makeNoise(48),ny2=makeNoise(16);
-  const warpX=(x,y)=>nx1(x,y)*8+nx2(x,y)*3.5;
-  const warpY=(x,y)=>ny1(x,y)*8+ny2(x,y)*3.5;
+  const nx1=makeNoise(96),nx2=makeNoise(32),ny1=makeNoise(96),ny2=makeNoise(32);
+  const warpX=(x,y)=>nx1(x,y)*16+nx2(x,y)*7;
+  const warpY=(x,y)=>ny1(x,y)*16+ny2(x,y)*7;
   // asignación de píxeles (Voronoi limitado por componente nacional, con deformación)
   provIdx=new Int16Array(MW*MH).fill(-1);
   const counts=new Uint32Array(seeds.length);
@@ -339,11 +355,11 @@ function generateMap(){
       while(stack.length){
         const k=stack.pop();pix.push(k);
         const x=k%MW;
-        for(const j of[k-1,k+1,k-MW,k+MW]){
-          if(j<0||j>=MW*MH)continue;
-          if(Math.abs((j%MW)-x)>1)continue;
-          if(provIdx[j]===p&&frag[j]<0){frag[j]=fid;stack.push(j)}
-        }
+        let j;
+        if(x>0){j=k-1;if(provIdx[j]===p&&frag[j]<0){frag[j]=fid;stack.push(j)}}
+        if(x<MW-1){j=k+1;if(provIdx[j]===p&&frag[j]<0){frag[j]=fid;stack.push(j)}}
+        if(k>=MW){j=k-MW;if(provIdx[j]===p&&frag[j]<0){frag[j]=fid;stack.push(j)}}
+        if(k<MW*MH-MW){j=k+MW;if(provIdx[j]===p&&frag[j]<0){frag[j]=fid;stack.push(j)}}
       }
       fragPix.push(pix);
     }
@@ -364,12 +380,11 @@ function generateMap(){
         const next=[];
         let changed=false;
         for(const k of bad){
-          const x=k%MW;let pick=-1;
-          for(const j of[k-1,k+1,k-MW,k+MW]){
-            if(j<0||j>=MW*MH)continue;
-            if(Math.abs((j%MW)-x)>1)continue;
-            if(provIdx[j]>=0&&!isBad[j]&&compAt[j]===compAt[k]){pick=provIdx[j];break}
-          }
+          const x=k%MW;let pick=-1,j;
+          if(x>0){j=k-1;if(provIdx[j]>=0&&!isBad[j]&&compAt[j]===compAt[k])pick=provIdx[j]}
+          if(pick<0&&x<MW-1){j=k+1;if(provIdx[j]>=0&&!isBad[j]&&compAt[j]===compAt[k])pick=provIdx[j]}
+          if(pick<0&&k>=MW){j=k-MW;if(provIdx[j]>=0&&!isBad[j]&&compAt[j]===compAt[k])pick=provIdx[j]}
+          if(pick<0&&k<MW*MH-MW){j=k+MW;if(provIdx[j]>=0&&!isBad[j]&&compAt[j]===compAt[k])pick=provIdx[j]}
           if(pick>=0){counts[provIdx[k]]--;counts[pick]++;provIdx[k]=pick;isBad[k]=0;changed=true}
           else next.push(k);
         }
@@ -387,7 +402,7 @@ function generateMap(){
     }
     const tiny=new Set();
     for(let s=0;s<seeds.length;s++)
-      if(counts[s]>0&&counts[s]<40&&compBest.get(seeds[s].comp)!==s)tiny.add(s);
+      if(counts[s]>0&&counts[s]<160&&compBest.get(seeds[s].comp)!==s)tiny.add(s);
     if(tiny.size){
       bad=[];
       for(let i=0;i<MW*MH;i++)if(provIdx[i]>=0&&tiny.has(provIdx[i])){isBad[i]=1;bad.push(i)}
@@ -398,7 +413,7 @@ function generateMap(){
   const used=new Set(seeds.filter(s=>s.aname).map(s=>s.aname));
   const remap=new Int16Array(seeds.length).fill(-1);
   for(let i=0;i<seeds.length;i++){
-    if(counts[i]<40)continue;
+    if(counts[i]<160)continue;
     remap[i]=provs.length;
     const an=seeds[i].aname;
     const own=MAPDATA.countries[seeds[i].c-1].nation;
@@ -465,8 +480,8 @@ function rebuildProvinceData(){
     const a=coast[i],b=coast[j];
     if(adj[a.id].has(b.id))continue;
     const dx=b.x-a.x,dy=b.y-a.y,dd=Math.hypot(dx,dy);
-    if(dd>110)continue;
-    const steps=Math.max(8,(dd/6)|0);
+    if(dd>220)continue;
+    const steps=Math.max(8,(dd/12)|0);
     let ok=true,sea=0;
     for(let s=1;s<steps&&ok;s++){
       const x=Math.round(a.x+dx*s/steps),y=Math.round(a.y+dy*s/steps);
@@ -523,7 +538,7 @@ function paintAll(){
   for(let y=0;y<MH;y++)for(let x=0;x<MW;x++){
     const i=y*MW+x,o=i*4,p=provIdx[i];
     if(p<0){
-      const v=hashN(x>>2,y>>2)*14;
+      const v=hashN(x>>3,y>>3)*14;
       d[o]=50+v;d[o+1]=72+v;d[o+2]=100+v;d[o+3]=255;
     }else{
       const c=NCOL[provs[p].owner],s=provs[p].shade;
@@ -614,10 +629,10 @@ function startLeg(a){
   const dist=Math.hypot(to.x-from.x,to.y-from.y);
   if(!adj[a.prov].has(a.path[0])){
     // travesía marítima en convoy: lenta, sin bonus de infraestructura
-    a.legTotal=Math.max(2,dist/3.5);
+    a.legTotal=Math.max(2,dist/7);
   }else{
     const infra=(from.buildings.infra+to.buildings.infra)/2;
-    a.legTotal=Math.max(1,dist/(armySpd(a)*(1+0.2*infra)));
+    a.legTotal=Math.max(1,dist/(armySpd(a)*2*(1+0.2*infra)));
   }
   a.legDone=0;
 }
@@ -1148,7 +1163,7 @@ function traceProvince(pid){
   const sx=s%w,sy=(s/w)|0;
   let cx=sx,cy=sy,back=4;
   const pts=[[sx,sy]];
-  for(let guard=0;guard<300000;guard++){
+  for(let guard=0;guard<600000;guard++){
     let f=-1;
     for(let k=1;k<=8;k++){
       const d=(back+k)%8,nx=cx+DX[d],ny=cy+DY[d];
@@ -1159,7 +1174,7 @@ function traceProvince(pid){
     if(cx===sx&&cy===sy)break;
     pts.push([cx,cy]);
   }
-  const poly=simplifyRing(pts,1.3);
+  const poly=simplifyRing(pts,2.6);
   for(const q of poly){q[0]+=ox+0.5;q[1]+=oy+0.5}
   return poly;
 }
@@ -1201,7 +1216,7 @@ function applyShape(pid,poly){
   }
   let blocked=0;
   for(const[v,list]of gains){
-    if(pixOfProv[v].length-list.length<12){blocked++;continue}
+    if(pixOfProv[v].length-list.length<48){blocked++;continue}
     for(const i of list)provIdx[i]=pid;
   }
   // pérdidas: píxeles propios fuera del polígono se ceden a la provincia vecina (dilatación)
@@ -1329,7 +1344,7 @@ function splitProvince(pid,poly,vi,vj,forcedName){
   if(ring.length<3)return;
   const part=rasterPoly(ring).filter(i=>provIdx[i]===pid);
   const rest=pixOfProv[pid].length-part.length;
-  if(part.length<12||rest<12){alert("Las dos partes deben tener un tamaño mínimo (~12 píxeles).");return}
+  if(part.length<48||rest<48){alert("Las dos partes deben tener un tamaño mínimo.");return}
   const raw=forcedName!==undefined?forcedName:prompt("Nombre de la nueva provincia:",provs[pid].name+" II");
   if(!raw||!raw.trim())return;
   const nm=raw.trim();
@@ -1680,7 +1695,7 @@ window.addEventListener("mouseup",e=>{
   if(e.target!==canvas)return;
   const wx=(e.clientX-r.left-panX)/zoom, wy=(e.clientY-r.top-panY)/zoom;
   // ejército propio cerca
-  let hit=null,hd=14*14;
+  let hit=null,hd=28*28;
   for(const a of armies){
     const pos=armyPos(a);
     const d=(pos.x-wx)**2+(pos.y-wy)**2;
@@ -1728,7 +1743,7 @@ canvas.addEventListener("wheel",e=>{
   const r=canvas.getBoundingClientRect();
   const mx=e.clientX-r.left,my=e.clientY-r.top;
   const old=zoom;
-  zoom=Math.max(0.6,Math.min(4,zoom*(e.deltaY<0?1.15:0.87)));
+  zoom=Math.max(0.35,Math.min(5,zoom*(e.deltaY<0?1.15:0.87)));
   panX=mx-(mx-panX)*zoom/old;
   panY=my-(my-panY)*zoom/old;
   clampPan();
@@ -1753,7 +1768,7 @@ function armyPos(a){
   const idx=here.indexOf(a);
   if(idx>0){
     const ang=idx*2.1;
-    return{x:p.x+Math.cos(ang)*13,y:p.y+Math.sin(ang)*13};
+    return{x:p.x+Math.cos(ang)*26,y:p.y+Math.sin(ang)*26};
   }
   return{x:p.x,y:p.y};
 }
@@ -1785,9 +1800,9 @@ function draw(){
   // capitales
   for(const p of provs){
     if(!p.capital)continue;
-    ctx.beginPath();ctx.arc(p.x,p.y-12,4,0,7);
+    ctx.beginPath();ctx.arc(p.x,p.y-24,8,0,7);
     ctx.fillStyle="#f0e6c8";ctx.fill();
-    ctx.strokeStyle="#222";ctx.lineWidth=1/zoom;ctx.stroke();
+    ctx.strokeStyle="#222";ctx.lineWidth=1.5/zoom;ctx.stroke();
   }
   // flecha de orden del ejército seleccionado
   if(selArmy&&selArmy.path.length){
@@ -1801,7 +1816,7 @@ function draw(){
   for(const pid in battleFlash){
     if(hour-battleFlash[pid]>2)continue;
     const p=provs[pid];
-    const r=8+3*Math.sin(performance.now()/150);
+    const r=16+6*Math.sin(performance.now()/150);
     ctx.beginPath();ctx.arc(p.x,p.y,r,0,7);
     ctx.strokeStyle="rgba(255,80,50,.9)";ctx.lineWidth=2.5/zoom;ctx.stroke();
   }
@@ -1809,14 +1824,14 @@ function draw(){
   ctx.textAlign="center";ctx.textBaseline="middle";
   for(const a of armies){
     const pos=armyPos(a);
-    const w=20,hh=13;
+    const w=40,hh=26;
     ctx.fillStyle=NATIONS[a.nation].color;
     ctx.fillRect(pos.x-w/2,pos.y-hh/2,w,hh);
-    ctx.lineWidth=(a===selArmy?2.4:1)/Math.max(1,zoom*0.7);
+    ctx.lineWidth=(a===selArmy?4.8:2)/Math.max(1,zoom*0.7);
     ctx.strokeStyle=a===selArmy?"#fff":(a.nation===player?"#ffe9a0":"#15181c");
     ctx.strokeRect(pos.x-w/2,pos.y-hh/2,w,hh);
-    ctx.fillStyle="#fff";ctx.font="bold 9px Arial";
-    ctx.fillText(Math.round(armyCount(a)),pos.x,pos.y+0.5);
+    ctx.fillStyle="#fff";ctx.font="bold 18px Arial";
+    ctx.fillText(Math.round(armyCount(a)),pos.x,pos.y+1);
   }
   requestAnimationFrame(draw);
 }
@@ -1859,7 +1874,7 @@ function init(){
     initWorld();
     setupNations();
     paintAll();
-    zoom=Math.max(0.6,Math.min(canvas.width/MW,canvas.height/MH));
+    zoom=Math.max(0.35,Math.min(canvas.width/MW,canvas.height/MH));
     panX=(canvas.width-MW*zoom)/2;panY=(canvas.height-MH*zoom)/2;
     document.getElementById("loadMsg").style.display="none";
     showNationPicker();

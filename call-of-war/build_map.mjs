@@ -5,7 +5,7 @@
 import fs from "fs";
 
 const WEST=-11, EAST=50, SOUTH=27, NORTH=66.5;
-const MH=920;
+const MH=1840;
 const mercY=lat=>Math.log(Math.tan(Math.PI/4+lat*Math.PI/360));
 const YN=mercY(NORTH), YS=mercY(SOUTH);
 const MW=Math.round(MH*((EAST-WEST)*Math.PI/180)/(YN-YS));
@@ -238,7 +238,7 @@ for(const f of features){
         if(!land[j]&&!reach[j]&&compId[j]<0){compId[j]=1;comp.push(j)}
       }
     }
-    if(comp.length<2500){for(const c of comp)land[c]=1;holes++}
+    if(comp.length<10000){for(const c of comp)land[c]=1;holes++}
   }
   console.log("Agujeros rellenados:",holes);
 }
@@ -277,7 +277,7 @@ for(const a of anchors){
   let x=Math.round(a.x),y=Math.round(a.y);
   const want=a.n+1;
   let fx=-1,fy=-1,bd=1e9;
-  for(let dy=-7;dy<=7;dy++)for(let dx=-7;dx<=7;dx++){
+  for(let dy=-14;dy<=14;dy++)for(let dx=-14;dx<=14;dx++){
     const nx=x+dx,ny=y+dy;
     if(nx<0||ny<0||nx>=MW||ny>=MH)continue;
     if(grid[ny*MW+nx]===want){const d=dx*dx+dy*dy;if(d<bd){bd=d;fx=nx;fy=ny}}
@@ -294,7 +294,7 @@ const provinces=[];
     if(seenP.has(name)){console.warn("Provincia duplicada, omitida:",name);continue}
     const x=Math.round(px(lon)),y=Math.round(py(lat));
     let fx=-1,fy=-1,bd=1e9;
-    for(let dy=-7;dy<=7;dy++)for(let dx=-7;dx<=7;dx++){
+    for(let dy=-14;dy<=14;dy++)for(let dx=-14;dx<=14;dx++){
       const nx=x+dx,ny=y+dy;
       if(nx<1||ny<1||nx>=MW-1||ny>=MH-1)continue;
       if(land[ny*MW+nx]){const d=dx*dx+dy*dy;if(d<bd){bd=d;fx=nx;fy=ny}}
