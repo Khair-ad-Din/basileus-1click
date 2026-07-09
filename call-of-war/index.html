@@ -109,7 +109,9 @@
        <b>Desierto</b>: producción muy pobre. <b>Estepa</b>: movimiento rápido pero difícil de defender.
        <b>Praderas</b> y sobre todo las <b>vegas fértiles</b> (Nilo, Mesopotamia, Po, bajo Danubio, Flandes…):
        gran producción pero terreno abierto y difícil de defender. La <b>llanura</b> no tiene modificadores.
-       Usa el botón <b>Terreno</b> de la barra superior para ver el mapa de terrenos con su leyenda.</p>
+       Usa el botón <b>Terreno</b> de la barra superior para ver el mapa de terrenos con su leyenda.
+       El desierto profundo (Sáhara, Arabia interior) es <b>impracticable</b>: no pertenece a nadie y los
+       ejércitos no pueden atravesarlo; solo la costa y los oasis son transitables.</p>
     <h2>Unidades y combate</h2>
     <p>Levas, piqueros, alabarderos, caballería ligera, caballería, caballeros y bombardas, cada uno con ataque,
        defensa, puntos de vida y velocidad. El combate se resuelve por horas: el daño depende del ataque total
@@ -474,6 +476,30 @@ function generateMap(){
   const pool=["comida","comida","comida","materiales","materiales","metal","metal","petroleo","raros"];
   for(const p of provs)p.resType=p.urban?"dinero":pool[(rand()*pool.length)|0];
   assignTerrain();
+  // desierto profundo = territorio impracticable (estilo EU4): sin dueño ni tránsito;
+  // la costa y los oasis con nombre histórico quedan como corredores jugables
+  for(const p of provs)if(p.wasteland==null)p.wasteland=p.terrain==="desierto"&&!p.coastal&&!p.named;
+  isolateWastePockets();
+  for(const p of provs)if(p.wasteland){p.owner=NEUTRAL;p.owner0=NEUTRAL;p.capital=false;p.urban=false}
+}
+// Bolsas jugables rodeadas de páramo (p. ej. un oasis sin salida): quedan fuera del juego.
+// Se conserva solo el componente conexo jugable mayor (tierra + rutas marítimas).
+function isolateWastePockets(){
+  const seen=new Set();
+  const comps=[];
+  for(const p of provs){
+    if(p.wasteland||seen.has(p.id))continue;
+    const st=[p.id];seen.add(p.id);
+    const comp=[];
+    while(st.length){
+      const k=st.pop();comp.push(k);
+      for(const b of adj[k])if(!provs[b].wasteland&&!seen.has(b)){seen.add(b);st.push(b)}
+      for(const b of seaAdj[k])if(!provs[b].wasteland&&!seen.has(b)){seen.add(b);st.push(b)}
+    }
+    comps.push(comp);
+  }
+  comps.sort((a,b)=>b.length-a.length);
+  for(let c=1;c<comps.length;c++)for(const id of comps[c])provs[id].wasteland=true;
 }
 // Cordilleras y humedales históricos [lat, lon, radio en grados] para el terreno automático
 const MOUNTAIN_ZONES=[
@@ -632,9 +658,11 @@ const borderC=document.createElement("canvas");borderC.width=MW;borderC.height=M
 function hex2rgb(h){return[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]}
 const NCOL=NATIONS.map(n=>hex2rgb(n.color));
 const TCOL={};for(const k of TERRAIN_KEYS)TCOL[k]=hex2rgb(TERRAINS[k].color);
+const WASTECOL=hex2rgb("#847c6a"); // territorio impracticable en vista política
 let terrainView=false; // modo de mapa: false = político, true = terreno
 function provColor(p){
-  return terrainView?TCOL[provs[p].terrain]:NCOL[provs[p].owner];
+  if(terrainView)return TCOL[provs[p].terrain];
+  return provs[p].wasteland?WASTECOL:NCOL[provs[p].owner];
 }
 function paintAll(){
   baseData=baseCtx.createImageData(MW,MH);
@@ -668,8 +696,24 @@ function borderIsOuter(i){
 }
 function setBorderPx(i){
   const o=i*4,d=borderData.data;
+  if(provs[provIdx[i]].wasteland){
+    // el páramo no tiene divisiones internas; solo contorno con tierras habitadas o mar
+    if(borderIsWasteEdge(i)){d[o]=8;d[o+1]=10;d[o+2]=12;d[o+3]=190}
+    else{d[o+3]=0}
+    return;
+  }
   if(borderIsOuter(i)){d[o]=8;d[o+1]=10;d[o+2]=12;d[o+3]=235}
   else{d[o]=15;d[o+1]=18;d[o+2]=20;d[o+3]=60}
+}
+function borderIsWasteEdge(i){
+  const x=i%MW;
+  if(x===0||x===MW-1||i<MW||i>=MW*MH-MW)return true;
+  let q;
+  q=provIdx[i-1];if(q<0||!provs[q].wasteland)return true;
+  q=provIdx[i+1];if(q<0||!provs[q].wasteland)return true;
+  q=provIdx[i-MW];if(q<0||!provs[q].wasteland)return true;
+  q=provIdx[i+MW];if(q<0||!provs[q].wasteland)return true;
+  return false;
 }
 function paintBorders(){
   borderData=borderCtx.createImageData(MW,MH);
@@ -752,7 +796,7 @@ function armySpd(a){let s=99;for(const k in a.units)if(a.units[k]>0.05)s=Math.mi
 function nationStrength(n){let t=0;for(const a of armies)if(a.nation===n)t+=armyAtk(a)+armyDef(a);return t}
 function nationProvCount(n){let t=0;for(const p of provs)if(p.owner===n)t++;return t}
 function armiesIn(pid){return armies.filter(a=>a.prov===pid&&a.path.length===0)}
-function nbrs(c){return[...adj[c],...seaAdj[c]]}
+function nbrs(c){return[...adj[c],...seaAdj[c]].filter(p=>!provs[p].wasteland)}
 function bfsPath(from,to,passable){
   if(from===to)return[];
   const prev=new Map([[from,-1]]);
@@ -884,8 +928,9 @@ function hourTick(){
   // 7. diario: moral
   if(hour%24===0){
     for(const p of provs){
+      if(p.wasteland)continue;
       let hostile=0;
-      for(const a of adj[p.id])if(provs[a].owner!==p.owner&&atWar(p.owner,provs[a].owner))hostile++;
+      for(const a of adj[p.id])if(!provs[a].wasteland&&provs[a].owner!==p.owner&&atWar(p.owner,provs[a].owner))hostile++;
       const target=Math.max(25,(p.capital?85:75)-6*hostile);
       p.morale+=Math.max(-4,Math.min(4,target-p.morale));
       p.morale=Math.max(5,Math.min(100,p.morale));
@@ -1055,6 +1100,7 @@ function findTarget(from,n,enemies,wantNeutral,myPower,garrison){
       const step=(a,cost)=>{
         if(seen.has(a))return;
         seen.set(a,cost);
+        if(provs[a].wasteland)return; // ni objetivo ni tránsito
         next.push(a);
         const o=provs[a].owner;
         let s;
@@ -1064,7 +1110,7 @@ function findTarget(from,n,enemies,wantNeutral,myPower,garrison){
         s-=cost*1.6;
         s-=Math.hypot(provs[a].x-capP.x,provs[a].y-capP.y)/90; // atracción de la capital
         let mine=0,tot=0;
-        for(const b of adj[a]){tot++;if(provs[b].owner===n)mine++}
+        for(const b of adj[a]){if(provs[b].wasteland)continue;tot++;if(provs[b].owner===n)mine++}
         if(tot)s+=6*mine/tot; // bonus de cerco: enclaves y bolsas primero
         if(provs[a].capital)s+=1.5;
         if(s>bs){bs=s;best=a}
@@ -1101,7 +1147,7 @@ function tryRecruit(pid,u){
 }
 function checkVictory(){
   if(gameOver||player<0)return;
-  const total=provs.length;
+  const total=provs.filter(p=>!p.wasteland).length;
   const mine=nationProvCount(player);
   const myArmies=armies.some(a=>a.nation===player);
   const goal=Math.max(Math.ceil(total*0.33),Math.ceil(nations[player].startProvs*1.8));
@@ -1160,6 +1206,12 @@ function refreshSide(){
   }
   if(selProv<0){el.style.display="none";return}
   const p=provs[selProv];
+  if(p.wasteland){
+    el.innerHTML="<h2>"+p.name+"</h2>"+
+      "<div class='row'><span>Terreno</span><b>"+TERRAINS[p.terrain].label+"</b></div>"+
+      "<p class='sm' style='color:#9aa3ad;margin-top:6px'>Territorio impracticable: nadie puede reclamarlo ni atravesarlo.</p>";
+    el.style.display="block";return;
+  }
   const own=p.owner===player;
   let h="<h2>"+p.name+(p.capital?" ★":"")+"</h2>";
   h+="<div class='row'><span>Nación</span><span><span class='chip' style='background:"+NATIONS[p.owner].color+"'></span> "+NATIONS[p.owner].name+"</span></div>";
@@ -1549,7 +1601,7 @@ function splitProvince(pid,poly,vi,vj,forcedName){
   const src=provs[pid];
   const np={id:provs.length,name:nm,x:0,y:0,country:src.country,owner:src.owner,owner0:src.owner0,
     named:true,coastal:false,morale:60,urban:false,resType:src.resType,shade:0.85+rand()*0.3,capital:false,
-    terrain:src.terrain,
+    terrain:src.terrain,wasteland:src.wasteland,
     buildings:{infra:0,cuartel:0,fabrica:0,fortaleza:0},buildQueue:[],recruitQueue:[]};
   provs.push(np);
   for(const i of part)provIdx[i]=np.id;
@@ -1574,7 +1626,7 @@ function buildSnapshot(){
   }
   rle.push(cur,run);
   return{v:1,W:MW,H:MH,rle,
-    provs:provs.map(p=>[p.name,p.x,p.y,p.owner0,p.named?1:0,p.urban?1:0,p.capital?1:0,TERRAIN_KEYS.indexOf(p.terrain)])};
+    provs:provs.map(p=>[p.name,p.x,p.y,p.owner0,p.named?1:0,p.urban?1:0,p.capital?1:0,TERRAIN_KEYS.indexOf(p.terrain),p.wasteland?1:0])};
 }
 function saveProvMap(){
   try{localStorage.setItem("basileus_provmap",JSON.stringify(buildSnapshot()))}
@@ -1604,11 +1656,16 @@ function loadProvMap(snap){
   provs=snap.provs.map((a,i)=>({id:i,name:a[0],x:a[1],y:a[2],country:0,owner:a[3],owner0:a[3],
     named:!!a[4],coastal:false,morale:60,urban:!!a[5],resType:null,shade:0.85+rand()*0.3,capital:!!a[6],
     terrain:(a[7]!=null&&TERRAIN_KEYS[a[7]])||null,
+    wasteland:a[8]!=null?!!a[8]:null,
     buildings:{infra:0,cuartel:0,fabrica:0,fortaleza:0},buildQueue:[],recruitQueue:[]}));
   rebuildProvinceData();
   const pool=["comida","comida","comida","materiales","materiales","metal","metal","petroleo","raros"];
   for(const p of provs)p.resType=p.urban?"dinero":pool[(rand()*pool.length)|0];
   assignTerrain(); // rellena el terreno si la instantánea es antigua y no lo trae
+  let computed=false;
+  for(const p of provs)if(p.wasteland==null){p.wasteland=p.terrain==="desierto"&&!p.coastal&&!p.named;computed=true}
+  if(computed)isolateWastePockets(); // los flags editados a mano se respetan tal cual
+  for(const p of provs)if(p.wasteland){p.owner=NEUTRAL;p.owner0=NEUTRAL;p.capital=false;p.urban=false}
 }
 function initWorld(){
   const snap=loadProvMapSnapshot();
@@ -1662,6 +1719,8 @@ function refreshEditorPanel(){
         "border-left:6px solid "+TERRAINS[t].color+"' onclick='setTerrain(\""+t+"\")'>"+TERRAINS[t].label+"</button>";
     }
     h+="</div>";
+    h+="<div class='row'><span>Impracticable</span><button class='bbtn"+(p.wasteland?" red":"")+
+      "' onclick='toggleWasteland()'>"+(p.wasteland?"Sí (quitar)":"No (marcar)")+"</button></div>";
   }
   h+="<h3>Cambios</h3>";
   h+=editDirty
@@ -1694,6 +1753,15 @@ window.setTerrain=function(t){
   pushUndo();
   provs[shapeSel].terrain=t;
   if(terrainView)repaintProvince(shapeSel);
+  refreshEditorPanel();
+};
+window.toggleWasteland=function(){
+  if(shapeSel<0)return;
+  pushUndo();
+  const p=provs[shapeSel];
+  p.wasteland=!p.wasteland;
+  if(p.wasteland){p.owner=NEUTRAL;p.owner0=NEUTRAL;p.capital=false;p.urban=false}
+  repaintProvince(shapeSel);
   refreshEditorPanel();
 };
 window.toggleTerrainView=function(){
