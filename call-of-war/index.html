@@ -1,0 +1,1165 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Europa 1444 — Gran Estrategia (prototipo)</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;font-family:"Segoe UI",Arial,sans-serif}
+  html,body{width:100%;height:100%;overflow:hidden;background:#1c2127;color:#d8d4c8}
+  #topbar{position:fixed;top:0;left:0;right:0;height:46px;background:#262b31;border-bottom:2px solid #3a4047;
+    display:flex;align-items:center;gap:14px;padding:0 12px;z-index:20;font-size:13px}
+  .res{display:flex;align-items:center;gap:4px;white-space:nowrap}
+  .res b{color:#fff}
+  .reslab{color:#9aa3ad;font-size:11px}
+  #nationChip{display:flex;align-items:center;gap:6px;font-weight:bold}
+  .chip{width:14px;height:14px;border-radius:3px;border:1px solid #000;display:inline-block}
+  #dateBox{margin-left:auto;color:#c9c2ae;white-space:nowrap}
+  .spdBtn,.uiBtn{background:#343b43;border:1px solid #4a525b;color:#d8d4c8;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px}
+  .spdBtn.active{background:#5d7a4e;border-color:#7fa56b;color:#fff}
+  .uiBtn:hover,.spdBtn:hover{background:#414a54}
+  #canvasWrap{position:absolute;top:46px;left:0;right:0;bottom:0;background:#27384a;overflow:hidden}
+  #map{display:block;cursor:grab}
+  #side{position:fixed;top:56px;right:10px;width:300px;max-height:calc(100% - 76px);overflow-y:auto;
+    background:rgba(33,38,44,.96);border:1px solid #3a4047;border-radius:6px;padding:12px;z-index:15;font-size:13px;display:none}
+  #side h2{font-size:16px;margin-bottom:6px;color:#fff}
+  #side h3{font-size:13px;margin:10px 0 4px;color:#c9c2ae;border-bottom:1px solid #3a4047;padding-bottom:2px}
+  .row{display:flex;justify-content:space-between;align-items:center;margin:3px 0;gap:6px}
+  .row .sm{font-size:11px;color:#9aa3ad}
+  .bbtn{background:#3d5a3a;border:1px solid #57804f;color:#e8e4d8;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:11px;white-space:nowrap}
+  .bbtn:disabled{background:#3a4047;border-color:#4a525b;color:#7a828b;cursor:not-allowed}
+  .bbtn.red{background:#6a3a3a;border-color:#8a5050}
+  .bbtn:hover:not(:disabled){filter:brightness(1.15)}
+  #log{position:fixed;left:10px;bottom:10px;width:380px;z-index:14;font-size:12px;pointer-events:none}
+  #log div{background:rgba(20,24,28,.78);padding:3px 8px;border-radius:4px;margin-top:3px;color:#cfc9ba}
+  .overlay{position:fixed;inset:0;background:rgba(12,15,18,.88);z-index:50;display:flex;align-items:center;justify-content:center}
+  .panel{background:#262b31;border:1px solid #4a525b;border-radius:8px;padding:26px;max-width:680px;max-height:86vh;overflow-y:auto}
+  .panel h1{color:#e8e0c8;font-size:26px;margin-bottom:4px}
+  .panel h2{color:#c9c2ae;font-size:15px;margin:14px 0 8px}
+  .panel p{font-size:13px;color:#b8b2a4;line-height:1.5;margin:6px 0}
+  #nationGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px}
+  .ncard{background:#31373e;border:2px solid #4a525b;border-radius:6px;padding:12px;cursor:pointer;text-align:center}
+  .ncard:hover{border-color:#9fb878;background:#3a424a}
+  .ncard .chip{width:34px;height:22px;margin:0 auto 8px;display:block}
+  .ncard b{font-size:13px}
+  .ncard span{font-size:11px;color:#9aa3ad;display:block;margin-top:3px}
+  table.dip{width:100%;border-collapse:collapse;font-size:12px}
+  table.dip td,table.dip th{padding:5px 6px;border-bottom:1px solid #3a4047;text-align:left}
+  #loadMsg{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:60;
+    background:#1c2127;color:#c9c2ae;font-size:18px}
+</style>
+</head>
+<body>
+<div id="loadMsg">Generando Europa, 11 de noviembre de 1444…</div>
+
+<div id="topbar">
+  <span id="nationChip"></span>
+  <span class="res"><span class="reslab">Duc</span><b id="r_dinero">0</b></span>
+  <span class="res"><span class="reslab">Mad</span><b id="r_materiales">0</b></span>
+  <span class="res"><span class="reslab">Gra</span><b id="r_comida">0</b></span>
+  <span class="res"><span class="reslab">Hie</span><b id="r_metal">0</b></span>
+  <span class="res"><span class="reslab">Cab</span><b id="r_petroleo">0</b></span>
+  <span class="res"><span class="reslab">Esp</span><b id="r_raros">0</b></span>
+  <span class="res"><span class="reslab">MO</span><b id="r_mano">0</b></span>
+  <span id="dateBox"></span>
+  <button class="spdBtn" data-s="0">II</button>
+  <button class="spdBtn active" data-s="1">1x</button>
+  <button class="spdBtn" data-s="4">4x</button>
+  <button class="spdBtn" data-s="16">16x</button>
+  <button class="uiBtn" id="dipBtn">Diplomacia</button>
+  <button class="uiBtn" id="helpBtn">Ayuda</button>
+</div>
+
+<div id="canvasWrap"><canvas id="map"></canvas></div>
+<div id="side"></div>
+<div id="log"></div>
+
+<div class="overlay" id="startOverlay" style="display:none">
+  <div class="panel">
+    <h1>EUROPA 1444</h1>
+    <p>11 de noviembre de 1444: la cristiandad tiembla tras la cruzada de Varna. De Castilla a los Timúridas,
+       60 naciones con fronteras históricas. Elige la tuya, desarrolla tus provincias, recluta ejércitos y
+       conquista el <b>33% del mapa</b> (o casi el doble de tu territorio inicial) para ganar.
+       Clic izquierdo: seleccionar. Clic derecho: mover ejército (las tropas cruzan el mar embarcadas, lento).
+       Rueda: zoom.</p>
+    <div id="nationGrid"></div>
+  </div>
+</div>
+
+<div class="overlay" id="helpOverlay" style="display:none">
+  <div class="panel">
+    <h1>Manual del soberano</h1>
+    <h2>Recursos</h2>
+    <p>Cada provincia produce un recurso por hora: <b>Grano, Madera, Hierro, Caballos o Especias</b>.
+       Las <b>ciudades</b> (provincias con nombre histórico) producen Ducados. Todas generan Mano de obra (MO)
+       y algo de oro. La <b>moral</b> de la provincia multiplica su producción. Las tropas consumen ducados
+       y grano cada hora.</p>
+    <h2>Construcciones</h2>
+    <p><b>Caminos</b>: +25% producción y +20% movimiento por nivel. <b>Cuartel de levas</b>: desbloquea piqueros
+       y acelera el reclutamiento. <b>Herrería</b>: +15% producción, necesaria para caballería pesada y bombardas.
+       <b>Castillo</b>: +30% defensa por nivel.</p>
+    <h2>Unidades y combate</h2>
+    <p>Levas, piqueros, alabarderos, caballería ligera, caballería, caballeros y bombardas, cada uno con ataque,
+       defensa, puntos de vida y velocidad. El combate se resuelve por horas: el daño depende del ataque total
+       contra la defensa total (multiplicada por castillos). Una provincia sin defensores es capturada al entrar.
+       Entre provincias costeras cercanas las tropas <b>embarcan</b> (lento) para cruzar el mar.</p>
+    <h2>Diplomacia</h2>
+    <p>Entrar en territorio extranjero declara la guerra automáticamente. Las 60 naciones tienen su propia IA:
+       construyen, reclutan y se conquistan entre sí. Puedes proponer la paz: la IA acepta si va perdiendo.</p>
+    <p style="text-align:center;margin-top:16px"><button class="uiBtn" onclick="document.getElementById('helpOverlay').style.display='none'">Cerrar</button></p>
+  </div>
+</div>
+
+<div class="overlay" id="dipOverlay" style="display:none">
+  <div class="panel" style="min-width:540px">
+    <h1>Diplomacia</h1>
+    <div id="dipBody"></div>
+    <p style="text-align:center;margin-top:16px"><button class="uiBtn" onclick="document.getElementById('dipOverlay').style.display='none'">Cerrar</button></p>
+  </div>
+</div>
+
+<div class="overlay" id="endOverlay" style="display:none">
+  <div class="panel" style="text-align:center">
+    <h1 id="endTitle"></h1>
+    <p id="endText"></p>
+    <p style="margin-top:14px"><button class="uiBtn" onclick="document.getElementById('endOverlay').style.display='none'">Seguir mirando</button>
+    <button class="uiBtn" onclick="location.reload()">Nueva partida</button></p>
+  </div>
+</div>
+
+<script src="mapdata.js"></script>
+<script>
+"use strict";
+/* ============================= RNG ============================= */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const rand=mulberry32(193909);
+function hashN(ix,iy){let n=(ix*374761393+iy*668265263)|0;n=Math.imul(n^(n>>>13),1274126177);n^=n>>>16;return(n>>>0)/4294967296}
+
+/* ============================= Constantes ============================= */
+const MW=MAPDATA.W,MH=MAPDATA.H;
+const NATIONS=MAPDATA.nations.map(n=>({name:n.name,color:n.color}));
+NATIONS.push({name:"Independientes",color:"#8d8d84",neutral:true});
+const NPLAY=MAPDATA.nations.length;
+const NEUTRAL=NPLAY;
+const RES_KEYS=["dinero","materiales","comida","metal","petroleo","raros"];
+const RES_LABEL={dinero:"Ducados",materiales:"Madera",comida:"Grano",metal:"Hierro",petroleo:"Caballos",raros:"Especias"};
+const BUILDINGS={
+  infra:{label:"Caminos",max:3,time:12,cost:{dinero:1200,materiales:1500}},
+  cuartel:{label:"Cuartel de levas",max:3,time:10,cost:{dinero:900,materiales:1200}},
+  fabrica:{label:"Herrería",max:4,time:24,cost:{dinero:2500,materiales:2200,metal:1000}},
+  fortaleza:{label:"Castillo",max:5,time:18,cost:{dinero:1500,materiales:2500,metal:600}}
+};
+const UNITS={
+  miliciano:{label:"Levas",atk:1.2,def:2.5,hp:12,spd:5,time:5,cost:{dinero:300,comida:200},mano:200,req:{}},
+  infanteria:{label:"Piqueros",atk:2.5,def:4,hp:18,spd:6,time:9,cost:{dinero:600,comida:400,materiales:200},mano:400,req:{cuartel:1}},
+  motorizada:{label:"Caballería ligera",atk:4,def:5,hp:20,spd:11,time:14,cost:{dinero:900,comida:500,petroleo:300,materiales:300},mano:500,req:{cuartel:2}},
+  antitanque:{label:"Alabarderos",atk:3,def:7,hp:16,spd:6,time:16,cost:{dinero:900,metal:600,materiales:300},mano:300,req:{cuartel:1,fabrica:1}},
+  artilleria:{label:"Bombardas",atk:7,def:2,hp:14,spd:6,time:24,cost:{dinero:1500,metal:900,materiales:400},mano:300,req:{fabrica:2}},
+  blindadoLigero:{label:"Caballería",atk:6,def:4,hp:22,spd:10,time:20,cost:{dinero:1400,metal:800,petroleo:500},mano:300,req:{fabrica:1}},
+  blindadoMedio:{label:"Caballeros",atk:9,def:6,hp:30,spd:8,time:32,cost:{dinero:2400,metal:1500,petroleo:800,raros:300},mano:400,req:{fabrica:3}}
+};
+
+/* ============================= Estado global ============================= */
+let provs=[],provIdx,pixOfProv=[],borderPxOfProv=[],adj=[],seaAdj=[];
+let nations=[],armies=[],wars=new Set(),armyIdSeq=1;
+let player=-1,hour=0,speed=1,acc=0,started=false,gameOver=false;
+let selProv=-1,selArmy=null;
+let battleFlash={}; // provId -> hour del último combate
+const START_DATE=Date.UTC(1444,10,11,6);
+const MESES=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+
+/* ============================= Generación del mapa (Europa real) ============================= */
+const SYL_A=["Bran","Kel","Vos","Tor","Mar","Lun","Ost","Var","Gal","Dor","Bel","Cra","Stal","Nor","Pet","Riv","Sar","Tan","Ulm","Vin","Kos","Bre","Ang","Mon","Tar"];
+const SYL_M=["a","e","o","en","ar","el","in","or","an","ur"];
+const SYL_B=["burgo","grado","via","landia","mark","stein","polis","feld","holm","gorod","novo","berg","minas","puerto","castro","stadt","kovo","mira"];
+function genName(used){
+  for(let t=0;t<200;t++){
+    let n=SYL_A[(rand()*SYL_A.length)|0];
+    if(t>=40||rand()<0.35)n+=SYL_M[(rand()*SYL_M.length)|0];
+    n+=SYL_B[(rand()*SYL_B.length)|0];
+    if(!used.has(n)){used.add(n);return n}
+  }
+  let n;
+  do{n="Provincia "+(1+((rand()*9999)|0))}while(used.has(n));
+  used.add(n);
+  return n;
+}
+const RLE_ALPHA="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!#$%&()*+,-./:;<=>?@^_{}|~";
+let countryAt=null; // 0 = mar, 1.. = índice de país en MAPDATA.countries
+function decodeCountries(){
+  countryAt=new Uint8Array(MW*MH);
+  const s=MAPDATA.rle;let i=0,pos=0;
+  while(i<s.length){
+    const c=RLE_ALPHA.indexOf(s[i++]);
+    let n=0;
+    while(i<s.length&&s.charCodeAt(i)>=48&&s.charCodeAt(i)<=57)n=n*10+(s.charCodeAt(i++)-48);
+    countryAt.fill(c,pos,pos+n);pos+=n;
+  }
+}
+function generateMap(){
+  decodeCountries();
+  // componentes conexas de cada nación (para no fusionar territorios separados por mar u otras naciones)
+  const compAt=new Int32Array(MW*MH).fill(-1);
+  const comps=[];
+  for(let i=0;i<MW*MH;i++){
+    if(countryAt[i]===0||compAt[i]>=0)continue;
+    const c=countryAt[i],id=comps.length;
+    let size=0;
+    const stack=[i];compAt[i]=id;
+    while(stack.length){
+      const k=stack.pop();size++;
+      const x=k%MW;
+      for(const j of[k-1,k+1,k-MW,k+MW]){
+        if(j<0||j>=MW*MH)continue;
+        if(Math.abs((j%MW)-x)>1)continue;
+        if(countryAt[j]===c&&compAt[j]<0){compAt[j]=id;stack.push(j)}
+      }
+    }
+    comps.push({c,size});
+  }
+  // semillas de provincia (rejilla con jitter hasta los bordes; si cae en mar se reintenta)
+  const seeds=[];
+  for(let gy=14;gy<MH-5;gy+=29){
+    for(let gx=14;gx<MW-5;gx+=29){
+      for(let t=0;t<5;t++){
+        const x=Math.max(1,Math.min(MW-2,Math.round(gx+(rand()-0.5)*22)));
+        const y=Math.max(1,Math.min(MH-2,Math.round(gy+(rand()-0.5)*22)));
+        const c=countryAt[y*MW+x];
+        if(c>0){seeds.push({x,y,c,comp:compAt[y*MW+x]});break}
+      }
+    }
+  }
+  // garantizar al menos una semilla por componente con territorio suficiente
+  const haveSeed=new Set(seeds.map(s=>s.comp));
+  const wantPix=new Map();
+  comps.forEach((cm,id)=>{if(cm.size>=40&&!haveSeed.has(id))wantPix.set(id,(cm.size/2)|0)});
+  if(wantPix.size){
+    const seen=new Map();
+    for(let i=0;i<MW*MH;i++){
+      const id=compAt[i];
+      if(id<0||!wantPix.has(id))continue;
+      const s=(seen.get(id)||0);seen.set(id,s+1);
+      if(s===wantPix.get(id)){
+        seeds.push({x:i%MW,y:(i/MW)|0,c:countryAt[i],comp:id});
+        wantPix.delete(id);
+        if(!wantPix.size)break;
+      }
+    }
+  }
+  // buckets para vecino más cercano de la misma componente
+  const CS=64,bw=Math.ceil(MW/CS),bh=Math.ceil(MH/CS);
+  const buckets=Array.from({length:bw*bh},()=>[]);
+  seeds.forEach((s,i)=>buckets[((s.y/CS)|0)*bw+((s.x/CS)|0)].push(i));
+  const maxR=bw+bh;
+  function nearestSeed(x,y,comp){
+    let best=-1,bd=1e18;
+    const cx=(x/CS)|0, cy=(y/CS)|0;
+    for(let r=0;r<maxR;r++){
+      if(best>=0 && (r-1)*CS>Math.sqrt(bd))break;
+      for(let by=cy-r;by<=cy+r;by++)for(let bx=cx-r;bx<=cx+r;bx++){
+        if(Math.max(Math.abs(bx-cx),Math.abs(by-cy))!==r)continue;
+        if(bx<0||by<0||bx>=bw||by>=bh)continue;
+        const cell=buckets[by*bw+bx];
+        for(let k=0;k<cell.length;k++){
+          const s=seeds[cell[k]];
+          if(s.comp!==comp)continue;
+          const dx=s.x-x,dy=s.y-y,d=dx*dx+dy*dy;
+          if(d<bd){bd=d;best=cell[k]}
+        }
+      }
+    }
+    return best;
+  }
+  // ruido suave para deformar las fronteras (formas orgánicas tipo EU4)
+  function makeNoise(cell){
+    const nw=Math.ceil(MW/cell)+2, nh=Math.ceil(MH/cell)+2;
+    const g=new Float32Array(nw*nh);
+    for(let i=0;i<g.length;i++)g[i]=rand()*2-1;
+    return(x,y)=>{
+      const fx=x/cell, fy=y/cell, ix=fx|0, iy=fy|0;
+      let tx=fx-ix, ty=fy-iy;
+      tx=tx*tx*(3-2*tx); ty=ty*ty*(3-2*ty);
+      const o=iy*nw+ix, a=g[o],b=g[o+1],c=g[o+nw],e=g[o+nw+1];
+      return a+(b-a)*tx+(c-a)*ty+(a-b-c+e)*tx*ty;
+    };
+  }
+  const nx1=makeNoise(48),nx2=makeNoise(16),ny1=makeNoise(48),ny2=makeNoise(16);
+  const warpX=(x,y)=>nx1(x,y)*8+nx2(x,y)*3.5;
+  const warpY=(x,y)=>ny1(x,y)*8+ny2(x,y)*3.5;
+  // asignación de píxeles (Voronoi limitado por componente nacional, con deformación)
+  provIdx=new Int16Array(MW*MH).fill(-1);
+  const counts=new Uint32Array(seeds.length);
+  for(let y=0;y<MH;y++)for(let x=0;x<MW;x++){
+    const i=y*MW+x;
+    if(countryAt[i]===0)continue;
+    const wx=Math.max(0,Math.min(MW-1,x+warpX(x,y)));
+    const wy=Math.max(0,Math.min(MH-1,y+warpY(x,y)));
+    const s=nearestSeed(wx,wy,compAt[i]);
+    if(s>=0){provIdx[i]=s;counts[s]++}
+  }
+  // limpieza: la deformación puede dejar fragmentos desconectados de su provincia
+  {
+    const frag=new Int32Array(MW*MH).fill(-1);
+    const fragProv=[],fragPix=[];
+    for(let i=0;i<MW*MH;i++){
+      if(provIdx[i]<0||frag[i]>=0)continue;
+      const fid=fragProv.length,p=provIdx[i],pix=[];
+      fragProv.push(p);frag[i]=fid;
+      const stack=[i];
+      while(stack.length){
+        const k=stack.pop();pix.push(k);
+        const x=k%MW;
+        for(const j of[k-1,k+1,k-MW,k+MW]){
+          if(j<0||j>=MW*MH)continue;
+          if(Math.abs((j%MW)-x)>1)continue;
+          if(provIdx[j]===p&&frag[j]<0){frag[j]=fid;stack.push(j)}
+        }
+      }
+      fragPix.push(pix);
+    }
+    const mainFrag=new Map();
+    for(let f=0;f<fragProv.length;f++){
+      const p=fragProv[f];
+      if(!mainFrag.has(p)||fragPix[f].length>fragPix[mainFrag.get(p)].length)mainFrag.set(p,f);
+    }
+    const isBad=new Uint8Array(MW*MH);
+    let bad=[];
+    for(let f=0;f<fragPix.length;f++){
+      if(mainFrag.get(fragProv[f])===f)continue;
+      for(const k of fragPix[f]){isBad[k]=1;bad.push(k)}
+    }
+    // reasignar por dilatación a la provincia vecina del mismo componente
+    function dilate(){
+      while(bad.length){
+        const next=[];
+        let changed=false;
+        for(const k of bad){
+          const x=k%MW;let pick=-1;
+          for(const j of[k-1,k+1,k-MW,k+MW]){
+            if(j<0||j>=MW*MH)continue;
+            if(Math.abs((j%MW)-x)>1)continue;
+            if(provIdx[j]>=0&&!isBad[j]&&compAt[j]===compAt[k]){pick=provIdx[j];break}
+          }
+          if(pick>=0){counts[provIdx[k]]--;counts[pick]++;provIdx[k]=pick;isBad[k]=0;changed=true}
+          else next.push(k);
+        }
+        if(!changed)break;
+        bad=next;
+      }
+    }
+    dilate();
+    // fusionar provincias demasiado pequeñas en sus vecinas (evita huecos en la costa)
+    const compBest=new Map();
+    for(let s=0;s<seeds.length;s++){
+      if(counts[s]===0)continue;
+      const b=compBest.get(seeds[s].comp);
+      if(b===undefined||counts[s]>counts[b])compBest.set(seeds[s].comp,s);
+    }
+    const tiny=new Set();
+    for(let s=0;s<seeds.length;s++)
+      if(counts[s]>0&&counts[s]<40&&compBest.get(seeds[s].comp)!==s)tiny.add(s);
+    if(tiny.size){
+      bad=[];
+      for(let i=0;i<MW*MH;i++)if(provIdx[i]>=0&&tiny.has(provIdx[i])){isBad[i]=1;bad.push(i)}
+      dilate();
+    }
+  }
+  // provincias definitivas (los nombres históricos se reservan para no duplicarlos)
+  const used=new Set(MAPDATA.cities.map(c=>c[0]));
+  const remap=new Int16Array(seeds.length).fill(-1);
+  for(let i=0;i<seeds.length;i++){
+    if(counts[i]<40)continue;
+    remap[i]=provs.length;
+    provs.push({id:provs.length,name:genName(used),x:seeds[i].x,y:seeds[i].y,country:seeds[i].c,
+      owner:MAPDATA.countries[seeds[i].c-1].nation,named:false,coastal:false,
+      morale:60,urban:rand()<0.06,resType:null,shade:0.85+rand()*0.3,capital:false,
+      buildings:{infra:0,cuartel:0,fabrica:0,fortaleza:0},buildQueue:[],recruitQueue:[]});
+  }
+  for(let i=0;i<provIdx.length;i++){
+    const s=provIdx[i];
+    provIdx[i]=s>=0?remap[s]:-1;
+  }
+  // listas de píxeles, bordes, adyacencia y costa
+  adj=provs.map(()=>new Set());
+  seaAdj=provs.map(()=>new Set());
+  pixOfProv=provs.map(()=>[]);
+  borderPxOfProv=provs.map(()=>[]);
+  for(let y=0;y<MH;y++)for(let x=0;x<MW;x++){
+    const i=y*MW+x,p=provIdx[i];
+    if(p<0)continue;
+    pixOfProv[p].push(i);
+    const r=x<MW-1?provIdx[i+1]:-2, d=y<MH-1?provIdx[i+MW]:-2;
+    const l=x>0?provIdx[i-1]:-2, u=y>0?provIdx[i-MW]:-2;
+    if(r!==p||d!==p||l!==p||u!==p)borderPxOfProv[p].push(i);
+    if(r===-1||d===-1||l===-1||u===-1)provs[p].coastal=true;
+    if(r>=0&&r!==p){adj[p].add(r);adj[r].add(p)}
+    if(d>=0&&d!==p){adj[p].add(d);adj[d].add(p)}
+  }
+  // nombres y capitales con ciudades reales (las ciudades son provincias urbanas)
+  for(const[name,cx,cy,c,cap]of MAPDATA.cities){
+    const pid=provIdx[cy*MW+cx];
+    if(pid<0)continue;
+    const p=provs[pid];
+    if(!p.named){p.name=name;p.named=true;p.urban=true}
+    if(cap)p.capital=true;
+  }
+  // tipo de recurso
+  const pool=["comida","comida","comida","materiales","materiales","metal","metal","petroleo","raros"];
+  for(const p of provs)p.resType=p.urban?"dinero":pool[(rand()*pool.length)|0];
+  // rutas marítimas (convoyes) entre provincias costeras cercanas
+  const coast=provs.filter(p=>p.coastal);
+  for(let i=0;i<coast.length;i++)for(let j=i+1;j<coast.length;j++){
+    const a=coast[i],b=coast[j];
+    if(adj[a.id].has(b.id))continue;
+    const dx=b.x-a.x,dy=b.y-a.y,dd=Math.hypot(dx,dy);
+    if(dd>110)continue;
+    const steps=Math.max(8,(dd/6)|0);
+    let ok=true,sea=0;
+    for(let s=1;s<steps&&ok;s++){
+      const x=Math.round(a.x+dx*s/steps),y=Math.round(a.y+dy*s/steps);
+      const pid=provIdx[y*MW+x];
+      if(pid===-1){sea++;continue}
+      if(pid!==a.id&&pid!==b.id)ok=false;
+    }
+    if(ok&&sea>=1){seaAdj[a.id].add(b.id);seaAdj[b.id].add(a.id)}
+  }
+}
+
+/* ============================= Naciones iniciales ============================= */
+function setupNations(){
+  nations=NATIONS.map((n,i)=>({idx:i,res:{dinero:5000,materiales:4000,comida:3000,metal:2500,petroleo:1500,raros:800},
+    mano:3000,ai:true,capital:-1,alive:!n.neutral,lastAI:0,startProvs:0}));
+  // capitales históricas (marcadas por las ciudades del mapa) y tropas iniciales
+  for(let n=0;n<NPLAY;n++){
+    let cap=-1;
+    for(const p of provs)if(p.owner===n&&p.capital){cap=p.id;break}
+    if(cap<0)for(const p of provs)if(p.owner===n){cap=p.id;p.capital=true;break}
+    nations[n].capital=cap;
+    if(cap<0){nations[n].alive=false;continue}
+    nations[n].startProvs=nationProvCount(n);
+    const c=provs[cap];
+    c.buildings.cuartel=1;c.buildings.infra=1;c.morale=85;
+    const start={infanteria:2,miliciano:2};
+    if(nations[n].startProvs>=12)start.blindadoLigero=2; // las grandes potencias empiezan con caballería
+    spawnArmy(n,cap,start);
+  }
+  let k=0;
+  for(const p of provs){
+    if(p.owner<NPLAY){
+      p.morale=75;
+      if(!p.capital&&(k++%3===0))spawnArmy(p.owner,p.id,{infanteria:1});
+    }
+  }
+}
+function spawnArmy(nation,prov,units){
+  const a={id:armyIdSeq++,nation,prov,units:Object.assign({},units),path:[],legDone:0,legTotal:0};
+  armies.push(a);
+  return a;
+}
+
+/* ============================= Render del mapa base ============================= */
+const baseC=document.createElement("canvas");baseC.width=MW;baseC.height=MH;
+const baseCtx=baseC.getContext("2d");
+let baseData;
+const borderC=document.createElement("canvas");borderC.width=MW;borderC.height=MH;
+function hex2rgb(h){return[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]}
+const NCOL=NATIONS.map(n=>hex2rgb(n.color));
+function paintAll(){
+  baseData=baseCtx.createImageData(MW,MH);
+  const d=baseData.data;
+  for(let y=0;y<MH;y++)for(let x=0;x<MW;x++){
+    const i=y*MW+x,o=i*4,p=provIdx[i];
+    if(p<0){
+      const v=hashN(x>>2,y>>2)*14;
+      d[o]=50+v;d[o+1]=72+v;d[o+2]=100+v;d[o+3]=255;
+    }else{
+      const c=NCOL[provs[p].owner],s=provs[p].shade;
+      d[o]=c[0]*s;d[o+1]=c[1]*s;d[o+2]=c[2]*s;d[o+3]=255;
+    }
+  }
+  baseCtx.putImageData(baseData,0,0);
+  // bordes estáticos
+  const bctx=borderC.getContext("2d");
+  const bd=bctx.createImageData(MW,MH);
+  for(let p=0;p<provs.length;p++)for(const i of borderPxOfProv[p]){
+    const o=i*4;bd.data[o]=15;bd.data[o+1]=18;bd.data[o+2]=20;bd.data[o+3]=110;
+  }
+  bctx.putImageData(bd,0,0);
+}
+function repaintProvince(pid){
+  const c=NCOL[provs[pid].owner],s=provs[pid].shade,d=baseData.data;
+  for(const i of pixOfProv[pid]){
+    const o=i*4;d[o]=c[0]*s;d[o+1]=c[1]*s;d[o+2]=c[2]*s;
+  }
+  baseCtx.putImageData(baseData,0,0);
+}
+
+/* ============================= Cámara y canvas ============================= */
+const canvas=document.getElementById("map"),ctx=canvas.getContext("2d");
+let zoom=1,panX=0,panY=0;
+function fitCanvas(){
+  const w=canvas.parentElement.clientWidth,h=canvas.parentElement.clientHeight;
+  canvas.width=w;canvas.height=h;
+}
+window.addEventListener("resize",fitCanvas);
+function clampPan(){
+  panX=Math.min(60,Math.max(canvas.width-MW*zoom-60,panX));
+  panY=Math.min(60,Math.max(canvas.height-MH*zoom-60,panY));
+}
+
+/* ============================= Utilidades de juego ============================= */
+function atWar(a,b){
+  if(a===b)return false;
+  if(a===NEUTRAL||b===NEUTRAL)return true;
+  return wars.has(a<b?a+"|"+b:b+"|"+a);
+}
+function declareWar(a,b){
+  if(a===NEUTRAL||b===NEUTRAL||a===b||atWar(a,b))return;
+  wars.add(a<b?a+"|"+b:b+"|"+a);
+  log(NATIONS[a].name+" declara la guerra a "+NATIONS[b].name+".");
+}
+function makePeace(a,b){
+  wars.delete(a<b?a+"|"+b:b+"|"+a);
+  log("Paz firmada entre "+NATIONS[a].name+" y "+NATIONS[b].name+".");
+}
+function canAfford(n,cost){
+  for(const k in cost)if(nations[n].res[k]<cost[k])return false;
+  return true;
+}
+function pay(n,cost){for(const k in cost)nations[n].res[k]-=cost[k]}
+function armyCount(a){let t=0;for(const k in a.units)t+=a.units[k];return t}
+function armyAtk(a){let t=0;for(const k in a.units)t+=a.units[k]*UNITS[k].atk;return t}
+function armyDef(a){let t=0;for(const k in a.units)t+=a.units[k]*UNITS[k].def;return t}
+function armyHp(a){let t=0;for(const k in a.units)t+=a.units[k]*UNITS[k].hp;return t}
+function armySpd(a){let s=99;for(const k in a.units)if(a.units[k]>0.05)s=Math.min(s,UNITS[k].spd);return s===99?6:s}
+function nationStrength(n){let t=0;for(const a of armies)if(a.nation===n)t+=armyAtk(a)+armyDef(a);return t}
+function nationProvCount(n){let t=0;for(const p of provs)if(p.owner===n)t++;return t}
+function armiesIn(pid){return armies.filter(a=>a.prov===pid&&a.path.length===0)}
+function nbrs(c){return[...adj[c],...seaAdj[c]]}
+function bfsPath(from,to){
+  if(from===to)return[];
+  const prev=new Map([[from,-1]]);
+  const q=[from];
+  while(q.length){
+    const c=q.shift();
+    for(const a of nbrs(c)){
+      if(prev.has(a))continue;
+      prev.set(a,c);
+      if(a===to){
+        const path=[a];let cur=c;
+        while(cur!==from){path.unshift(cur);cur=prev.get(cur)}
+        return path;
+      }
+      q.push(a);
+    }
+  }
+  return null;
+}
+function startLeg(a){
+  if(!a.path.length){a.legDone=0;a.legTotal=0;return}
+  const from=provs[a.prov],to=provs[a.path[0]];
+  const dist=Math.hypot(to.x-from.x,to.y-from.y);
+  if(!adj[a.prov].has(a.path[0])){
+    // travesía marítima en convoy: lenta, sin bonus de infraestructura
+    a.legTotal=Math.max(2,dist/3.5);
+  }else{
+    const infra=(from.buildings.infra+to.buildings.infra)/2;
+    a.legTotal=Math.max(1,dist/(armySpd(a)*(1+0.2*infra)));
+  }
+  a.legDone=0;
+}
+function orderMove(a,target){
+  const origin=(a.path.length&&a.legDone>0)?a.path[0]:a.prov;
+  const rest=bfsPath(origin,target);
+  if(rest===null)return false;
+  if(a.path.length&&a.legDone>0){
+    a.path=[a.path[0],...rest];
+  }else{
+    a.path=rest;startLeg(a);
+  }
+  return true;
+}
+function captureProv(pid,nation){
+  const p=provs[pid];
+  const old=p.owner;
+  p.owner=nation;p.morale=25;p.buildQueue=[];p.recruitQueue=[];
+  repaintProvince(pid);
+  if(nation===player||old===player)log(NATIONS[nation].name+" captura "+p.name+".");
+  if(old<NPLAY&&nationProvCount(old)===0){
+    nations[old].alive=false;
+    log(NATIONS[old].name+" ha sido eliminada del mapa.");
+  }
+  checkVictory();
+}
+
+/* ============================= Simulación (1 tick = 1 hora) ============================= */
+function hourTick(){
+  hour++;
+  // 1. economía
+  for(let n=0;n<NPLAY;n++){
+    if(!nations[n].alive)continue;
+    const R=nations[n].res;
+    for(const p of provs){
+      if(p.owner!==n)continue;
+      const m=p.morale/100;
+      const mult=(1+0.25*p.buildings.infra+0.15*p.buildings.fabrica)*m;
+      if(p.resType==="dinero")R.dinero+=55*mult;
+      else R[p.resType]+=26*mult;
+      R.dinero+=8*m;
+      nations[n].mano=Math.min(99999,nations[n].mano+(p.urban?14:6)*m);
+    }
+    // mantenimiento
+    let troops=0;
+    for(const a of armies)if(a.nation===n)troops+=armyCount(a);
+    R.dinero=Math.max(0,R.dinero-5*troops);
+    R.comida=Math.max(0,R.comida-4*troops);
+  }
+  // 2. construcción
+  for(const p of provs){
+    if(p.buildQueue.length){
+      const q=p.buildQueue[0];
+      if(--q.hoursLeft<=0){
+        p.buildings[q.b]++;p.buildQueue.shift();
+        if(p.owner===player)log(BUILDINGS[q.b].label+" nivel "+p.buildings[q.b]+" terminada en "+p.name+".");
+      }
+    }
+    if(p.recruitQueue.length){
+      const q=p.recruitQueue[0];
+      if(--q.hoursLeft<=0){
+        p.recruitQueue.shift();
+        if(p.owner===q.nation||q.nation===p.owner){
+          let a=armies.find(x=>x.nation===q.nation&&x.prov===p.id&&x.path.length===0);
+          if(!a)a=spawnArmy(q.nation,p.id,{});
+          a.units[q.u]=(a.units[q.u]||0)+1;
+          if(q.nation===player)log(UNITS[q.u].label+" reclutado en "+p.name+".");
+        }
+      }
+    }
+  }
+  // 3. movimiento
+  for(const a of armies){
+    if(!a.path.length)continue;
+    a.legDone++;
+    if(a.legDone>=a.legTotal){
+      a.prov=a.path.shift();
+      const p=provs[a.prov];
+      if(p.owner!==a.nation){
+        if(p.owner<NPLAY)declareWar(a.nation,p.owner);
+        const defenders=armiesIn(a.prov).filter(x=>x.nation===p.owner);
+        if(defenders.length===0){
+          captureProv(a.prov,a.nation);
+        }else{
+          a.path=[];a.legDone=0;a.legTotal=0;
+        }
+      }
+      if(a.path.length)startLeg(a);else{a.legDone=0;a.legTotal=0}
+    }
+  }
+  // 4. combates
+  resolveBattles();
+  // 5. fusión de ejércitos parados
+  mergeIdle();
+  // 6. IA cada 6 horas
+  if(hour%6===0)for(let n=0;n<NPLAY;n++)if(nations[n].alive&&nations[n].ai)aiTurn(n);
+  // 7. diario: moral
+  if(hour%24===0){
+    for(const p of provs){
+      let hostile=0;
+      for(const a of adj[p.id])if(provs[a].owner!==p.owner&&atWar(p.owner,provs[a].owner))hostile++;
+      const target=Math.max(25,(p.capital?85:75)-6*hostile);
+      p.morale+=Math.max(-4,Math.min(4,target-p.morale));
+      p.morale=Math.max(5,Math.min(100,p.morale));
+    }
+    checkVictory();
+  }
+}
+function resolveBattles(){
+  const byProv=new Map();
+  for(const a of armies){
+    if(a.path.length)continue;
+    if(!byProv.has(a.prov))byProv.set(a.prov,[]);
+    byProv.get(a.prov).push(a);
+  }
+  for(const[pid,list]of byProv){
+    const p=provs[pid];
+    const def=list.filter(a=>a.nation===p.owner);
+    const atk=list.filter(a=>a.nation!==p.owner&&atWar(a.nation,p.owner));
+    if(!atk.length)continue;
+    if(!def.length){captureProv(pid,atk[0].nation);continue}
+    battleFlash[pid]=hour;
+    const A=atk.reduce((s,a)=>s+armyAtk(a),0);
+    const D=def.reduce((s,a)=>s+armyDef(a),0)*(1+0.3*p.buildings.fortaleza);
+    const hpA=atk.reduce((s,a)=>s+armyHp(a),0);
+    const hpD=def.reduce((s,a)=>s+armyHp(a),0);
+    const dmgToDef=A*0.5/(1+0.25*p.buildings.fortaleza);
+    const dmgToAtk=D*0.5;
+    applyDamage(def,dmgToDef,hpD);
+    applyDamage(atk,dmgToAtk,hpA);
+    p.morale=Math.max(5,p.morale-1);
+  }
+  // limpiar ejércitos vacíos
+  for(let i=armies.length-1;i>=0;i--){
+    if(armyCount(armies[i])<0.05){
+      if(selArmy===armies[i]){selArmy=null;refreshSide()}
+      armies.splice(i,1);
+    }
+  }
+}
+function applyDamage(list,dmg,totalHp){
+  if(totalHp<=0)return;
+  const frac=Math.min(0.9,dmg/totalHp);
+  for(const a of list)for(const k in a.units){
+    a.units[k]*=(1-frac);
+    if(a.units[k]<0.05)delete a.units[k];
+  }
+}
+function mergeIdle(){
+  const key=new Map();
+  for(let i=armies.length-1;i>=0;i--){
+    const a=armies[i];
+    if(a.path.length)continue;
+    const k=a.nation+":"+a.prov;
+    if(key.has(k)){
+      const t=key.get(k);
+      for(const u in a.units)t.units[u]=(t.units[u]||0)+a.units[u];
+      if(selArmy===a)selArmy=t;
+      armies.splice(i,1);
+    }else key.set(k,a);
+  }
+}
+
+/* ============================= IA ============================= */
+function aiTurn(n){
+  const N=nations[n];
+  const owned=provs.filter(p=>p.owner===n);
+  if(!owned.length)return;
+  // construir
+  for(let t=0;t<2;t++){
+    const p=owned[(rand()*owned.length)|0];
+    if(p.buildQueue.length)continue;
+    let b=null;
+    if(p.buildings.infra<2)b="infra";
+    else if(p.buildings.cuartel<2)b="cuartel";
+    else if(p.buildings.fabrica<2)b="fabrica";
+    else if(p.capital&&p.buildings.fortaleza<3)b="fortaleza";
+    if(b&&canAfford(n,BUILDINGS[b].cost)){
+      pay(n,BUILDINGS[b].cost);
+      p.buildQueue.push({b,hoursLeft:BUILDINGS[b].time});
+    }
+  }
+  // reclutar
+  let troops=0;
+  for(const a of armies)if(a.nation===n)troops+=armyCount(a);
+  if(troops<6+owned.length){
+    for(const p of owned){
+      if(p.recruitQueue.length||p.buildings.cuartel<1)continue;
+      let u="infanteria";
+      if(p.buildings.fabrica>=3&&rand()<0.3)u="blindadoMedio";
+      else if(p.buildings.fabrica>=1&&rand()<0.35)u="blindadoLigero";
+      else if(p.buildings.fabrica>=2&&rand()<0.3)u="artilleria";
+      if(canAfford(n,UNITS[u].cost)&&N.mano>=UNITS[u].mano){
+        pay(n,UNITS[u].cost);N.mano-=UNITS[u].mano;
+        p.recruitQueue.push({u,nation:n,hoursLeft:recruitTime(p,u)});
+        break;
+      }
+    }
+  }
+  // guerra
+  const enemies=[];
+  for(let m=0;m<NPLAY;m++)if(m!==n&&nations[m].alive&&atWar(n,m))enemies.push(m);
+  const day=hour/24;
+  if(!enemies.length&&day>3&&rand()<0.22){
+    // declarar guerra al vecino más débil
+    const neigh=new Set();
+    for(const p of owned)for(const a of nbrs(p.id)){
+      const o=provs[a].owner;
+      if(o<NPLAY&&o!==n&&nations[o].alive)neigh.add(o);
+    }
+    let best=-1,bs=1e18;
+    for(const m of neigh){const s=nationStrength(m);if(s<bs){bs=s;best=m}}
+    if(best>=0&&nationStrength(n)>bs*1.3)declareWar(n,best);
+  }
+  // mover ejércitos
+  const wantNeutral=day>1;
+  for(const a of armies){
+    if(a.nation!==n||a.path.length)continue;
+    if(armyCount(a)<1.5)continue;
+    if(provs[a.prov].capital&&armiesIn(a.prov).filter(x=>x.nation===n).length<=1&&enemies.length)continue;
+    const target=findTarget(a.prov,n,enemies,wantNeutral,armyAtk(a)+armyDef(a));
+    if(target>=0)orderMove(a,target);
+  }
+  // paz si va muy mal
+  for(const m of enemies){
+    if(m===player)continue;
+    if(nationStrength(n)<nationStrength(m)*0.4&&rand()<0.3)makePeace(n,m);
+  }
+}
+function findTarget(from,n,enemies,wantNeutral,myPower){
+  const seen=new Set([from]);
+  let ring=[from];
+  for(let d=0;d<7;d++){
+    const next=[];
+    for(const c of ring)for(const a of nbrs(c)){
+      if(seen.has(a))continue;
+      seen.add(a);
+      const o=provs[a].owner;
+      if(enemies.includes(o))return a;
+      if(wantNeutral&&o===NEUTRAL){
+        const g=armiesIn(a).reduce((s,x)=>s+armyDef(x),0);
+        if(myPower>g*1.6)return a;
+      }
+      next.push(a);
+    }
+    ring=next;
+  }
+  return -1;
+}
+
+/* ============================= Acciones del jugador ============================= */
+function recruitTime(p,u){
+  return Math.max(2,Math.round(UNITS[u].time*(1-0.15*p.buildings.cuartel)*(UNITS[u].req.fabrica?1-0.08*p.buildings.fabrica:1)));
+}
+function tryBuild(pid,b){
+  const p=provs[pid];
+  if(p.owner!==player||p.buildQueue.length||p.buildings[b]>=BUILDINGS[b].max)return;
+  if(!canAfford(player,BUILDINGS[b].cost))return;
+  pay(player,BUILDINGS[b].cost);
+  p.buildQueue.push({b,hoursLeft:BUILDINGS[b].time});
+  refreshSide();refreshTop();
+}
+function tryRecruit(pid,u){
+  const p=provs[pid];
+  if(p.owner!==player)return;
+  const U=UNITS[u];
+  for(const r in U.req)if(p.buildings[r]<U.req[r])return;
+  if(!canAfford(player,U.cost)||nations[player].mano<U.mano)return;
+  pay(player,U.cost);nations[player].mano-=U.mano;
+  p.recruitQueue.push({u,nation:player,hoursLeft:recruitTime(p,u)});
+  refreshSide();refreshTop();
+}
+function checkVictory(){
+  if(gameOver||player<0)return;
+  const total=provs.length;
+  const mine=nationProvCount(player);
+  const myArmies=armies.some(a=>a.nation===player);
+  const goal=Math.max(Math.ceil(total*0.33),Math.ceil(nations[player].startProvs*1.8));
+  if(mine>=goal){
+    gameOver=true;
+    document.getElementById("endTitle").textContent="¡VICTORIA!";
+    document.getElementById("endText").textContent="Controlas "+mine+" de "+total+" provincias. Europa es tuya.";
+    document.getElementById("endOverlay").style.display="flex";
+  }else if(mine===0&&!myArmies){
+    gameOver=true;
+    document.getElementById("endTitle").textContent="DERROTA";
+    document.getElementById("endText").textContent="Tu nación ha sido borrada del mapa.";
+    document.getElementById("endOverlay").style.display="flex";
+  }
+}
+
+/* ============================= UI ============================= */
+function log(msg){
+  const el=document.getElementById("log");
+  const d=document.createElement("div");
+  d.textContent="Día "+(1+(hour/24|0))+" — "+msg;
+  el.appendChild(d);
+  while(el.children.length>8)el.removeChild(el.firstChild);
+  setTimeout(()=>{if(d.parentNode)d.parentNode.removeChild(d)},25000);
+}
+function fmt(v){return v>=10000?(v/1000).toFixed(1)+"k":Math.floor(v)}
+function refreshTop(){
+  if(player<0)return;
+  const R=nations[player].res;
+  for(const k of RES_KEYS)document.getElementById("r_"+k).textContent=fmt(R[k]);
+  document.getElementById("r_mano").textContent=fmt(nations[player].mano);
+  const d=new Date(START_DATE+hour*3600e3);
+  document.getElementById("dateBox").textContent=
+    "Día "+(1+(hour/24|0))+" · "+d.getUTCDate()+" "+MESES[d.getUTCMonth()]+" "+d.getUTCFullYear()+
+    ", "+String(d.getUTCHours()).padStart(2,"0")+":00";
+}
+function costStr(cost,mano){
+  const parts=[];
+  for(const k in cost)parts.push(fmt(cost[k])+" "+RES_LABEL[k]);
+  if(mano)parts.push(mano+" MO");
+  return parts.join(", ");
+}
+function refreshSide(){
+  const el=document.getElementById("side");
+  if(selArmy){
+    const a=selArmy;
+    let h="<h2>Ejército de "+NATIONS[a.nation].name+"</h2>";
+    h+="<div class='row'><span>Posición</span><b>"+provs[a.prov].name+"</b></div>";
+    h+="<h3>Composición</h3>";
+    for(const k in a.units)h+="<div class='row'><span>"+UNITS[k].label+"</span><b>"+Math.round(a.units[k])+"</b></div>";
+    h+="<div class='row sm'><span>Ataque "+armyAtk(a).toFixed(1)+" · Defensa "+armyDef(a).toFixed(1)+"</span><span>Vel "+armySpd(a)+"</span></div>";
+    if(a.path.length)h+="<div class='row'><span class='sm'>En marcha hacia "+provs[a.path[a.path.length-1]].name+"</span>"+
+      (a.nation===player?"<button class='bbtn red' onclick='haltArmy()'>Detener</button>":"")+"</div>";
+    else h+="<p class='sm' style='margin-top:6px;color:#9aa3ad'>Clic derecho en una provincia para mover.</p>";
+    el.innerHTML=h;el.style.display="block";return;
+  }
+  if(selProv<0){el.style.display="none";return}
+  const p=provs[selProv];
+  const own=p.owner===player;
+  let h="<h2>"+p.name+(p.capital?" ★":"")+"</h2>";
+  h+="<div class='row'><span>Nación</span><span><span class='chip' style='background:"+NATIONS[p.owner].color+"'></span> "+NATIONS[p.owner].name+"</span></div>";
+  h+="<div class='row'><span>Recurso</span><b>"+(p.resType==="dinero"?"Ciudad (Ducados)":RES_LABEL[p.resType])+"</b></div>";
+  h+="<div class='row'><span>Moral</span><b>"+Math.round(p.morale)+"%</b></div>";
+  h+="<h3>Construcciones</h3>";
+  for(const b in BUILDINGS){
+    const B=BUILDINGS[b],lvl=p.buildings[b];
+    h+="<div class='row'><span>"+B.label+" <b>"+lvl+"</b>/"+B.max+"</span>";
+    if(own){
+      const dis=p.buildQueue.length||lvl>=B.max||!canAfford(player,B.cost);
+      h+="<button class='bbtn' "+(dis?"disabled":"")+" title='"+costStr(B.cost)+" — "+B.time+"h' onclick='tryBuild("+p.id+",\""+b+"\")'>Mejorar</button>";
+    }
+    h+="</div>";
+  }
+  if(p.buildQueue.length)h+="<div class='row sm'><span>En obra: "+BUILDINGS[p.buildQueue[0].b].label+"</span><span>"+p.buildQueue[0].hoursLeft+"h</span></div>";
+  if(own){
+    h+="<h3>Reclutamiento</h3>";
+    for(const u in UNITS){
+      const U=UNITS[u];
+      let okReq=true;
+      for(const r in U.req)if(p.buildings[r]<U.req[r])okReq=false;
+      if(!okReq)continue;
+      const dis=!canAfford(player,U.cost)||nations[player].mano<U.mano;
+      h+="<div class='row'><span>"+U.label+" <span class='sm'>("+recruitTime(p,u)+"h)</span></span>"+
+        "<button class='bbtn' "+(dis?"disabled":"")+" title='"+costStr(U.cost,U.mano)+"' onclick='tryRecruit("+p.id+",\""+u+"\")'>Reclutar</button></div>";
+    }
+    if(p.recruitQueue.length){
+      h+="<div class='row sm'><span>En cola: "+p.recruitQueue.map(q=>UNITS[q.u].label).join(", ")+"</span><span>"+p.recruitQueue[0].hoursLeft+"h</span></div>";
+    }
+  }
+  const here=armiesIn(p.id);
+  if(here.length){
+    h+="<h3>Ejércitos</h3>";
+    for(const a of here){
+      h+="<div class='row'><span><span class='chip' style='background:"+NATIONS[a.nation].color+"'></span> "+
+        Math.round(armyCount(a))+" unidades</span>"+
+        (a.nation===player?"<button class='bbtn' onclick='selectArmyId("+a.id+")'>Seleccionar</button>":"")+"</div>";
+    }
+  }
+  el.innerHTML=h;el.style.display="block";
+}
+window.tryBuild=tryBuild;window.tryRecruit=tryRecruit;
+window.haltArmy=function(){if(selArmy){selArmy.path=[];selArmy.legDone=0;selArmy.legTotal=0;refreshSide()}};
+window.selectArmyId=function(id){const a=armies.find(x=>x.id===id);if(a){selArmy=a;selProv=-1;refreshSide()}};
+
+function refreshDiplomacy(){
+  let h="<table class='dip'><tr><th>Nación</th><th>Provincias</th><th>Fuerza</th><th>Estado</th><th></th></tr>";
+  for(let n=0;n<NPLAY;n++){
+    if(n===player)continue;
+    const alive=nations[n].alive;
+    h+="<tr><td><span class='chip' style='background:"+NATIONS[n].color+"'></span> "+NATIONS[n].name+"</td>";
+    h+="<td>"+nationProvCount(n)+"</td><td>"+Math.round(nationStrength(n))+"</td>";
+    if(!alive){h+="<td colspan='2'>Eliminada</td></tr>";continue}
+    if(atWar(player,n)){
+      h+="<td style='color:#d08080'>EN GUERRA</td><td><button class='bbtn' onclick='proposePeace("+n+")'>Proponer paz</button></td>";
+    }else{
+      h+="<td style='color:#90b080'>Paz</td><td><button class='bbtn red' onclick='playerDeclare("+n+")'>Declarar guerra</button></td>";
+    }
+    h+="</tr>";
+  }
+  h+="</table>";
+  document.getElementById("dipBody").innerHTML=h;
+}
+window.proposePeace=function(n){
+  if(nationStrength(n)<nationStrength(player)*0.8){makePeace(player,n)}
+  else log(NATIONS[n].name+" rechaza tu propuesta de paz.");
+  refreshDiplomacy();
+};
+window.playerDeclare=function(n){declareWar(player,n);refreshDiplomacy()};
+
+/* ============================= Entrada ============================= */
+let dragging=false,dragMoved=false,lastMx=0,lastMy=0;
+canvas.addEventListener("mousedown",e=>{
+  if(e.button===0){dragging=true;dragMoved=false;lastMx=e.clientX;lastMy=e.clientY}
+});
+window.addEventListener("mousemove",e=>{
+  if(!dragging)return;
+  const dx=e.clientX-lastMx,dy=e.clientY-lastMy;
+  if(Math.abs(dx)+Math.abs(dy)>3)dragMoved=true;
+  if(dragMoved){panX+=dx;panY+=dy;clampPan()}
+  lastMx=e.clientX;lastMy=e.clientY;
+});
+window.addEventListener("mouseup",e=>{
+  if(e.button!==0)return;
+  const wasDrag=dragMoved;dragging=false;
+  if(wasDrag||!started)return;
+  const r=canvas.getBoundingClientRect();
+  if(e.target!==canvas)return;
+  const wx=(e.clientX-r.left-panX)/zoom, wy=(e.clientY-r.top-panY)/zoom;
+  // ejército propio cerca
+  let hit=null,hd=14*14;
+  for(const a of armies){
+    const pos=armyPos(a);
+    const d=(pos.x-wx)**2+(pos.y-wy)**2;
+    if(d<hd){hd=d;hit=a}
+  }
+  if(hit&&hit.nation===player){selArmy=hit;selProv=-1;refreshSide();return}
+  const ix=wx|0,iy=wy|0;
+  if(ix>=0&&iy>=0&&ix<MW&&iy<MH&&provIdx[iy*MW+ix]>=0){
+    selProv=provIdx[iy*MW+ix];selArmy=null;
+  }else{selProv=-1;selArmy=null}
+  refreshSide();
+});
+canvas.addEventListener("contextmenu",e=>{
+  e.preventDefault();
+  if(!started||!selArmy||selArmy.nation!==player)return;
+  const r=canvas.getBoundingClientRect();
+  const wx=(e.clientX-r.left-panX)/zoom, wy=(e.clientY-r.top-panY)/zoom;
+  const ix=wx|0,iy=wy|0;
+  if(ix<0||iy<0||ix>=MW||iy>=MH)return;
+  const t=provIdx[iy*MW+ix];
+  if(t<0)return;
+  if(orderMove(selArmy,t)){
+    const tp=provs[t];
+    if(tp.owner!==player&&tp.owner<NPLAY&&!atWar(player,tp.owner))
+      log("Aviso: entrar en "+NATIONS[tp.owner].name+" declarará la guerra.");
+    refreshSide();
+  }
+});
+canvas.addEventListener("wheel",e=>{
+  e.preventDefault();
+  const r=canvas.getBoundingClientRect();
+  const mx=e.clientX-r.left,my=e.clientY-r.top;
+  const old=zoom;
+  zoom=Math.max(0.6,Math.min(4,zoom*(e.deltaY<0?1.15:0.87)));
+  panX=mx-(mx-panX)*zoom/old;
+  panY=my-(my-panY)*zoom/old;
+  clampPan();
+},{passive:false});
+
+document.querySelectorAll(".spdBtn").forEach(b=>b.addEventListener("click",()=>{
+  speed=+b.dataset.s;
+  document.querySelectorAll(".spdBtn").forEach(x=>x.classList.toggle("active",x===b));
+}));
+document.getElementById("helpBtn").addEventListener("click",()=>document.getElementById("helpOverlay").style.display="flex");
+document.getElementById("dipBtn").addEventListener("click",()=>{refreshDiplomacy();document.getElementById("dipOverlay").style.display="flex"});
+
+/* ============================= Dibujo ============================= */
+function armyPos(a){
+  const p=provs[a.prov];
+  if(a.path.length&&a.legTotal>0){
+    const t=provs[a.path[0]];
+    const f=Math.min(1,a.legDone/a.legTotal);
+    return{x:p.x+(t.x-p.x)*f,y:p.y+(t.y-p.y)*f};
+  }
+  const here=armies.filter(x=>x.prov===a.prov&&!x.path.length);
+  const idx=here.indexOf(a);
+  if(idx>0){
+    const ang=idx*2.1;
+    return{x:p.x+Math.cos(ang)*13,y:p.y+Math.sin(ang)*13};
+  }
+  return{x:p.x,y:p.y};
+}
+let selOutline=null,selOutlineProv=-1;
+function draw(){
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.fillStyle="#27384a";ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.setTransform(zoom,0,0,zoom,panX,panY);
+  ctx.imageSmoothingEnabled=zoom<1.5;
+  ctx.drawImage(baseC,0,0);
+  ctx.drawImage(borderC,0,0);
+  // contorno de provincia seleccionada
+  if(selProv>=0){
+    if(selOutlineProv!==selProv){
+      selOutline=document.createElement("canvas");selOutline.width=MW;selOutline.height=MH;
+      const c2=selOutline.getContext("2d");
+      const im=c2.createImageData(MW,MH);
+      for(const i of borderPxOfProv[selProv]){const o=i*4;im.data[o]=255;im.data[o+1]=255;im.data[o+2]=255;im.data[o+3]=230}
+      c2.putImageData(im,0,0);
+      selOutlineProv=selProv;
+    }
+    ctx.drawImage(selOutline,0,0);
+  }
+  // capitales
+  for(const p of provs){
+    if(!p.capital)continue;
+    ctx.beginPath();ctx.arc(p.x,p.y-12,4,0,7);
+    ctx.fillStyle="#f0e6c8";ctx.fill();
+    ctx.strokeStyle="#222";ctx.lineWidth=1/zoom;ctx.stroke();
+  }
+  // flecha de orden del ejército seleccionado
+  if(selArmy&&selArmy.path.length){
+    const pos=armyPos(selArmy);
+    ctx.beginPath();ctx.moveTo(pos.x,pos.y);
+    for(const pid of selArmy.path)ctx.lineTo(provs[pid].x,provs[pid].y);
+    ctx.strokeStyle="rgba(255,255,255,.65)";ctx.lineWidth=2/zoom;
+    ctx.setLineDash([6/zoom,4/zoom]);ctx.stroke();ctx.setLineDash([]);
+  }
+  // combates
+  for(const pid in battleFlash){
+    if(hour-battleFlash[pid]>2)continue;
+    const p=provs[pid];
+    const r=8+3*Math.sin(performance.now()/150);
+    ctx.beginPath();ctx.arc(p.x,p.y,r,0,7);
+    ctx.strokeStyle="rgba(255,80,50,.9)";ctx.lineWidth=2.5/zoom;ctx.stroke();
+  }
+  // ejércitos
+  ctx.textAlign="center";ctx.textBaseline="middle";
+  for(const a of armies){
+    const pos=armyPos(a);
+    const w=20,hh=13;
+    ctx.fillStyle=NATIONS[a.nation].color;
+    ctx.fillRect(pos.x-w/2,pos.y-hh/2,w,hh);
+    ctx.lineWidth=(a===selArmy?2.4:1)/Math.max(1,zoom*0.7);
+    ctx.strokeStyle=a===selArmy?"#fff":(a.nation===player?"#ffe9a0":"#15181c");
+    ctx.strokeRect(pos.x-w/2,pos.y-hh/2,w,hh);
+    ctx.fillStyle="#fff";ctx.font="bold 9px Arial";
+    ctx.fillText(Math.round(armyCount(a)),pos.x,pos.y+0.5);
+  }
+  requestAnimationFrame(draw);
+}
+
+/* ============================= Bucle de simulación ============================= */
+setInterval(()=>{
+  if(!started||gameOver)return;
+  acc+=speed/4;
+  let steps=0;
+  while(acc>=1&&steps<40){acc-=1;hourTick();steps++}
+  if(steps){refreshTop();refreshSide()}
+},250);
+
+/* ============================= Arranque ============================= */
+function showNationPicker(){
+  const grid=document.getElementById("nationGrid");
+  let h="";
+  for(let n=0;n<NPLAY;n++){
+    h+="<div class='ncard' data-n='"+n+"'><span class='chip' style='background:"+NATIONS[n].color+"'></span>"+
+      "<b>"+NATIONS[n].name+"</b><span>"+nationProvCount(n)+" provincias</span></div>";
+  }
+  grid.innerHTML=h;
+  grid.querySelectorAll(".ncard").forEach(c=>c.addEventListener("click",()=>{
+    player=+c.dataset.n;
+    nations[player].ai=false;
+    document.getElementById("startOverlay").style.display="none";
+    document.getElementById("nationChip").innerHTML=
+      "<span class='chip' style='background:"+NATIONS[player].color+"'></span>"+NATIONS[player].name;
+    started=true;
+    const cap=provs[nations[player].capital];
+    panX=canvas.width/2-cap.x*zoom;panY=canvas.height/2-cap.y*zoom;clampPan();
+    selProv=cap.id;refreshSide();refreshTop();
+    log("Has tomado el mando de "+NATIONS[player].name+". Capital: "+cap.name+".");
+  }));
+  document.getElementById("startOverlay").style.display="flex";
+}
+function init(){
+  try{
+    fitCanvas();
+    generateMap();
+    setupNations();
+    paintAll();
+    zoom=Math.max(0.6,Math.min(canvas.width/MW,canvas.height/MH));
+    panX=(canvas.width-MW*zoom)/2;panY=(canvas.height-MH*zoom)/2;
+    document.getElementById("loadMsg").style.display="none";
+    showNationPicker();
+    refreshTop();
+    requestAnimationFrame(draw);
+  }catch(err){
+    document.getElementById("loadMsg").textContent="Error al generar el mapa: "+err.message;
+    console.error(err);
+  }
+}
+setTimeout(init,30);
+</script>
+</body>
+</html>
