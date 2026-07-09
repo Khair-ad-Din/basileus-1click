@@ -636,11 +636,42 @@ function setupNations(){
     if(nations[n].startProvs>=12)start.blindadoLigero=2; // las grandes potencias empiezan con caballería
     spawnArmy(n,cap,start);
   }
-  let k=0;
-  for(const p of provs){
-    if(p.owner<NPLAY){
-      p.morale=75;
-      if(!p.capital&&(k++%3===0))spawnArmy(p.owner,p.id,{infanteria:1});
+  for(const p of provs)if(p.owner<NPLAY)p.morale=75;
+  // tropas territoriales concentradas: cada nación arranca con 3 formaciones como máximo
+  // (capital + hasta dos cuerpos en los extremos del reino), sin unidades sueltas
+  for(let n=0;n<NPLAY;n++){
+    if(!nations[n].alive)continue;
+    const cap=nations[n].capital;
+    const capP=provs[cap];
+    const owned=provs.filter(p=>p.owner===n&&!p.capital);
+    const T=Math.round(owned.length/3); // misma masa total que el antiguo reparto disperso
+    if(T<=0)continue;
+    const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+    const posts=[];
+    if(owned.length>=3){
+      let far=null,fd=-1;
+      for(const p of owned){const d=dist(p,capP);if(d>fd){fd=d;far=p}}
+      posts.push(far);
+      if(owned.length>=8){
+        let far2=null,fd2=-1;
+        for(const p of owned){
+          if(p===far)continue;
+          const d=Math.min(dist(p,capP),dist(p,far));
+          if(d>fd2){fd2=d;far2=p}
+        }
+        if(far2)posts.push(far2);
+      }
+    }
+    if(!posts.length||T<2){
+      // nación pequeña: el refuerzo se integra en el ejército de la capital
+      const a=armies.find(x=>x.nation===n&&x.prov===cap);
+      if(a)a.units.infanteria=(a.units.infanteria||0)+T;
+    }else if(posts.length===1){
+      spawnArmy(n,posts[0].id,{infanteria:T});
+    }else{
+      const h=Math.ceil(T/2);
+      spawnArmy(n,posts[0].id,{infanteria:h});
+      spawnArmy(n,posts[1].id,{infanteria:T-h});
     }
   }
 }
