@@ -30,6 +30,8 @@
   .bbtn.red{background:#6a3a3a;border-color:#8a5050}
   .bbtn:hover:not(:disabled){filter:brightness(1.15)}
   #log{position:fixed;left:10px;bottom:10px;width:380px;z-index:14;font-size:12px;pointer-events:none}
+  #terrLegend{position:fixed;right:10px;bottom:10px;width:310px;z-index:14;font-size:11px;
+    background:rgba(33,38,44,.96);border:1px solid #3a4047;border-radius:6px;padding:10px;color:#d8d4c8}
   #log div{background:rgba(20,24,28,.78);padding:3px 8px;border-radius:4px;margin-top:3px;color:#cfc9ba}
   .overlay{position:fixed;inset:0;background:rgba(12,15,18,.88);z-index:50;display:flex;align-items:center;justify-content:center}
   .panel{background:#262b31;border:1px solid #4a525b;border-radius:8px;padding:26px;max-width:680px;max-height:86vh;overflow-y:auto}
@@ -66,9 +68,11 @@
   <button class="spdBtn" data-s="4">4x</button>
   <button class="spdBtn" data-s="16">16x</button>
   <button class="uiBtn" id="dipBtn">Diplomacia</button>
+  <button class="uiBtn" id="terrBtn">Terreno</button>
   <button class="uiBtn" id="helpBtn">Ayuda</button>
   <button class="uiBtn" id="editBtn">Editor</button>
 </div>
+<div id="terrLegend" style="display:none"></div>
 
 <div id="canvasWrap"><canvas id="map"></canvas></div>
 <div id="side"></div>
@@ -99,6 +103,13 @@
     <p><b>Caminos</b>: +25% producción y +20% movimiento por nivel. <b>Cuartel de levas</b>: desbloquea piqueros
        y acelera el reclutamiento. <b>Herrería</b>: +15% producción, necesaria para caballería pesada y bombardas.
        <b>Castillo</b>: +30% defensa por nivel.</p>
+    <h2>Terreno</h2>
+    <p>Cada provincia tiene un tipo de terreno con efectos propios. <b>Montañas</b> y <b>colinas</b>: gran bonus
+       defensivo pero movimiento lento y menor producción. <b>Bosques</b> y <b>pantanos</b>: defensivos y lentos.
+       <b>Desierto</b>: producción muy pobre. <b>Estepa</b>: movimiento rápido pero difícil de defender.
+       <b>Praderas</b> y sobre todo las <b>vegas fértiles</b> (Nilo, Mesopotamia, Po, bajo Danubio, Flandes…):
+       gran producción pero terreno abierto y difícil de defender. La <b>llanura</b> no tiene modificadores.
+       Usa el botón <b>Terreno</b> de la barra superior para ver el mapa de terrenos con su leyenda.</p>
     <h2>Unidades y combate</h2>
     <p>Levas, piqueros, alabarderos, caballería ligera, caballería, caballeros y bombardas, cada uno con ataque,
        defensa, puntos de vida y velocidad. El combate se resuelve por horas: el daño depende del ataque total
@@ -159,6 +170,28 @@ const UNITS={
   blindadoLigero:{label:"Caballería",atk:6,def:4,hp:22,spd:10,time:20,cost:{dinero:1400,metal:800,petroleo:500},mano:300,req:{fabrica:1}},
   blindadoMedio:{label:"Caballeros",atk:9,def:6,hp:30,spd:8,time:32,cost:{dinero:2400,metal:1500,petroleo:800,raros:300},mano:400,req:{fabrica:3}}
 };
+// Tipos de terreno: def multiplica la defensa en combate, mov la velocidad de
+// movimiento terrestre, prod la producción de la provincia.
+const TERRAINS={
+  llanura:{label:"Llanura",mov:1,def:1,prod:1,color:"#b7bd76"},
+  bosque:{label:"Bosque",mov:0.8,def:1.25,prod:0.9,color:"#41703f"},
+  colinas:{label:"Colinas",mov:0.85,def:1.3,prod:0.9,color:"#b39a5e"},
+  montana:{label:"Montaña",mov:0.6,def:1.6,prod:0.75,color:"#8d857c"},
+  pantano:{label:"Pantano",mov:0.7,def:1.2,prod:0.8,color:"#588a70"},
+  desierto:{label:"Desierto",mov:0.85,def:1,prod:0.6,color:"#dbc98f"},
+  estepa:{label:"Estepa",mov:1.15,def:0.9,prod:0.85,color:"#c4b168"},
+  // los nuevos van al final: los índices guardados en instantáneas no deben moverse
+  pradera:{label:"Pradera",mov:1.05,def:0.95,prod:1.1,color:"#8fbc62"},
+  vega:{label:"Vega fértil",mov:1,def:0.85,prod:1.35,color:"#63a83e"}
+};
+const TERRAIN_KEYS=Object.keys(TERRAINS);
+function terrainFx(t){
+  const T=TERRAINS[t],fx=[];
+  if(T.def!==1)fx.push("defensa "+(T.def>1?"+":"")+Math.round((T.def-1)*100)+"%");
+  if(T.mov!==1)fx.push("movimiento "+(T.mov>1?"+":"")+Math.round((T.mov-1)*100)+"%");
+  if(T.prod!==1)fx.push("producción "+(T.prod>1?"+":"")+Math.round((T.prod-1)*100)+"%");
+  return fx.length?fx.join(" · "):"sin modificadores";
+}
 
 /* ============================= Estado global ============================= */
 let provs=[],provIdx,pixOfProv=[],borderPxOfProv=[],adj=[],seaAdj=[];
@@ -440,6 +473,72 @@ function generateMap(){
   // tipo de recurso
   const pool=["comida","comida","comida","materiales","materiales","metal","metal","petroleo","raros"];
   for(const p of provs)p.resType=p.urban?"dinero":pool[(rand()*pool.length)|0];
+  assignTerrain();
+}
+// Cordilleras y humedales históricos [lat, lon, radio en grados] para el terreno automático
+const MOUNTAIN_ZONES=[
+  [46.4,8.0,1.6],[46.8,11.5,1.8],[47.0,14.5,1.5],           // Alpes
+  [42.7,0.5,1.7],[42.8,-1.8,1.2],                           // Pirineos
+  [43.1,-5.5,1.3],[37.2,-3.2,0.9],                          // Cantábrico, Sierra Nevada
+  [44.2,10.5,1.2],[42.8,13.2,1.1],[41.0,15.0,1.0],[39.3,16.3,0.9], // Apeninos
+  [44.0,17.5,1.6],[42.5,19.8,1.3],[39.8,21.2,1.2],          // Dináricos, Pindo
+  [48.9,23.5,1.5],[47.0,25.3,1.4],[45.5,24.5,1.4],[42.5,24.5,1.2], // Cárpatos, Balcanes
+  [43.0,42.5,1.8],[42.5,45.5,1.8],                          // Cáucaso
+  [37.3,32.5,1.6],[38.5,35.5,1.5],[39.5,41.0,2.2],[38.5,43.5,2.0], // Tauro, Anatolia oriental
+  [34.5,47.0,2.0],[32.5,49.0,1.8],                          // Zagros
+  [31.5,-6.5,1.8],[33.0,-4.0,1.5],[35.5,1.5,1.5],[36.3,4.5,1.2],   // Atlas
+  [61.5,8.5,2.2],[63.5,11.5,1.8],[65.0,14.0,2.5],           // Alpes escandinavos
+  [56.9,-4.5,1.2],                                          // Highlands escocesas
+  [45.2,2.8,1.4],[50.2,13.0,1.0]                            // Macizo Central, Sudetes
+];
+const MARSH_ZONES=[[52.2,27.5,1.6],[45.3,29.5,0.8],[53.0,5.8,0.7]]; // Prípiat, delta del Danubio, marismas neerlandesas
+// Vegas fértiles: valles fluviales de alta producción [lat, lon, radio]
+const FERTILE_ZONES=[
+  [31.0,31.2,0.9],[29.5,31.0,1.0],[27.8,30.8,0.9],   // valle y delta del Nilo
+  [33.2,44.3,1.2],[31.6,46.6,1.2],[34.6,43.4,1.0],   // Mesopotamia (Tigris-Éufrates)
+  [45.1,28.6,1.0],[44.2,26.3,1.1],                   // bajo Danubio y su desembocadura
+  [51.3,4.6,1.0],                                    // Países Bajos y Flandes
+  [45.1,10.5,1.3],                                   // valle del Po
+  [37.5,-5.6,0.9],[39.4,-0.5,0.6]                    // Guadalquivir, huerta de Valencia
+];
+function pxToLonLat(x,y){
+  const G=MAPDATA.geo;
+  const lon=G.WEST+x/MW*(G.EAST-G.WEST);
+  const yn=Math.log(Math.tan(Math.PI/4+G.NORTH*Math.PI/360)), ys=Math.log(Math.tan(Math.PI/4+G.SOUTH*Math.PI/360));
+  const m=yn-y/MH*(yn-ys);
+  const lat=(Math.atan(Math.exp(m))-Math.PI/4)*360/Math.PI;
+  return[lon,lat];
+}
+function assignTerrain(){
+  for(const p of provs){
+    if(p.terrain)continue;
+    const[lon,lat]=pxToLonLat(p.x,p.y);
+    const kx=Math.cos(lat*Math.PI/180);
+    let t=null,hill=false;
+    for(const[zla,zlo,r]of MOUNTAIN_ZONES){
+      const d=Math.hypot(lat-zla,(lon-zlo)*kx);
+      if(d<r*0.8){t="montana";break}
+      if(d<r*1.25)hill=true;
+    }
+    if(!t)for(const[zla,zlo,r]of MARSH_ZONES){
+      const d=Math.hypot(lat-zla,(lon-zlo)*kx);
+      if(d<r){t="pantano";break}
+    }
+    if(!t)for(const[zla,zlo,r]of FERTILE_ZONES){ // antes que colinas y desierto: el Nilo es vega, no Sáhara
+      const d=Math.hypot(lat-zla,(lon-zlo)*kx);
+      if(d<r){t="vega";break}
+    }
+    if(!t&&hill)t="colinas";
+    if(!t&&lat<31.2)t="desierto";                            // Sáhara y Arabia
+    if(!t&&lat<33.5&&lon>36.5&&lon<48)t="desierto";          // interior sirio-iraquí
+    if(!t&&lat>=44&&lat<=49.5&&lon>=28&&lon<=50)t="estepa";  // estepa póntica
+    if(!t&&lat>=46&&lat<=48.5&&lon>=18.5&&lon<=22)t="estepa";// puszta húngara
+    if(!t&&lat>57)t="bosque";                                // taiga escandinava y rusa
+    if(!t&&lat>52&&lon>20)t="bosque";                        // cinturón boscoso báltico-ruso
+    if(!t&&lat>44&&lat<57&&rand()<0.14)t="bosque";           // bosques dispersos europeos
+    if(!t&&lat>=43&&lat<=55&&lon<=12&&rand()<0.5)t="pradera";// praderas atlánticas templadas
+    p.terrain=t||"llanura";
+  }
 }
 // listas de píxeles, bordes, adyacencia, costa y rutas marítimas — se recalcula tras
 // generar el mapa y tras cada edición de forma en el editor
@@ -532,6 +631,11 @@ let baseData;
 const borderC=document.createElement("canvas");borderC.width=MW;borderC.height=MH;
 function hex2rgb(h){return[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]}
 const NCOL=NATIONS.map(n=>hex2rgb(n.color));
+const TCOL={};for(const k of TERRAIN_KEYS)TCOL[k]=hex2rgb(TERRAINS[k].color);
+let terrainView=false; // modo de mapa: false = político, true = terreno
+function provColor(p){
+  return terrainView?TCOL[provs[p].terrain]:NCOL[provs[p].owner];
+}
 function paintAll(){
   baseData=baseCtx.createImageData(MW,MH);
   const d=baseData.data;
@@ -541,7 +645,7 @@ function paintAll(){
       const v=hashN(x>>3,y>>3)*14;
       d[o]=50+v;d[o+1]=72+v;d[o+2]=100+v;d[o+3]=255;
     }else{
-      const c=NCOL[provs[p].owner],s=provs[p].shade;
+      const c=provColor(p),s=provs[p].shade;
       d[o]=c[0]*s;d[o+1]=c[1]*s;d[o+2]=c[2]*s;d[o+3]=255;
     }
   }
@@ -588,7 +692,7 @@ function updateBordersAround(pid){
   borderCtx.putImageData(borderData,0,0,x0,y0,x1-x0+1,y1-y0+1);
 }
 function repaintProvince(pid){
-  const c=NCOL[provs[pid].owner],s=provs[pid].shade,d=baseData.data;
+  const c=provColor(pid),s=provs[pid].shade,d=baseData.data;
   for(const i of pixOfProv[pid]){
     const o=i*4;d[o]=c[0]*s;d[o+1]=c[1]*s;d[o+2]=c[2]*s;
   }
@@ -678,7 +782,8 @@ function startLeg(a){
     a.legTotal=Math.max(2,dist/7);
   }else{
     const infra=(from.buildings.infra+to.buildings.infra)/2;
-    a.legTotal=Math.max(1,dist/(armySpd(a)*2*(1+0.2*infra)));
+    const terr=(TERRAINS[from.terrain].mov+TERRAINS[to.terrain].mov)/2;
+    a.legTotal=Math.max(1,dist/(armySpd(a)*2*(1+0.2*infra)*terr));
   }
   a.legDone=0;
 }
@@ -717,7 +822,7 @@ function hourTick(){
     for(const p of provs){
       if(p.owner!==n)continue;
       const m=p.morale/100;
-      const mult=(1+0.25*p.buildings.infra+0.15*p.buildings.fabrica)*m;
+      const mult=(1+0.25*p.buildings.infra+0.15*p.buildings.fabrica)*m*TERRAINS[p.terrain].prod;
       if(p.resType==="dinero")R.dinero+=55*mult;
       else R[p.resType]+=26*mult;
       R.dinero+=8*m;
@@ -802,11 +907,12 @@ function resolveBattles(){
     if(!atk.length)continue;
     if(!def.length){captureProv(pid,atk[0].nation);continue}
     battleFlash[pid]=hour;
+    const terr=TERRAINS[p.terrain].def;
     const A=atk.reduce((s,a)=>s+armyAtk(a),0);
-    const D=def.reduce((s,a)=>s+armyDef(a),0)*(1+0.3*p.buildings.fortaleza);
+    const D=def.reduce((s,a)=>s+armyDef(a),0)*(1+0.3*p.buildings.fortaleza)*terr;
     const hpA=atk.reduce((s,a)=>s+armyHp(a),0);
     const hpD=def.reduce((s,a)=>s+armyHp(a),0);
-    const dmgToDef=A*0.5/(1+0.25*p.buildings.fortaleza);
+    const dmgToDef=A*0.5/((1+0.25*p.buildings.fortaleza)*terr);
     const dmgToAtk=D*0.5;
     applyDamage(def,dmgToDef,hpD);
     applyDamage(atk,dmgToAtk,hpA);
@@ -1058,6 +1164,8 @@ function refreshSide(){
   let h="<h2>"+p.name+(p.capital?" ★":"")+"</h2>";
   h+="<div class='row'><span>Nación</span><span><span class='chip' style='background:"+NATIONS[p.owner].color+"'></span> "+NATIONS[p.owner].name+"</span></div>";
   h+="<div class='row'><span>Recurso</span><b>"+(p.resType==="dinero"?"Ciudad (Ducados)":RES_LABEL[p.resType])+"</b></div>";
+  h+="<div class='row'><span>Terreno</span><b title='"+terrainFx(p.terrain)+"'>"+TERRAINS[p.terrain].label+"</b></div>";
+  h+="<div class='row sm'><span>"+terrainFx(p.terrain)+"</span></div>";
   h+="<div class='row'><span>Moral</span><b>"+Math.round(p.morale)+"%</b></div>";
   h+="<h3>Construcciones</h3>";
   for(const b in BUILDINGS){
@@ -1441,6 +1549,7 @@ function splitProvince(pid,poly,vi,vj,forcedName){
   const src=provs[pid];
   const np={id:provs.length,name:nm,x:0,y:0,country:src.country,owner:src.owner,owner0:src.owner0,
     named:true,coastal:false,morale:60,urban:false,resType:src.resType,shade:0.85+rand()*0.3,capital:false,
+    terrain:src.terrain,
     buildings:{infra:0,cuartel:0,fabrica:0,fortaleza:0},buildQueue:[],recruitQueue:[]};
   provs.push(np);
   for(const i of part)provIdx[i]=np.id;
@@ -1465,7 +1574,7 @@ function buildSnapshot(){
   }
   rle.push(cur,run);
   return{v:1,W:MW,H:MH,rle,
-    provs:provs.map(p=>[p.name,p.x,p.y,p.owner0,p.named?1:0,p.urban?1:0,p.capital?1:0])};
+    provs:provs.map(p=>[p.name,p.x,p.y,p.owner0,p.named?1:0,p.urban?1:0,p.capital?1:0,TERRAIN_KEYS.indexOf(p.terrain)])};
 }
 function saveProvMap(){
   try{localStorage.setItem("basileus_provmap",JSON.stringify(buildSnapshot()))}
@@ -1494,10 +1603,12 @@ function loadProvMap(snap){
   }
   provs=snap.provs.map((a,i)=>({id:i,name:a[0],x:a[1],y:a[2],country:0,owner:a[3],owner0:a[3],
     named:!!a[4],coastal:false,morale:60,urban:!!a[5],resType:null,shade:0.85+rand()*0.3,capital:!!a[6],
+    terrain:(a[7]!=null&&TERRAIN_KEYS[a[7]])||null,
     buildings:{infra:0,cuartel:0,fabrica:0,fortaleza:0},buildQueue:[],recruitQueue:[]}));
   rebuildProvinceData();
   const pool=["comida","comida","comida","materiales","materiales","metal","metal","petroleo","raros"];
   for(const p of provs)p.resType=p.urban?"dinero":pool[(rand()*pool.length)|0];
+  assignTerrain(); // rellena el terreno si la instantánea es antigua y no lo trae
 }
 function initWorld(){
   const snap=loadProvMapSnapshot();
@@ -1544,6 +1655,13 @@ function refreshEditorPanel(){
     h+="<div class='row' style='margin-top:6px'><button class='bbtn' onclick='renameProvince()'>Renombrar</button><button class='bbtn' onclick='deselectShape()'>Deseleccionar</button></div>";
     h+="<div class='row sm'><span>Nación</span><span>"+NATIONS[p.owner].name+"</span></div>";
     h+="<div class='row sm'><span>Vértices / píxeles</span><span>"+shapePoly.length+" / "+pixOfProv[shapeSel].length+"</span></div>";
+    h+="<h3>Terreno <span style='font-weight:normal;color:#9aa3ad;font-size:11px'>("+terrainFx(p.terrain)+")</span></h3>";
+    h+="<div style='display:flex;flex-wrap:wrap;gap:4px;margin:4px 0'>";
+    for(const t of TERRAIN_KEYS){
+      h+="<button class='bbtn' style='"+(p.terrain===t?"outline:2px solid #9fb878;":"")+
+        "border-left:6px solid "+TERRAINS[t].color+"' onclick='setTerrain(\""+t+"\")'>"+TERRAINS[t].label+"</button>";
+    }
+    h+="</div>";
   }
   h+="<h3>Cambios</h3>";
   h+=editDirty
@@ -1553,6 +1671,7 @@ function refreshEditorPanel(){
   if(editUndoStack.length)h+="<div class='row'><button class='bbtn' style='width:100%' onclick='undoEdit()'>Deshacer última edición (Ctrl+Z)</button></div>";
   if(editDirty)h+="<div class='row'><button class='bbtn red' style='width:100%' onclick='discardChanges()'>Descartar y volver al último guardado</button></div>";
   h+="<h3>Mapa</h3>";
+  h+="<div class='row'><button class='bbtn' style='width:100%' onclick='toggleTerrainView()'>Vista: "+(terrainView?"Terreno":"Política")+" (cambiar)</button></div>";
   if(loadProvMapSnapshot())h+="<p style='font-size:11px;color:#9fb878'>Jugando sobre un mapa editado (guardado en el navegador).</p>";
   h+="<div class='row'><button class='bbtn' style='width:100%' onclick='downloadMap()'>Descargar mapa editado (JSON)</button></div>";
   h+="<div class='row'><label class='bbtn' style='width:100%;text-align:center'>Importar mapa (JSON)<input type='file' accept='.json,application/json' style='display:none' onchange='importMapFile(this)'></label></div>";
@@ -1570,6 +1689,20 @@ window.renameProvince=function(){
   refreshEditorPanel();
 };
 window.deselectShape=function(){shapeSel=-1;shapePoly=[];dragVi=-1;refreshEditorPanel()};
+window.setTerrain=function(t){
+  if(shapeSel<0||!TERRAINS[t]||provs[shapeSel].terrain===t)return;
+  pushUndo();
+  provs[shapeSel].terrain=t;
+  if(terrainView)repaintProvince(shapeSel);
+  refreshEditorPanel();
+};
+window.toggleTerrainView=function(){
+  terrainView=!terrainView;
+  paintAll();
+  document.getElementById("terrBtn").textContent=terrainView?"Político":"Terreno";
+  document.getElementById("terrLegend").style.display=terrainView?"block":"none";
+  if(editMode)refreshEditorPanel();
+};
 window.downloadMap=function(){
   const s=JSON.stringify(buildSnapshot());
   const blob=new Blob([s],{type:"application/json"});
@@ -1843,6 +1976,15 @@ document.querySelectorAll(".spdBtn").forEach(b=>b.addEventListener("click",()=>{
 }));
 document.getElementById("helpBtn").addEventListener("click",()=>document.getElementById("helpOverlay").style.display="flex");
 document.getElementById("dipBtn").addEventListener("click",()=>{refreshDiplomacy();document.getElementById("dipOverlay").style.display="flex"});
+document.getElementById("terrBtn").addEventListener("click",()=>window.toggleTerrainView());
+{
+  let lh="<b style='font-size:12px'>Terrenos</b>";
+  for(const k of TERRAIN_KEYS){
+    lh+="<div class='row' style='margin:2px 0'><span><span class='chip' style='background:"+TERRAINS[k].color+
+      "'></span> "+TERRAINS[k].label+"</span><span style='color:#9aa3ad;font-size:10px'>"+terrainFx(k)+"</span></div>";
+  }
+  document.getElementById("terrLegend").innerHTML=lh;
+}
 
 /* ============================= Dibujo ============================= */
 function armyPos(a){
