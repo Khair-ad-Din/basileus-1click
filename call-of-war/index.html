@@ -67,6 +67,7 @@
   <button class="spdBtn" data-s="16">16x</button>
   <button class="uiBtn" id="dipBtn">Diplomacia</button>
   <button class="uiBtn" id="helpBtn">Ayuda</button>
+  <button class="uiBtn" id="editBtn">Editor</button>
 </div>
 
 <div id="canvasWrap"><canvas id="map"></canvas></div>
@@ -82,6 +83,7 @@
        Clic izquierdo: seleccionar. Clic derecho: mover ejército (las tropas cruzan el mar embarcadas, lento).
        Rueda: zoom.</p>
     <div id="nationGrid"></div>
+    <p style="text-align:center;margin-top:14px"><button class="uiBtn" id="editFromPicker">Editor de mapa</button></p>
   </div>
 </div>
 
@@ -131,7 +133,7 @@
 "use strict";
 /* ============================= RNG ============================= */
 function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
-const rand=mulberry32(193909);
+let rand=mulberry32(193909);
 function hashN(ix,iy){let n=(ix*374761393+iy*668265263)|0;n=Math.imul(n^(n>>>13),1274126177);n^=n>>>16;return(n>>>0)/4294967296}
 
 /* ============================= Constantes ============================= */
@@ -196,6 +198,7 @@ function decodeCountries(){
   }
 }
 function generateMap(){
+  rand=mulberry32(193909); // determinista también al regenerar desde el editor
   decodeCountries();
   // componentes conexas de cada nación (para no fusionar territorios separados por mar u otras naciones)
   const compAt=new Int32Array(MW*MH).fill(-1);
@@ -216,15 +219,43 @@ function generateMap(){
     }
     comps.push({c,size});
   }
-  // semillas de provincia (rejilla con jitter hasta los bordes; si cae en mar se reintenta)
+  // semillas de provincia: 1) ciudades históricas, 2) anclas de provincia (editables), 3) relleno procedural
   const seeds=[];
+  const citySeedIdx=[];
+  for(const[name,cx,cy]of MAPDATA.cities){
+    const c=countryAt[cy*MW+cx];
+    if(c>0){citySeedIdx.push(seeds.length);seeds.push({x:cx,y:cy,c,comp:compAt[cy*MW+cx],aname:name})}
+    else citySeedIdx.push(-1);
+  }
+  let provAnchors=MAPDATA.provinces||[];
+  try{
+    if(typeof localStorage!=="undefined"){
+      const ls=localStorage.getItem("basileus_anchors");
+      if(ls)provAnchors=JSON.parse(ls);
+    }
+  }catch(e){}
+  for(const[name,ax,ay]of provAnchors){
+    const x=Math.max(1,Math.min(MW-2,Math.round(ax))), y=Math.max(1,Math.min(MH-2,Math.round(ay)));
+    if(countryAt[y*MW+x]<=0)continue;
+    let ok=true;
+    for(const s of seeds){const dx=s.x-x,dy=s.y-y;if(dx*dx+dy*dy<8*8){ok=false;break}}
+    if(ok)seeds.push({x,y,c:countryAt[y*MW+x],comp:compAt[y*MW+x],aname:name});
+  }
+  // relleno procedural (rejilla con jitter hasta los bordes; si cae en mar se reintenta),
+  // dejando sitio alrededor de las anclas
+  const anchorCount=seeds.length;
   for(let gy=14;gy<MH-5;gy+=29){
     for(let gx=14;gx<MW-5;gx+=29){
       for(let t=0;t<5;t++){
         const x=Math.max(1,Math.min(MW-2,Math.round(gx+(rand()-0.5)*22)));
         const y=Math.max(1,Math.min(MH-2,Math.round(gy+(rand()-0.5)*22)));
         const c=countryAt[y*MW+x];
-        if(c>0){seeds.push({x,y,c,comp:compAt[y*MW+x]});break}
+        if(c>0){
+          let ok=true;
+          for(let s=0;s<anchorCount;s++){const dx=seeds[s].x-x,dy=seeds[s].y-y;if(dx*dx+dy*dy<14*14){ok=false;break}}
+          if(ok)seeds.push({x,y,c,comp:compAt[y*MW+x]});
+          break;
+        }
       }
     }
   }
@@ -364,13 +395,15 @@ function generateMap(){
     }
   }
   // provincias definitivas (los nombres históricos se reservan para no duplicarlos)
-  const used=new Set(MAPDATA.cities.map(c=>c[0]));
+  const used=new Set(seeds.filter(s=>s.aname).map(s=>s.aname));
   const remap=new Int16Array(seeds.length).fill(-1);
   for(let i=0;i<seeds.length;i++){
     if(counts[i]<40)continue;
     remap[i]=provs.length;
-    provs.push({id:provs.length,name:genName(used),x:seeds[i].x,y:seeds[i].y,country:seeds[i].c,
-      owner:MAPDATA.countries[seeds[i].c-1].nation,named:false,coastal:false,
+    const an=seeds[i].aname;
+    const own=MAPDATA.countries[seeds[i].c-1].nation;
+    provs.push({id:provs.length,name:an||genName(used),x:seeds[i].x,y:seeds[i].y,country:seeds[i].c,
+      owner:own,owner0:own,named:!!an,coastal:false,
       morale:60,urban:rand()<0.06,resType:null,shade:0.85+rand()*0.3,capital:false,
       buildings:{infra:0,cuartel:0,fabrica:0,fortaleza:0},buildQueue:[],recruitQueue:[]});
   }
@@ -378,11 +411,29 @@ function generateMap(){
     const s=provIdx[i];
     provIdx[i]=s>=0?remap[s]:-1;
   }
-  // listas de píxeles, bordes, adyacencia y costa
+  rebuildProvinceData();
+  // nombres y capitales con ciudades reales (las ciudades son provincias urbanas)
+  for(let ci=0;ci<MAPDATA.cities.length;ci++){
+    const[name,cx,cy,c,cap]=MAPDATA.cities[ci];
+    let pid=citySeedIdx[ci]>=0?remap[citySeedIdx[ci]]:-1;
+    if(pid<0)pid=provIdx[cy*MW+cx];
+    if(pid<0)continue;
+    const p=provs[pid];
+    p.name=name;p.named=true;p.urban=true;
+    if(cap)p.capital=true;
+  }
+  // tipo de recurso
+  const pool=["comida","comida","comida","materiales","materiales","metal","metal","petroleo","raros"];
+  for(const p of provs)p.resType=p.urban?"dinero":pool[(rand()*pool.length)|0];
+}
+// listas de píxeles, bordes, adyacencia, costa y rutas marítimas — se recalcula tras
+// generar el mapa y tras cada edición de forma en el editor
+function rebuildProvinceData(){
   adj=provs.map(()=>new Set());
   seaAdj=provs.map(()=>new Set());
   pixOfProv=provs.map(()=>[]);
   borderPxOfProv=provs.map(()=>[]);
+  for(const p of provs)p.coastal=false;
   for(let y=0;y<MH;y++)for(let x=0;x<MW;x++){
     const i=y*MW+x,p=provIdx[i];
     if(p<0)continue;
@@ -394,17 +445,20 @@ function generateMap(){
     if(r>=0&&r!==p){adj[p].add(r);adj[r].add(p)}
     if(d>=0&&d!==p){adj[p].add(d);adj[d].add(p)}
   }
-  // nombres y capitales con ciudades reales (las ciudades son provincias urbanas)
-  for(const[name,cx,cy,c,cap]of MAPDATA.cities){
-    const pid=provIdx[cy*MW+cx];
-    if(pid<0)continue;
-    const p=provs[pid];
-    if(!p.named){p.name=name;p.named=true;p.urban=true}
-    if(cap)p.capital=true;
+  // centro de provincia: si el punto de referencia quedó fuera (por una edición), usar el centroide
+  for(const p of provs){
+    if(!pixOfProv[p.id].length)continue;
+    if(provIdx[p.y*MW+p.x]===p.id)continue;
+    let sx=0,sy=0;
+    for(const i of pixOfProv[p.id]){sx+=i%MW;sy+=(i/MW)|0}
+    const cx=sx/pixOfProv[p.id].length,cy=sy/pixOfProv[p.id].length;
+    let best=-1,bd=1e18;
+    for(const i of pixOfProv[p.id]){
+      const d=(i%MW-cx)**2+(((i/MW)|0)-cy)**2;
+      if(d<bd){bd=d;best=i}
+    }
+    p.x=best%MW;p.y=(best/MW)|0;
   }
-  // tipo de recurso
-  const pool=["comida","comida","comida","materiales","materiales","metal","metal","petroleo","raros"];
-  for(const p of provs)p.resType=p.urban?"dinero":pool[(rand()*pool.length)|0];
   // rutas marítimas (convoyes) entre provincias costeras cercanas
   const coast=provs.filter(p=>p.coastal);
   for(let i=0;i<coast.length;i++)for(let j=i+1;j<coast.length;j++){
@@ -968,12 +1022,605 @@ window.proposePeace=function(n){
 };
 window.playerDeclare=function(n){declareWar(player,n);refreshDiplomacy()};
 
+/* ============================= Editor de formas de provincia ============================= */
+// Al seleccionar una provincia se vectoriza su contorno (trazado de borde + simplificación).
+// Editar los vértices y soltar re-rasteriza: los píxeles ganados se toman de la provincia
+// vecina y los perdidos se le ceden. El mapa editado se guarda como instantánea (localStorage)
+// y se carga al arrancar en lugar de regenerarse.
+let editMode=false,shapeSel=-1,shapePoly=[],dragVi=-1;
+let editTool="shape"; // "shape" | "merge" | "split"
+let mergeFrom=-1,mergeCur=null;   // gesto de fusión (provincia origen y cursor)
+let splitFrom=-1,splitCur=null;   // gesto de división (vértice origen y cursor)
+let dragWas=null,dragIns=false;   // posición original del vértice arrastrado / si fue insertado
+// sesión de edición: nada se persiste hasta «Guardar cambios»
+let editUndoStack=[],editBackup=null,editDirty=false;
+
+function enterEditor(){
+  editMode=true;shapeSel=-1;shapePoly=[];dragVi=-1;
+  editTool="shape";mergeFrom=-1;splitFrom=-1;
+  editBackup=buildSnapshot();editUndoStack=[];editDirty=false;
+  speed=0;
+  document.querySelectorAll(".spdBtn").forEach(x=>x.classList.toggle("active",x.dataset.s==="0"));
+  document.getElementById("startOverlay").style.display="none";
+  refreshEditorPanel();
+}
+function exitEditor(){
+  if(editDirty){
+    if(confirm("Hay cambios sin guardar. ¿Guardarlos antes de salir?")){
+      window.saveChanges();
+    }else if(confirm("¿Salir descartando los cambios?")){
+      restoreWorldFromSnap(editBackup);
+      editUndoStack=[];editDirty=false;
+    }else return;
+  }
+  editMode=false;shapeSel=-1;shapePoly=[];dragVi=-1;
+  editTool="shape";mergeFrom=-1;splitFrom=-1;
+  document.getElementById("side").style.display="none";
+  if(!started)showNationPicker();
+}
+function pushUndo(){
+  editUndoStack.push(buildSnapshot());
+  if(editUndoStack.length>20)editUndoStack.shift();
+  editDirty=true;
+}
+function restoreWorldFromSnap(snap){
+  provs=[];armies=[];wars=new Set();armyIdSeq=1;
+  player=-1;hour=0;acc=0;started=false;gameOver=false;
+  selProv=-1;selArmy=null;battleFlash={};selOutline=null;selOutlineProv=-1;
+  shapeSel=-1;shapePoly=[];dragVi=-1;mergeFrom=-1;splitFrom=-1;
+  document.getElementById("nationChip").innerHTML="";
+  loadProvMap(snap);
+  setupNations();
+  paintAll();
+  if(editMode)refreshEditorPanel();
+}
+window.saveChanges=function(){
+  saveProvMap();
+  editBackup=buildSnapshot();
+  editDirty=false;
+  refreshEditorPanel();
+  log("Mapa guardado en el navegador.");
+};
+window.undoEdit=function(){
+  if(!editUndoStack.length)return;
+  restoreWorldFromSnap(editUndoStack.pop());
+  editDirty=editUndoStack.length>0;
+  refreshEditorPanel();
+};
+window.discardChanges=function(){
+  if(!confirm("Se restaurará el estado del último guardado. ¿Continuar?"))return;
+  restoreWorldFromSnap(editBackup);
+  editUndoStack=[];editDirty=false;
+  refreshEditorPanel();
+};
+window.setTool=function(t){
+  editTool=t;mergeFrom=-1;splitFrom=-1;dragVi=-1;
+  refreshEditorPanel();
+};
+
+// --- vectorización del contorno ---
+function dpSimplify(pts,tol){
+  const keep=new Uint8Array(pts.length);
+  keep[0]=keep[pts.length-1]=1;
+  const st=[[0,pts.length-1]];
+  while(st.length){
+    const[a,b]=st.pop();
+    if(b-a<2)continue;
+    const ax=pts[a][0],ay=pts[a][1],dx=pts[b][0]-ax,dy=pts[b][1]-ay;
+    const L=Math.hypot(dx,dy)||1e-9;
+    let mx=-1,mi=-1;
+    for(let i=a+1;i<b;i++){
+      const d=Math.abs((pts[i][0]-ax)*dy-(pts[i][1]-ay)*dx)/L;
+      if(d>mx){mx=d;mi=i}
+    }
+    if(mx>tol){keep[mi]=1;st.push([a,mi],[mi,b])}
+  }
+  const out=[];
+  for(let i=0;i<pts.length;i++)if(keep[i])out.push(pts[i]);
+  return out;
+}
+function simplifyRing(pts,tol){
+  if(pts.length<8)return pts.map(p=>[p[0],p[1]]);
+  let far=0,fd=-1;
+  for(let i=0;i<pts.length;i++){
+    const d=(pts[i][0]-pts[0][0])**2+(pts[i][1]-pts[0][1])**2;
+    if(d>fd){fd=d;far=i}
+  }
+  const A=dpSimplify(pts.slice(0,far+1),tol);
+  const B=dpSimplify(pts.slice(far).concat([pts[0]]),tol);
+  return A.slice(0,-1).concat(B.slice(0,-1)).map(p=>[p[0],p[1]]);
+}
+function traceProvince(pid){
+  const pix=pixOfProv[pid];
+  if(!pix||!pix.length)return[];
+  let mnX=MW,mnY=MH,mxX=0,mxY=0;
+  for(const i of pix){
+    const x=i%MW,y=(i/MW)|0;
+    if(x<mnX)mnX=x;if(x>mxX)mxX=x;if(y<mnY)mnY=y;if(y>mxY)mxY=y;
+  }
+  const ox=mnX-1,oy=mnY-1,w=mxX-mnX+3,h=mxY-mnY+3;
+  const m=new Uint8Array(w*h);
+  for(const i of pix)m[((i/MW|0)-oy)*w+(i%MW-ox)]=1;
+  // trazado de contorno (vecindad de Moore, sentido horario)
+  const DX=[1,1,0,-1,-1,-1,0,1],DY=[0,1,1,1,0,-1,-1,-1];
+  let s=-1;
+  for(let i=0;i<w*h;i++)if(m[i]){s=i;break}
+  const sx=s%w,sy=(s/w)|0;
+  let cx=sx,cy=sy,back=4;
+  const pts=[[sx,sy]];
+  for(let guard=0;guard<300000;guard++){
+    let f=-1;
+    for(let k=1;k<=8;k++){
+      const d=(back+k)%8,nx=cx+DX[d],ny=cy+DY[d];
+      if(nx>=0&&ny>=0&&nx<w&&ny<h&&m[ny*w+nx]){f=d;break}
+    }
+    if(f<0)break;
+    cx+=DX[f];cy+=DY[f];back=(f+4)%8;
+    if(cx===sx&&cy===sy)break;
+    pts.push([cx,cy]);
+  }
+  const poly=simplifyRing(pts,1.3);
+  for(const q of poly){q[0]+=ox+0.5;q[1]+=oy+0.5}
+  return poly;
+}
+
+// --- re-rasterizado de la forma editada ---
+function applyShape(pid,poly){
+  if(poly.length<3)return;
+  pushUndo();
+  let mnX=1e9,mnY=1e9,mxX=-1e9,mxY=-1e9;
+  for(const q of poly){
+    if(q[0]<mnX)mnX=q[0];if(q[0]>mxX)mxX=q[0];
+    if(q[1]<mnY)mnY=q[1];if(q[1]>mxY)mxY=q[1];
+  }
+  const x0=Math.max(0,Math.floor(mnX)-1),x1=Math.min(MW-1,Math.ceil(mxX)+1);
+  const y0=Math.max(0,Math.floor(mnY)-1),y1=Math.min(MH-1,Math.ceil(mxY)+1);
+  const bw=x1-x0+1,bh=y1-y0+1;
+  const inside=new Uint8Array(bw*bh);
+  for(let y=y0;y<=y1;y++){
+    const yc=y+0.5,xs=[];
+    for(let i=0;i<poly.length;i++){
+      const a=poly[i],b=poly[(i+1)%poly.length];
+      if((a[1]>yc)!==(b[1]>yc))xs.push(a[0]+(yc-a[1])/(b[1]-a[1])*(b[0]-a[0]));
+    }
+    xs.sort((u,v)=>u-v);
+    for(let k=0;k+1<xs.length;k+=2){
+      const xa=Math.max(x0,Math.ceil(xs[k]-0.5)),xb=Math.min(x1,Math.floor(xs[k+1]-0.5));
+      for(let x=xa;x<=xb;x++)inside[(y-y0)*bw+(x-x0)]=1;
+    }
+  }
+  // ganancias: píxeles de otras provincias dentro del polígono; ninguna vecina puede quedar casi vacía
+  const gains=new Map();
+  for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
+    if(!inside[(y-y0)*bw+(x-x0)])continue;
+    const i=y*MW+x,q=provIdx[i];
+    if(q>=0&&q!==pid){
+      if(!gains.has(q))gains.set(q,[]);
+      gains.get(q).push(i);
+    }
+  }
+  let blocked=0;
+  for(const[v,list]of gains){
+    if(pixOfProv[v].length-list.length<12){blocked++;continue}
+    for(const i of list)provIdx[i]=pid;
+  }
+  // pérdidas: píxeles propios fuera del polígono se ceden a la provincia vecina (dilatación)
+  const isLost=new Uint8Array(MW*MH);
+  let pend=[];
+  for(const i of pixOfProv[pid]){
+    const x=i%MW,y=(i/MW)|0;
+    const ins=(x>=x0&&x<=x1&&y>=y0&&y<=y1)?inside[(y-y0)*bw+(x-x0)]:0;
+    if(!ins){pend.push(i);isLost[i]=1}
+  }
+  while(pend.length){
+    const next=[];
+    let changed=false;
+    for(const k of pend){
+      const x=k%MW;
+      let pick=-1;
+      for(const j of[k-1,k+1,k-MW,k+MW]){
+        if(j<0||j>=MW*MH)continue;
+        if(Math.abs((j%MW)-x)>1)continue;
+        const q=provIdx[j];
+        if(q>=0&&q!==pid&&!isLost[j]){pick=q;break}
+      }
+      if(pick>=0){provIdx[k]=pick;isLost[k]=0;changed=true}
+      else next.push(k);
+    }
+    if(!changed)break; // lo rodeado solo por la propia provincia o el mar se conserva
+    pend=next;
+  }
+  rebuildProvinceData();
+  paintAll();
+  selOutline=null;selOutlineProv=-1;
+  if(blocked)log("Edición limitada: "+blocked+" provincia(s) vecina(s) no pueden quedar vacías.");
+}
+
+// --- fusión: la provincia origen se disuelve dentro de la destino ---
+function mergeProvinces(a,b){
+  if(a===b||!provs[a]||!provs[b])return;
+  pushUndo();
+  const A=provs[a],B=provs[b];
+  const bName=B.name;
+  B.urban=B.urban||A.urban;
+  if(A.capital)B.capital=true;
+  // eliminar la provincia origen y reindexar todo lo que apunta a ids
+  const newIdOf=i=>i<a?i:i-1;
+  const target=newIdOf(b);
+  provs.splice(a,1);
+  provs.forEach((p,i)=>p.id=i);
+  for(let i=0;i<MW*MH;i++){
+    const q=provIdx[i];
+    if(q<0)continue;
+    provIdx[i]=q===a?target:newIdOf(q);
+  }
+  for(const ar of armies){
+    ar.prov=ar.prov===a?target:newIdOf(ar.prov);
+    ar.path=ar.path.map(p=>p===a?target:newIdOf(p));
+    ar.path=ar.path.filter((p,i)=>i===0?p!==ar.prov:p!==ar.path[i-1]);
+    if(!ar.path.length){ar.legDone=0;ar.legTotal=0}
+  }
+  for(const n of nations){
+    if(n.capital===a)n.capital=target;
+    else if(n.capital>a)n.capital--;
+  }
+  battleFlash={};
+  selProv=-1;selArmy=null;
+  rebuildProvinceData();
+  paintAll();
+  selOutline=null;selOutlineProv=-1;
+  shapeSel=target;shapePoly=traceProvince(target);
+  refreshEditorPanel();
+  log(A.name+" fusionada con "+bName+".");
+}
+
+// --- división: cortar una provincia por la cuerda entre dos vértices ---
+function rasterPoly(poly){
+  let mnX=1e9,mnY=1e9,mxX=-1e9,mxY=-1e9;
+  for(const q of poly){
+    if(q[0]<mnX)mnX=q[0];if(q[0]>mxX)mxX=q[0];
+    if(q[1]<mnY)mnY=q[1];if(q[1]>mxY)mxY=q[1];
+  }
+  const x0=Math.max(0,Math.floor(mnX)-1),x1=Math.min(MW-1,Math.ceil(mxX)+1);
+  const y0=Math.max(0,Math.floor(mnY)-1),y1=Math.min(MH-1,Math.ceil(mxY)+1);
+  const out=[];
+  for(let y=y0;y<=y1;y++){
+    const yc=y+0.5,xs=[];
+    for(let i=0;i<poly.length;i++){
+      const a=poly[i],b=poly[(i+1)%poly.length];
+      if((a[1]>yc)!==(b[1]>yc))xs.push(a[0]+(yc-a[1])/(b[1]-a[1])*(b[0]-a[0]));
+    }
+    xs.sort((u,v)=>u-v);
+    for(let k=0;k+1<xs.length;k+=2){
+      const xa=Math.max(x0,Math.ceil(xs[k]-0.5)),xb=Math.min(x1,Math.floor(xs[k+1]-0.5));
+      for(let x=xa;x<=xb;x++)out.push(y*MW+x);
+    }
+  }
+  return out;
+}
+function keepLargestFragment(pid,fallbackPid){
+  const pix=[];
+  for(let i=0;i<MW*MH;i++)if(provIdx[i]===pid)pix.push(i);
+  if(!pix.length)return;
+  const seen=new Set();
+  const frags=[];
+  for(const start of pix){
+    if(seen.has(start))continue;
+    const st=[start];seen.add(start);
+    const fr=[];
+    while(st.length){
+      const k=st.pop();fr.push(k);
+      const x=k%MW;
+      for(const j of[k-1,k+1,k-MW,k+MW]){
+        if(j<0||j>=MW*MH)continue;
+        if(Math.abs((j%MW)-x)>1)continue;
+        if(provIdx[j]===pid&&!seen.has(j)){seen.add(j);st.push(j)}
+      }
+    }
+    frags.push(fr);
+  }
+  if(frags.length<2)return;
+  frags.sort((u,v)=>v.length-u.length);
+  for(let f=1;f<frags.length;f++)for(const k of frags[f])provIdx[k]=fallbackPid;
+}
+function splitProvince(pid,poly,vi,vj,forcedName){
+  const n=poly.length;
+  const ring=vi<vj?poly.slice(vi,vj+1):poly.slice(vi).concat(poly.slice(0,vj+1));
+  if(ring.length<3)return;
+  const part=rasterPoly(ring).filter(i=>provIdx[i]===pid);
+  const rest=pixOfProv[pid].length-part.length;
+  if(part.length<12||rest<12){alert("Las dos partes deben tener un tamaño mínimo (~12 píxeles).");return}
+  const raw=forcedName!==undefined?forcedName:prompt("Nombre de la nueva provincia:",provs[pid].name+" II");
+  if(!raw||!raw.trim())return;
+  const nm=raw.trim();
+  if(provs.some(p=>p.name===nm)){alert("Ya existe una provincia con ese nombre.");return}
+  pushUndo();
+  const src=provs[pid];
+  const np={id:provs.length,name:nm,x:0,y:0,country:src.country,owner:src.owner,owner0:src.owner0,
+    named:true,coastal:false,morale:60,urban:false,resType:src.resType,shade:0.85+rand()*0.3,capital:false,
+    buildings:{infra:0,cuartel:0,fabrica:0,fortaleza:0},buildQueue:[],recruitQueue:[]};
+  provs.push(np);
+  for(const i of part)provIdx[i]=np.id;
+  // cada parte conserva solo su fragmento conexo mayor (el resto pasa a la otra)
+  keepLargestFragment(np.id,pid);
+  keepLargestFragment(pid,np.id);
+  rebuildProvinceData();
+  paintAll();
+  selOutline=null;selOutlineProv=-1;
+  shapeSel=np.id;shapePoly=traceProvince(np.id);
+  refreshEditorPanel();
+  log(src.name+" dividida: nace "+nm+".");
+}
+
+// --- instantánea del mapa editado ---
+function buildSnapshot(){
+  const rle=[];
+  let cur=provIdx[0],run=1;
+  for(let i=1;i<MW*MH;i++){
+    if(provIdx[i]===cur)run++;
+    else{rle.push(cur,run);cur=provIdx[i];run=1}
+  }
+  rle.push(cur,run);
+  return{v:1,W:MW,H:MH,rle,
+    provs:provs.map(p=>[p.name,p.x,p.y,p.owner0,p.named?1:0,p.urban?1:0,p.capital?1:0])};
+}
+function saveProvMap(){
+  try{localStorage.setItem("basileus_provmap",JSON.stringify(buildSnapshot()))}
+  catch(e){log("No se pudo guardar el mapa editado: "+e.message)}
+}
+function loadProvMapSnapshot(){
+  try{
+    const s=localStorage.getItem("basileus_provmap");
+    if(!s)return null;
+    const snap=JSON.parse(s);
+    if(!snap||snap.v!==1||snap.W!==MW||snap.H!==MH||!Array.isArray(snap.rle)||!Array.isArray(snap.provs))return null;
+    let tot=0;
+    for(let i=1;i<snap.rle.length;i+=2)tot+=snap.rle[i];
+    if(tot!==MW*MH)return null;
+    return snap;
+  }catch(e){return null}
+}
+function loadProvMap(snap){
+  rand=mulberry32(193909);
+  provIdx=new Int16Array(MW*MH).fill(-1);
+  let pos=0;
+  for(let i=0;i<snap.rle.length;i+=2){
+    const pid=snap.rle[i],run=snap.rle[i+1];
+    if(pid>=0)provIdx.fill(pid,pos,pos+run);
+    pos+=run;
+  }
+  provs=snap.provs.map((a,i)=>({id:i,name:a[0],x:a[1],y:a[2],country:0,owner:a[3],owner0:a[3],
+    named:!!a[4],coastal:false,morale:60,urban:!!a[5],resType:null,shade:0.85+rand()*0.3,capital:!!a[6],
+    buildings:{infra:0,cuartel:0,fabrica:0,fortaleza:0},buildQueue:[],recruitQueue:[]}));
+  rebuildProvinceData();
+  const pool=["comida","comida","comida","materiales","materiales","metal","metal","petroleo","raros"];
+  for(const p of provs)p.resType=p.urban?"dinero":pool[(rand()*pool.length)|0];
+}
+function initWorld(){
+  const snap=loadProvMapSnapshot();
+  if(snap)loadProvMap(snap);
+  else generateMap();
+}
+function regenerateWorld(){
+  document.getElementById("loadMsg").style.display="flex";
+  document.getElementById("endOverlay").style.display="none";
+  setTimeout(()=>{
+    provs=[];armies=[];wars=new Set();armyIdSeq=1;
+    player=-1;hour=0;acc=0;started=false;gameOver=false;
+    selProv=-1;selArmy=null;battleFlash={};selOutline=null;selOutlineProv=-1;
+    shapeSel=-1;shapePoly=[];dragVi=-1;
+    document.getElementById("nationChip").innerHTML="";
+    initWorld();setupNations();paintAll();
+    document.getElementById("loadMsg").style.display="none";
+    if(editMode){
+      editBackup=buildSnapshot();editUndoStack=[];editDirty=false;
+      refreshEditorPanel();
+    }else showNationPicker();
+  },30);
+}
+
+// --- panel y acciones ---
+function refreshEditorPanel(){
+  const el=document.getElementById("side");
+  let h="<h2>Editor de provincias</h2>";
+  const tb=(t,lab)=>"<button class='bbtn' style='flex:1"+(editTool===t?";outline:2px solid #9fb878":"")+"' onclick='setTool(\""+t+"\")'>"+lab+"</button>";
+  h+="<div class='row'>"+tb("shape","Formas")+tb("merge","Fusionar")+tb("split","Dividir")+"</div>";
+  if(editTool==="shape"){
+    h+="<p style='font-size:11px;color:#9aa3ad;line-height:1.5'>Clic: seleccionar provincia · arrastra un vértice para remodelar · clic sobre un borde: nuevo vértice · clic derecho en un vértice: borrarlo · Esc: deseleccionar. Los cambios se aplican al soltar, pero no se guardan hasta que pulses <b>Guardar cambios</b>.</p>";
+  }else if(editTool==="merge"){
+    h+="<p style='font-size:11px;color:#9aa3ad;line-height:1.5'>Arrastra desde una provincia hasta otra: la primera se <b>disuelve dentro</b> de la segunda (que conserva su nombre).</p>";
+  }else{
+    h+="<p style='font-size:11px;color:#9aa3ad;line-height:1.5'>"+(shapeSel>=0?
+      "Arrastra desde un vértice hasta otro <b>no contiguo</b>: la provincia se corta por esa línea y el lado del arrastre se convierte en una provincia nueva.":
+      "Primero haz clic en una provincia para seleccionarla; después arrastra de un vértice a otro para cortarla.")+"</p>";
+  }
+  if(shapeSel>=0&&provs[shapeSel]){
+    const p=provs[shapeSel];
+    h+="<h3>"+(p.capital?"★ ":"")+"Provincia seleccionada</h3>";
+    h+="<input id='provName' style='width:100%;background:#1c2127;border:1px solid #4a525b;color:#e8e4d8;padding:4px 6px;border-radius:4px' value='"+p.name.replace(/'/g,"&#39;").replace(/"/g,"&quot;")+"' onkeydown=\"if(event.key==='Enter')renameProvince()\">";
+    h+="<div class='row' style='margin-top:6px'><button class='bbtn' onclick='renameProvince()'>Renombrar</button><button class='bbtn' onclick='deselectShape()'>Deseleccionar</button></div>";
+    h+="<div class='row sm'><span>Nación</span><span>"+NATIONS[p.owner].name+"</span></div>";
+    h+="<div class='row sm'><span>Vértices / píxeles</span><span>"+shapePoly.length+" / "+pixOfProv[shapeSel].length+"</span></div>";
+  }
+  h+="<h3>Cambios</h3>";
+  h+=editDirty
+    ?"<p style='font-size:11px;color:#d0a050'>Hay cambios sin guardar.</p>"
+    :"<p style='font-size:11px;color:#9aa3ad'>Sin cambios pendientes.</p>";
+  h+="<div class='row'><button class='bbtn' style='width:100%' onclick='saveChanges()'>Guardar cambios</button></div>";
+  if(editUndoStack.length)h+="<div class='row'><button class='bbtn' style='width:100%' onclick='undoEdit()'>Deshacer última edición (Ctrl+Z)</button></div>";
+  if(editDirty)h+="<div class='row'><button class='bbtn red' style='width:100%' onclick='discardChanges()'>Descartar y volver al último guardado</button></div>";
+  h+="<h3>Mapa</h3>";
+  if(loadProvMapSnapshot())h+="<p style='font-size:11px;color:#9fb878'>Jugando sobre un mapa editado (guardado en el navegador).</p>";
+  h+="<div class='row'><button class='bbtn' style='width:100%' onclick='downloadMap()'>Descargar mapa editado (JSON)</button></div>";
+  h+="<div class='row'><label class='bbtn' style='width:100%;text-align:center'>Importar mapa (JSON)<input type='file' accept='.json,application/json' style='display:none' onchange='importMapFile(this)'></label></div>";
+  h+="<div class='row'><button class='bbtn red' style='width:100%' onclick='restoreGenerated()'>Descartar ediciones y regenerar</button></div>";
+  h+="<div class='row'><button class='bbtn' style='width:100%' onclick='exitEditorBtn()'>Salir del editor</button></div>";
+  el.innerHTML=h;el.style.display="block";
+}
+window.renameProvince=function(){
+  if(shapeSel<0)return;
+  const v=document.getElementById("provName").value.trim();
+  if(!v||v===provs[shapeSel].name)return;
+  if(provs.some(p=>p.id!==shapeSel&&p.name===v)){alert("Ya existe una provincia con ese nombre.");return}
+  pushUndo();
+  provs[shapeSel].name=v;provs[shapeSel].named=true;
+  refreshEditorPanel();
+};
+window.deselectShape=function(){shapeSel=-1;shapePoly=[];dragVi=-1;refreshEditorPanel()};
+window.downloadMap=function(){
+  const s=JSON.stringify(buildSnapshot());
+  const blob=new Blob([s],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);a.download="mapa_editado.json";
+  document.body.appendChild(a);a.click();a.remove();
+  URL.revokeObjectURL(a.href);
+};
+window.importMapFile=function(input){
+  const f=input.files&&input.files[0];
+  if(!f)return;
+  const rd=new FileReader();
+  rd.onload=()=>{
+    try{
+      const snap=JSON.parse(rd.result);
+      if(!snap||snap.v!==1||snap.W!==MW||snap.H!==MH)throw new Error("formato no válido");
+      localStorage.setItem("basileus_provmap",JSON.stringify(snap));
+      regenerateWorld();
+    }catch(e){alert("No se pudo importar el mapa: "+e.message)}
+  };
+  rd.readAsText(f);
+};
+window.restoreGenerated=function(){
+  if(!confirm("Se descartará el mapa editado y se regenerará el original. ¿Continuar?"))return;
+  try{
+    localStorage.removeItem("basileus_provmap");
+    localStorage.removeItem("basileus_anchors");
+  }catch(e){}
+  regenerateWorld();
+};
+window.exitEditorBtn=exitEditor;
+
+// --- pruebas de impacto sobre el polígono ---
+function vertexAt(wx,wy){
+  const r=8/zoom;
+  let best=-1,bd=r*r;
+  for(let i=0;i<shapePoly.length;i++){
+    const d=(shapePoly[i][0]-wx)**2+(shapePoly[i][1]-wy)**2;
+    if(d<bd){bd=d;best=i}
+  }
+  return best;
+}
+function nearestSegment(poly,wx,wy){
+  let bi=-1,bd=1e18,bx=0,by=0;
+  for(let i=0;i<poly.length;i++){
+    const a=poly[i],b=poly[(i+1)%poly.length];
+    const dx=b[0]-a[0],dy=b[1]-a[1],L=dx*dx+dy*dy||1e-9;
+    let t=((wx-a[0])*dx+(wy-a[1])*dy)/L;
+    t=Math.max(0,Math.min(1,t));
+    const qx=a[0]+dx*t,qy=a[1]+dy*t;
+    const d=(qx-wx)**2+(qy-wy)**2;
+    if(d<bd){bd=d;bi=i;bx=qx;by=qy}
+  }
+  return{i:bi,d:Math.sqrt(bd),x:bx,y:by};
+}
+function drawArrow(x0,y0,x1,y1){
+  ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(x1,y1);
+  ctx.strokeStyle="rgba(255,210,74,.95)";ctx.lineWidth=2.2/zoom;ctx.stroke();
+  const ang=Math.atan2(y1-y0,x1-x0),s=9/zoom;
+  ctx.beginPath();
+  ctx.moveTo(x1,y1);
+  ctx.lineTo(x1-Math.cos(ang-0.45)*s,y1-Math.sin(ang-0.45)*s);
+  ctx.lineTo(x1-Math.cos(ang+0.45)*s,y1-Math.sin(ang+0.45)*s);
+  ctx.closePath();
+  ctx.fillStyle="rgba(255,210,74,.95)";ctx.fill();
+}
+function drawEditorOverlay(){
+  if(shapeSel>=0&&shapePoly.length){
+    ctx.beginPath();
+    ctx.moveTo(shapePoly[0][0],shapePoly[0][1]);
+    for(let i=1;i<shapePoly.length;i++)ctx.lineTo(shapePoly[i][0],shapePoly[i][1]);
+    ctx.closePath();
+    ctx.strokeStyle="rgba(255,255,255,.95)";ctx.lineWidth=1.6/zoom;ctx.stroke();
+    const r=3.6/Math.sqrt(zoom);
+    for(let i=0;i<shapePoly.length;i++){
+      const q=shapePoly[i];
+      ctx.fillStyle=i===dragVi?"#ff9c3a":(i===splitFrom?"#ff5c5c":"#ffd24a");
+      ctx.fillRect(q[0]-r,q[1]-r,2*r,2*r);
+      ctx.strokeStyle="#15181c";ctx.lineWidth=1/zoom;
+      ctx.strokeRect(q[0]-r,q[1]-r,2*r,2*r);
+    }
+    if(splitFrom>=0&&splitCur){
+      ctx.beginPath();
+      ctx.moveTo(shapePoly[splitFrom][0],shapePoly[splitFrom][1]);
+      ctx.lineTo(splitCur[0],splitCur[1]);
+      ctx.strokeStyle="rgba(255,92,92,.95)";ctx.lineWidth=2/zoom;
+      ctx.setLineDash([5/zoom,4/zoom]);ctx.stroke();ctx.setLineDash([]);
+    }
+  }
+  if(mergeFrom>=0&&mergeCur){
+    const p=provs[mergeFrom];
+    drawArrow(p.x,p.y,mergeCur[0],mergeCur[1]);
+  }
+}
+document.getElementById("editBtn").addEventListener("click",()=>{editMode?exitEditor():enterEditor()});
+document.getElementById("editFromPicker").addEventListener("click",enterEditor);
+window.addEventListener("keydown",e=>{
+  if(!editMode)return;
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="z"){
+    e.preventDefault();
+    window.undoEdit();
+    return;
+  }
+  if(e.key==="Escape"){
+    if(mergeFrom>=0||splitFrom>=0){mergeFrom=-1;mergeCur=null;splitFrom=-1;splitCur=null;return}
+    if(shapeSel>=0){shapeSel=-1;shapePoly=[];dragVi=-1;refreshEditorPanel()}
+  }
+});
+
 /* ============================= Entrada ============================= */
 let dragging=false,dragMoved=false,lastMx=0,lastMy=0;
+function evWorld(e){
+  const r=canvas.getBoundingClientRect();
+  return[(e.clientX-r.left-panX)/zoom,(e.clientY-r.top-panY)/zoom];
+}
+function provAtWorld(wx,wy){
+  const ix=wx|0,iy=wy|0;
+  return(ix>=0&&iy>=0&&ix<MW&&iy<MH)?provIdx[iy*MW+ix]:-1;
+}
 canvas.addEventListener("mousedown",e=>{
-  if(e.button===0){dragging=true;dragMoved=false;lastMx=e.clientX;lastMy=e.clientY}
+  if(e.button===0){
+    if(editMode){
+      const[wx,wy]=evWorld(e);
+      if(editTool==="merge"){
+        const pid=provAtWorld(wx,wy);
+        if(pid>=0){mergeFrom=pid;mergeCur=[wx,wy];return}
+      }else if(editTool==="split"&&shapeSel>=0&&shapePoly.length){
+        const vi=vertexAt(wx,wy);
+        if(vi>=0){splitFrom=vi;splitCur=[wx,wy];return}
+      }else if(editTool==="shape"&&shapeSel>=0&&shapePoly.length){
+        const vi=vertexAt(wx,wy);
+        if(vi>=0){dragVi=vi;dragWas=[shapePoly[vi][0],shapePoly[vi][1]];dragIns=false;return}
+        const seg=nearestSegment(shapePoly,wx,wy);
+        if(seg.i>=0&&seg.d<6/zoom){
+          shapePoly.splice(seg.i+1,0,[seg.x,seg.y]);
+          dragVi=seg.i+1;
+          dragWas=[seg.x,seg.y];dragIns=true;
+          refreshEditorPanel();
+          return;
+        }
+      }
+    }
+    dragging=true;dragMoved=false;lastMx=e.clientX;lastMy=e.clientY;
+  }
 });
 window.addEventListener("mousemove",e=>{
+  if(dragVi>=0&&shapeSel>=0){
+    const[wx,wy]=evWorld(e);
+    shapePoly[dragVi][0]=Math.max(0.5,Math.min(MW-0.5,wx));
+    shapePoly[dragVi][1]=Math.max(0.5,Math.min(MH-0.5,wy));
+    return;
+  }
+  if(mergeFrom>=0){mergeCur=evWorld(e);return}
+  if(splitFrom>=0){splitCur=evWorld(e);return}
   if(!dragging)return;
   const dx=e.clientX-lastMx,dy=e.clientY-lastMy;
   if(Math.abs(dx)+Math.abs(dy)>3)dragMoved=true;
@@ -982,7 +1629,52 @@ window.addEventListener("mousemove",e=>{
 });
 window.addEventListener("mouseup",e=>{
   if(e.button!==0)return;
+  if(dragVi>=0){
+    const vi=dragVi;dragVi=-1;
+    const moved=!dragWas||shapePoly[vi][0]!==dragWas[0]||shapePoly[vi][1]!==dragWas[1];
+    if(!moved){
+      if(dragIns)shapePoly.splice(vi,1); // clic sin arrastre sobre un borde: no insertar
+      dragWas=null;dragIns=false;
+      refreshEditorPanel();
+      return;
+    }
+    dragWas=null;dragIns=false;
+    applyShape(shapeSel,shapePoly);
+    shapePoly=traceProvince(shapeSel);
+    refreshEditorPanel();
+    return;
+  }
+  if(mergeFrom>=0){
+    const from=mergeFrom;
+    mergeFrom=-1;mergeCur=null;
+    const[wx,wy]=evWorld(e);
+    const pid=provAtWorld(wx,wy);
+    if(pid>=0&&pid!==from)mergeProvinces(from,pid);
+    return;
+  }
+  if(splitFrom>=0){
+    const from=splitFrom;
+    splitFrom=-1;splitCur=null;
+    const[wx,wy]=evWorld(e);
+    const vi=vertexAt(wx,wy);
+    if(vi>=0&&vi!==from&&shapeSel>=0){
+      const n=shapePoly.length;
+      const ringDist=Math.min((vi-from+n)%n,(from-vi+n)%n);
+      if(ringDist>=2)splitProvince(shapeSel,shapePoly,from,vi);
+      else alert("Elige dos vértices no contiguos.");
+    }
+    return;
+  }
   const wasDrag=dragMoved;dragging=false;
+  if(editMode){
+    if(wasDrag||e.target!==canvas)return;
+    const[ewx,ewy]=evWorld(e);
+    const pid=provAtWorld(ewx,ewy);
+    if(pid>=0){shapeSel=pid;shapePoly=traceProvince(pid)}
+    else{shapeSel=-1;shapePoly=[]}
+    refreshEditorPanel();
+    return;
+  }
   if(wasDrag||!started)return;
   const r=canvas.getBoundingClientRect();
   if(e.target!==canvas)return;
@@ -1003,6 +1695,20 @@ window.addEventListener("mouseup",e=>{
 });
 canvas.addEventListener("contextmenu",e=>{
   e.preventDefault();
+  if(editMode){
+    if(shapeSel>=0&&shapePoly.length>3){
+      const r=canvas.getBoundingClientRect();
+      const wx=(e.clientX-r.left-panX)/zoom, wy=(e.clientY-r.top-panY)/zoom;
+      const vi=vertexAt(wx,wy);
+      if(vi>=0){
+        shapePoly.splice(vi,1);
+        applyShape(shapeSel,shapePoly);
+        shapePoly=traceProvince(shapeSel);
+        refreshEditorPanel();
+      }
+    }
+    return;
+  }
   if(!started||!selArmy||selArmy.nation!==player)return;
   const r=canvas.getBoundingClientRect();
   const wx=(e.clientX-r.left-panX)/zoom, wy=(e.clientY-r.top-panY)/zoom;
@@ -1070,6 +1776,11 @@ function draw(){
       selOutlineProv=selProv;
     }
     ctx.drawImage(selOutline,0,0);
+  }
+  if(editMode){
+    drawEditorOverlay();
+    requestAnimationFrame(draw);
+    return;
   }
   // capitales
   for(const p of provs){
@@ -1145,7 +1856,7 @@ function showNationPicker(){
 function init(){
   try{
     fitCanvas();
-    generateMap();
+    initWorld();
     setupNations();
     paintAll();
     zoom=Math.max(0.6,Math.min(canvas.width/MW,canvas.height/MH));
