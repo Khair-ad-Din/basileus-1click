@@ -546,13 +546,46 @@ function paintAll(){
     }
   }
   baseCtx.putImageData(baseData,0,0);
-  // bordes estáticos
-  const bctx=borderC.getContext("2d");
-  const bd=bctx.createImageData(MW,MH);
-  for(let p=0;p<provs.length;p++)for(const i of borderPxOfProv[p]){
-    const o=i*4;bd.data[o]=15;bd.data[o+1]=18;bd.data[o+2]=20;bd.data[o+3]=110;
-  }
-  bctx.putImageData(bd,0,0);
+  paintBorders();
+}
+// bordes: frontera exterior de nación (o costa) destacada, divisiones internas sutiles
+const borderCtx=borderC.getContext("2d");
+let borderData;
+function borderIsOuter(i){
+  const p=provIdx[i],x=i%MW;
+  if(x===0||x===MW-1||i<MW||i>=MW*MH-MW)return true;
+  const own=provs[p].owner;
+  let q;
+  q=provIdx[i-1];if(q<0||(q!==p&&provs[q].owner!==own))return true;
+  q=provIdx[i+1];if(q<0||(q!==p&&provs[q].owner!==own))return true;
+  q=provIdx[i-MW];if(q<0||(q!==p&&provs[q].owner!==own))return true;
+  q=provIdx[i+MW];if(q<0||(q!==p&&provs[q].owner!==own))return true;
+  return false;
+}
+function setBorderPx(i){
+  const o=i*4,d=borderData.data;
+  if(borderIsOuter(i)){d[o]=8;d[o+1]=10;d[o+2]=12;d[o+3]=235}
+  else{d[o]=15;d[o+1]=18;d[o+2]=20;d[o+3]=60}
+}
+function paintBorders(){
+  borderData=borderCtx.createImageData(MW,MH);
+  for(let p=0;p<provs.length;p++)for(const i of borderPxOfProv[p])setBorderPx(i);
+  borderCtx.putImageData(borderData,0,0);
+}
+function updateBordersAround(pid){
+  if(!borderData)return;
+  let x0=MW,y0=MH,x1=-1,y1=-1;
+  const upd=p=>{
+    for(const i of borderPxOfProv[p]){
+      setBorderPx(i);
+      const x=i%MW,y=(i/MW)|0;
+      if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;
+    }
+  };
+  upd(pid);
+  for(const n of adj[pid])upd(n);
+  if(x1<0)return;
+  borderCtx.putImageData(borderData,0,0,x0,y0,x1-x0+1,y1-y0+1);
 }
 function repaintProvince(pid){
   const c=NCOL[provs[pid].owner],s=provs[pid].shade,d=baseData.data;
@@ -560,6 +593,7 @@ function repaintProvince(pid){
     const o=i*4;d[o]=c[0]*s;d[o+1]=c[1]*s;d[o+2]=c[2]*s;
   }
   baseCtx.putImageData(baseData,0,0);
+  updateBordersAround(pid); // la frontera nacional se mueve con la conquista
 }
 
 /* ============================= Cámara y canvas ============================= */
