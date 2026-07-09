@@ -162,7 +162,7 @@ const UNITS={
 
 /* ============================= Estado global ============================= */
 let provs=[],provIdx,pixOfProv=[],borderPxOfProv=[],adj=[],seaAdj=[];
-let nations=[],armies=[],wars=new Set(),armyIdSeq=1;
+let nations=[],armies=[],wars=new Set(),truces=new Map(),armyIdSeq=1;
 let player=-1,hour=0,speed=1,acc=0,started=false,gameOver=false;
 let selProv=-1,selArmy=null;
 let battleFlash={}; // provId -> hour del último combate
@@ -622,7 +622,18 @@ function declareWar(a,b){
 }
 function makePeace(a,b){
   wars.delete(a<b?a+"|"+b:b+"|"+a);
+  truces.set(a<b?a+"|"+b:b+"|"+a,hour+360); // tregua de 15 días para la IA
+  // detener las marchas contra el ex-enemigo (si no, la llegada re-declara la guerra)
+  for(const ar of armies){
+    if(ar.nation!==a&&ar.nation!==b)continue;
+    const other=ar.nation===a?b:a;
+    if(ar.path.some(p=>provs[p].owner===other)){ar.path=[];ar.legDone=0;ar.legTotal=0}
+  }
   log("Paz firmada entre "+NATIONS[a].name+" y "+NATIONS[b].name+".");
+}
+function underTruce(a,b){
+  const t=truces.get(a<b?a+"|"+b:b+"|"+a);
+  return t!==undefined&&hour<t;
 }
 function canAfford(n,cost){
   for(const k in cost)if(nations[n].res[k]<cost[k])return false;
@@ -638,7 +649,7 @@ function nationStrength(n){let t=0;for(const a of armies)if(a.nation===n)t+=army
 function nationProvCount(n){let t=0;for(const p of provs)if(p.owner===n)t++;return t}
 function armiesIn(pid){return armies.filter(a=>a.prov===pid&&a.path.length===0)}
 function nbrs(c){return[...adj[c],...seaAdj[c]]}
-function bfsPath(from,to){
+function bfsPath(from,to,passable){
   if(from===to)return[];
   const prev=new Map([[from,-1]]);
   const q=[from];
@@ -646,6 +657,7 @@ function bfsPath(from,to){
     const c=q.shift();
     for(const a of nbrs(c)){
       if(prev.has(a))continue;
+      if(passable&&a!==to&&!passable(a))continue;
       prev.set(a,c);
       if(a===to){
         const path=[a];let cur=c;
@@ -670,9 +682,10 @@ function startLeg(a){
   }
   a.legDone=0;
 }
-function orderMove(a,target){
+function orderMove(a,target,passable){
   const origin=(a.path.length&&a.legDone>0)?a.path[0]:a.prov;
-  const rest=bfsPath(origin,target);
+  let rest=bfsPath(origin,target,passable);
+  if(rest===null&&passable)rest=bfsPath(origin,target); // sin ruta limpia, cualquier ruta
   if(rest===null)return false;
   if(a.path.length&&a.legDone>0){
     a.path=[a.path[0],...rest];
@@ -866,29 +879,51 @@ function aiTurn(n){
       }
     }
   }
-  // guerra
+  // guerra: declarar al vecino con el que más frontera se comparte, ponderado por debilidad
   const enemies=[];
   for(let m=0;m<NPLAY;m++)if(m!==n&&nations[m].alive&&atWar(n,m))enemies.push(m);
   const day=hour/24;
   if(!enemies.length&&day>3&&rand()<0.22){
-    // declarar guerra al vecino más débil
-    const neigh=new Set();
-    for(const p of owned)for(const a of nbrs(p.id)){
+    const capP=provs[nations[n].capital];
+    const contact=new Map(); // nación -> {c: frontera compartida, d: distancia mínima a mi capital}
+    const register=(a,w)=>{
       const o=provs[a].owner;
-      if(o<NPLAY&&o!==n&&nations[o].alive)neigh.add(o);
+      if(o>=NPLAY||o===n||!nations[o].alive)return;
+      const e=contact.get(o)||{c:0,d:1e9};
+      e.c+=w;
+      const dd=Math.hypot(provs[a].x-capP.x,provs[a].y-capP.y);
+      if(dd<e.d)e.d=dd;
+      contact.set(o,e);
+    };
+    for(const p of owned){
+      for(const a of adj[p.id])register(a,1);
+      for(const a of seaAdj[p.id])register(a,0.4); // el mar cuenta menos
     }
-    let best=-1,bs=1e18;
-    for(const m of neigh){const s=nationStrength(m);if(s<bs){bs=s;best=m}}
-    if(best>=0&&nationStrength(n)>bs*1.3)declareWar(n,best);
+    let best=-1,bs=-1;
+    for(const[m,e]of contact){
+      if(underTruce(n,m))continue; // respetar la tregua tras una paz
+      const score=e.c/(nationStrength(m)+50)/(1+e.d/350); // vecino pegado a casa > lejano
+      if(score>bs){bs=score;best=m}
+    }
+    if(best>=0&&nationStrength(n)>nationStrength(best)*1.3)declareWar(n,best);
   }
-  // mover ejércitos
+  // mover ejércitos (la guarnición por provincia se precalcula una vez por turno)
   const wantNeutral=day>1;
+  const garrison=new Map();
+  for(const g of armies){
+    if(g.path.length)continue;
+    garrison.set(g.prov,(garrison.get(g.prov)||0)+armyDef(g));
+  }
   for(const a of armies){
     if(a.nation!==n||a.path.length)continue;
     if(armyCount(a)<1.5)continue;
     if(provs[a.prov].capital&&armiesIn(a.prov).filter(x=>x.nation===n).length<=1&&enemies.length)continue;
-    const target=findTarget(a.prov,n,enemies,wantNeutral,armyAtk(a)+armyDef(a));
-    if(target>=0)orderMove(a,target);
+    const target=findTarget(a.prov,n,enemies,wantNeutral,armyAtk(a)+armyDef(a),garrison);
+    if(target>=0){
+      // no cruzar territorio de terceros pacíficos (evita declaraciones de guerra al pasar)
+      const pass=p=>{const o=provs[p].owner;return o===n||o===NEUTRAL||enemies.includes(o)};
+      orderMove(a,target,pass);
+    }
   }
   // paz si va muy mal
   for(const m of enemies){
@@ -896,25 +931,44 @@ function aiTurn(n){
     if(nationStrength(n)<nationStrength(m)*0.4&&rand()<0.3)makePeace(n,m);
   }
 }
-function findTarget(from,n,enemies,wantNeutral,myPower){
-  const seen=new Set([from]);
+function findTarget(from,n,enemies,wantNeutral,myPower,garrison){
+  // Explora por anillos puntuando candidatos en vez de devolver el primero:
+  // cerca > lejos, la travesía marítima cuesta más que la terrestre, una
+  // provincia rodeada por territorio propio tiene prioridad máxima, y la
+  // lejanía respecto a la CAPITAL penaliza (el país se expande alrededor de
+  // su núcleo, no alrededor de sus conquistas avanzadas).
+  const capId=nations[n].capital;
+  const capP=capId>=0?provs[capId]:provs[from];
+  const seen=new Map([[from,0]]);
   let ring=[from];
-  for(let d=0;d<7;d++){
+  let best=-1,bs=-1e9;
+  for(let d=0;d<7&&ring.length;d++){
     const next=[];
-    for(const c of ring)for(const a of nbrs(c)){
-      if(seen.has(a))continue;
-      seen.add(a);
-      const o=provs[a].owner;
-      if(enemies.includes(o))return a;
-      if(wantNeutral&&o===NEUTRAL){
-        const g=armiesIn(a).reduce((s,x)=>s+armyDef(x),0);
-        if(myPower>g*1.6)return a;
-      }
-      next.push(a);
+    for(const c of ring){
+      const dc=seen.get(c);
+      const step=(a,cost)=>{
+        if(seen.has(a))return;
+        seen.set(a,cost);
+        next.push(a);
+        const o=provs[a].owner;
+        let s;
+        if(enemies.includes(o))s=10;
+        else if(wantNeutral&&o===NEUTRAL&&myPower>(garrison.get(a)||0)*1.6)s=4;
+        else return;
+        s-=cost*1.6;
+        s-=Math.hypot(provs[a].x-capP.x,provs[a].y-capP.y)/90; // atracción de la capital
+        let mine=0,tot=0;
+        for(const b of adj[a]){tot++;if(provs[b].owner===n)mine++}
+        if(tot)s+=6*mine/tot; // bonus de cerco: enclaves y bolsas primero
+        if(provs[a].capital)s+=1.5;
+        if(s>bs){bs=s;best=a}
+      };
+      for(const a of adj[c])step(a,dc+1);
+      for(const a of seaAdj[c])step(a,dc+2.2);
     }
     ring=next;
   }
-  return -1;
+  return best;
 }
 
 /* ============================= Acciones del jugador ============================= */
@@ -1113,7 +1167,7 @@ function pushUndo(){
   editDirty=true;
 }
 function restoreWorldFromSnap(snap){
-  provs=[];armies=[];wars=new Set();armyIdSeq=1;
+  provs=[];armies=[];wars=new Set();truces=new Map();armyIdSeq=1;
   player=-1;hour=0;acc=0;started=false;gameOver=false;
   selProv=-1;selArmy=null;battleFlash={};selOutline=null;selOutlineProv=-1;
   shapeSel=-1;shapePoly=[];dragVi=-1;mergeFrom=-1;splitFrom=-1;
@@ -1454,7 +1508,7 @@ function regenerateWorld(){
   document.getElementById("loadMsg").style.display="flex";
   document.getElementById("endOverlay").style.display="none";
   setTimeout(()=>{
-    provs=[];armies=[];wars=new Set();armyIdSeq=1;
+    provs=[];armies=[];wars=new Set();truces=new Map();armyIdSeq=1;
     player=-1;hour=0;acc=0;started=false;gameOver=false;
     selProv=-1;selArmy=null;battleFlash={};selOutline=null;selOutlineProv=-1;
     shapeSel=-1;shapePoly=[];dragVi=-1;
