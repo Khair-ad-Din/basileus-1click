@@ -20,6 +20,7 @@ import {
   mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, rebuildProvinceData, kmBetween, roadKey, hasRoad, landPath, generateRoads
 } from "./mapgen.js";
 import { S } from "./state.js";
+import "./debug.js"; // registra window.dbg (herramientas de observación por consola)
 /* ============================= RNG ============================= */
 
 S.rand=mulberry32(193909);

@@ -1,18 +1,14 @@
 // sim.js
 import { BUILDINGS, NATIONS, NEUTRAL, NPLAY, RES_KEYS, START_STOCK, TERRAINS, UNITS } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyDef, armyHp, armySpd, buildBlock, buildMax, canAfford, costFor, foodBalance, foodCap, foodCons, FOOD_PRICE, lvlOf, nationProvCount, nationStrength, NEED_PC, NEED_PRICE, pay, provDefMul, provEconomy, recruitTime, soldAvail, soldCap, timeFor } from "./economy.js";
+import { armyAtk, armyCount, armyDef, armyHp, armySpd, buildBlock, buildMax, canAfford, costFor, economyTick, foodCap, lvlOf, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
 import { drawRoads, repaintProvince } from "./render.js";
 import { saveGame } from "./save.js";
 import { log, refreshBuildBar, refreshSide, refreshTop } from "./ui.js";
 
-// POPs: 1 tick = 1 hora de juego (8760/año). Ver [[basileus-pop-economy-vision]].
-const SOLD_REGEN=0.0012;          // la soldadesca recupera este % del hueco hasta su techo, por tick
-// Fase 2 (demografía por comida):
-const POP_GROWTH_BASE=0.008/8760; // crecimiento con la despensa llena ≈1.1%/año; escala con el llenado
-const STARVE_RATE=0.6;            // en hambruna, fracción del déficit que se lleva por delante a la población
-const FAMINE_DEF=0.12;            // déficit (fracción del consumo sin cubrir) por encima del cual hay hambruna
+// El núcleo económico/demográfico del tick vive en economy.js (economyTick), sin DOM, para
+// compartirlo con el arnés de análisis. Aquí quedan lo militar, la construcción y el movimiento.
 
 function setupNations(){
   S.nations=NATIONS.map((n,i)=>({idx:i,res:Object.fromEntries(RES_KEYS.map(k=>[k,START_STOCK[k]||0])),
@@ -177,76 +173,7 @@ function captureProv(pid,nation){
 }
 function hourTick(){
   S.hour++;
-  // 0. mano de obra movilizada por provincia (soldados que dejaron el trabajo): retira dotación
-  for(const p of S.provs)p.mob=0;
-  for(const a of S.armies)if(a.src)for(const pid in a.src){const P=S.provs[pid];if(P)P.mob+=a.src[pid]}
-  // 1. economía y moral
-  for(let n=0;n<NPLAY;n++){
-    if(!S.nations[n].alive)continue;
-    const R=S.nations[n].res;
-    // bono de moral al reino por obras únicas (catedral…)
-    let realmMor=0;
-    for(const p of S.provs)if(p.owner===n)for(const b in BUILDINGS){const fx=BUILDINGS[b].fx;if(fx.realmMoral)realmMor+=fx.realmMoral*lvlOf(p,b)}
-    let nationPop=0;
-    for(const p of S.provs){
-      if(p.owner!==n)continue;
-      if(!p.wasteland)nationPop+=p.pop||0;
-      const e=provEconomy(p);
-      for(const k in e.res)R[k]+=e.res[k];
-      // moral: recuperación lenta hacia su techo (100 + fe/prestigio)
-      let mreg=0.004;
-      for(const b in BUILDINGS){const fx=BUILDINGS[b].fx;if(fx.moral)mreg+=fx.moral*lvlOf(p,b)}
-      const cap=Math.min(100,90+realmMor);
-      if(p.morale<cap)p.morale=Math.min(cap,p.morale+mreg);
-    }
-    // mantenimiento: sostener el ejército es lo caro, como en la época
-    let troops=0;
-    for(const a of S.armies)if(a.nation===n)troops+=armyCount(a);
-    R.dinero-=0.6*troops;
-    R.comida-=0.5*troops;
-    // necesidades de confort de la población (madera/paño/vino/sal): consumo del stock, compra en
-    // el mercado con ducados si falta, y desabastecimiento (baja moral) si tampoco alcanza el dinero
-    let unmet=0;
-    for(const k in NEED_PC){
-      let need=nationPop*NEED_PC[k]-R[k];
-      if(need<=0){R[k]-=nationPop*NEED_PC[k];continue}  // hay stock: se consume
-      R[k]=0;                                            // agotado el stock; el resto se compra
-      const canBuy=Math.min(need,R.dinero/NEED_PRICE[k]);
-      R.dinero-=canBuy*NEED_PRICE[k];
-      unmet+=(need-canBuy)/Math.max(1,nationPop*NEED_PC[k]); // fracción de la necesidad sin cubrir
-    }
-    if(unmet>0){const drop=Math.min(0.03,unmet*0.03);for(const p of S.provs)if(p.owner===n&&!p.wasteland&&p.morale>25)p.morale=Math.max(25,p.morale-drop)}
-    for(const k of RES_KEYS)if(R[k]<0)R[k]=0; // ningún recurso baja de 0 (impagos = escasez)
-  }
-  // 1b. comida, población y soldadesca (por provincia)
-  for(const p of S.provs){
-    if(p.wasteland)continue;
-    // despensa: acumula el excedente, se vacía con el déficit; su llenado impulsa el crecimiento
-    const cap=foodCap(p);
-    if(p.food==null)p.food=cap*0.6;
-    p.food+=foodBalance(p);
-    if(p.food>cap)p.food=cap;
-    let famine=false;
-    if(p.food<0){
-      let deficit=-p.food;p.food=0;
-      if(p.owner<NPLAY){ // alivio: el reino compra grano en el mercado para paliar la hambruna
-        const R=S.nations[p.owner].res;
-        const relief=Math.min(deficit,(R.dinero||0)/FOOD_PRICE);
-        if(relief>0){R.dinero-=relief*FOOD_PRICE;deficit-=relief}
-      }
-      const cons=foodCons(p);
-      if(cons>0&&deficit/cons>FAMINE_DEF){p.pop=Math.max(0,(p.pop||0)-deficit*STARVE_RATE);famine=true} // hambruna
-    }
-    p.famine=famine;
-    if(!famine){                                     // crecimiento ligado al excedente almacenado
-      const fill=cap>0?p.food/cap:0;
-      p.pop=(p.pop||0)*(1+POP_GROWTH_BASE*(0.4+fill));
-    }
-    if(p.owner<NPLAY){
-      const sc=soldCap(p),s=p.sold!=null?p.sold:sc;
-      p.sold=s+(sc-s)*SOLD_REGEN;                     // la soldadesca tiende a su techo (= %pop)
-    }
-  }
+  economyTick(); // secciones 0/1/1b: movilizados, economía+necesidades por nación, comida/población/soldadesca (sin DOM)
   // 2. construcción
   for(const p of S.provs){
     if(p.buildQueue.length){

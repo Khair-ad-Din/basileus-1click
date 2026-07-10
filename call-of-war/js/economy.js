@@ -1,5 +1,5 @@
 // economy.js
-import { NPLAY, BUILDINGS, TERRAINS, UNITS } from "./config.js";
+import { NPLAY, BUILDINGS, TERRAINS, UNITS, RES_KEYS } from "./config.js";
 import { S } from "./state.js";
 
 /* ===================== POPs Fase 1: constantes ======================
@@ -50,6 +50,11 @@ function foodCap(p){return (p.pop||0)*FOOD_STORE_YEARS*(1+0.8*lvlOf(p,"almacen")
 const NEED_PC={materiales:0.0000010,pano:0.00000018,vino:0.00000018,sal:0.00000028}; // por habitante y tick
 const NEED_PRICE={materiales:0.5,pano:2.2,vino:2.2,sal:1.6};  // ducados por unidad al comprar en el mercado
 const FOOD_PRICE=1.6;                                          // ducados por unidad de grano (alivio de hambruna)
+// constantes del tick demográfico (compartidas con el arnés de análisis tools/sim-economy.mjs)
+const SOLD_REGEN=0.0012;          // la soldadesca recupera este % del hueco hasta su techo, por tick
+const POP_GROWTH_BASE=0.008/8760; // crecimiento con la despensa llena ≈1.1%/año; escala con el llenado
+const STARVE_RATE=0.6;            // en hambruna, fracción del déficit que se lleva por delante a la población
+const FAMINE_DEF=0.12;            // déficit (fracción del consumo sin cubrir) por encima del cual hay hambruna
 
 /* ---- Trabajo / especialización (Fase 3) ----
  * Los edificios exigen trabajadores. Una provincia solo puede liberar del campo tantos
@@ -185,7 +190,74 @@ function nationProvCount(n){let t=0;for(const p of S.provs)if(p.owner===n)t++;re
 function recruitTime(p,u){
   return Math.max(2,Math.round(UNITS[u].time*(1-0.15*p.buildings.cuartel)*(UNITS[u].req.fabrica?1-0.08*p.buildings.fabrica:1)));
 }
+// Núcleo económico/demográfico de un tick, SIN DOM: movilizados, economía+necesidades por nación,
+// y comida/población/soldadesca por provincia. Lo llaman hourTick (juego) y el arnés de análisis,
+// así lo que se mide es exactamente lo que corre. NO incrementa S.hour (lo hace quien llama).
+// dt = número de ticks (horas de juego) que representa esta llamada. El juego usa dt=1 (idéntico
+// al modelo original); el arnés de análisis puede avanzar a paso de día (dt=24) para ir más rápido.
+// Todas las magnitudes por tick (producción, consumo, crecimiento, regeneración) se escalan por dt.
+function economyTick(dt=1){
+  // 0. mano de obra movilizada por provincia (soldados que dejaron el trabajo): retira dotación
+  for(const p of S.provs)p.mob=0;
+  for(const a of S.armies)if(a.src)for(const pid in a.src){const P=S.provs[pid];if(P)P.mob+=a.src[pid]}
+  // agregados por nación en pasadas O(provincias), no O(naciones×provincias): moral de obras
+  // únicas, tropas, y población (esta última se llena en la pasada A)
+  const realmMor=new Float64Array(NPLAY),troops=new Float64Array(NPLAY),nationPop=new Float64Array(NPLAY);
+  for(const p of S.provs){const n=p.owner;if(n>=NPLAY)continue;const bl=p.buildings;
+    for(const b in BUILDINGS){const fx=BUILDINGS[b].fx;if(fx.realmMoral){const l=bl[b]||0;if(l)realmMor[n]+=fx.realmMoral*l}}}
+  for(const a of S.armies)if(a.nation<NPLAY)troops[a.nation]+=armyCount(a);
+  // Pasada A: producción de cada provincia → tesoro de su nación, y recuperación de moral.
+  // (Mismo orden que antes: toda la economía ANTES de necesidades y ANTES de la comida.)
+  for(const p of S.provs){
+    const n=p.owner;
+    if(n>=NPLAY||p.wasteland)continue;
+    nationPop[n]+=p.pop||0;
+    const R=S.nations[n].res,e=provEconomy(p);
+    for(const k in e.res)R[k]+=e.res[k]*dt;
+    let mreg=0.004;for(const b in BUILDINGS){const fx=BUILDINGS[b].fx;if(fx.moral)mreg+=fx.moral*(p.buildings[b]||0)}
+    const cap=Math.min(100,90+realmMor[n]);
+    if(p.morale<cap)p.morale=Math.min(cap,p.morale+mreg*dt);
+  }
+  // Por nación: mantenimiento del ejército y necesidades de confort (consumo/mercado/desabastecimiento).
+  for(let n=0;n<NPLAY;n++){
+    if(!S.nations[n].alive)continue;
+    const R=S.nations[n].res;
+    R.dinero-=0.6*troops[n]*dt;R.comida-=0.5*troops[n]*dt;
+    let unmet=0;
+    for(const k in NEED_PC){
+      const demand=nationPop[n]*NEED_PC[k]*dt;
+      let need=demand-R[k];
+      if(need<=0){R[k]-=demand;continue}
+      R[k]=0;
+      const canBuy=Math.min(need,R.dinero/NEED_PRICE[k]);
+      R.dinero-=canBuy*NEED_PRICE[k];
+      unmet+=(need-canBuy)/Math.max(1,demand);
+    }
+    if(unmet>0){const drop=Math.min(0.03,unmet*0.03)*dt;for(const p of S.provs)if(p.owner===n&&!p.wasteland&&p.morale>25)p.morale=Math.max(25,p.morale-drop)}
+    for(const k of RES_KEYS)if(R[k]<0)R[k]=0;
+  }
+  // Pasada B: comida, despensa, hambruna (con alivio del mercado ya con el dinero tras necesidades),
+  // crecimiento ligado al excedente y regeneración de la soldadesca.
+  const regen=Math.min(1,SOLD_REGEN*dt);
+  for(const p of S.provs){
+    if(p.wasteland)continue;
+    const cap=foodCap(p);
+    if(p.food==null)p.food=cap*0.6;
+    p.food+=foodBalance(p)*dt;
+    if(p.food>cap)p.food=cap;
+    let famine=false;
+    if(p.food<0){
+      let deficit=-p.food;p.food=0;
+      if(p.owner<NPLAY){const R=S.nations[p.owner].res;const relief=Math.min(deficit,(R.dinero||0)/FOOD_PRICE);if(relief>0){R.dinero-=relief*FOOD_PRICE;deficit-=relief}}
+      const cons=foodCons(p)*dt;
+      if(cons>0&&deficit/cons>FAMINE_DEF){p.pop=Math.max(0,(p.pop||0)-deficit*STARVE_RATE);famine=true}
+    }
+    p.famine=famine;
+    if(!famine){const fill=cap>0?p.food/cap:0;p.pop=(p.pop||0)*(1+POP_GROWTH_BASE*(0.4+fill)*dt)}
+    if(p.owner<NPLAY){const sc=soldCap(p),s=p.sold!=null?p.sold:sc;p.sold=s+(sc-s)*regen}
+  }
+}
 
 export {
-  canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, armyCount, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, taxOf, SOLD_FRAC, foodProd, foodCons, foodBalance, foodCap, specialistCap, buildJobs, freeLabor, staffing, structPPF, NEED_PC, NEED_PRICE, FOOD_PRICE
+  canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, armyCount, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, taxOf, SOLD_FRAC, foodProd, foodCons, foodBalance, foodCap, specialistCap, buildJobs, freeLabor, staffing, structPPF, NEED_PC, NEED_PRICE, FOOD_PRICE, economyTick
 };
