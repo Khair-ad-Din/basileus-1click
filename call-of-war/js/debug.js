@@ -66,26 +66,28 @@ const dbg={
   // Resumen de una nación (por nombre o índice).
   nation(x){
     const n=nIdx(x);if(n<0||n>=NPLAY){console.warn("Nación no encontrada:",x);return}
-    const ne=nationEconomy(n);
+    const ne=nationEconomy(n),pop=nationPop(n);
     console.log(`%c${NATIONS[n].name}`,"font-weight:bold");
     console.table({
-      Provincias:nationProvCount(n), Población:fmt(nationPop(n)),
+      Provincias:nationProvCount(n), Población:fmt(pop),
       "Hambruna prov":pct(nationFamine(n)), Tropas:ne.troops, Fuerza:Math.round(nationStrength(n)),
       "Ducados/mes":(ne.res.dinero>=0?"+":"")+ (Math.round(ne.res.dinero*10)/10),
+      "Duc/100k hab":pop>0?(Math.round(ne.res.dinero*1e5/pop*10)/10):0,
       "Grano/mes":Math.round((ne.res.comida||0)*10)/10, "Madera/mes":Math.round((ne.res.materiales||0)*10)/10,
       "Paño/mes":Math.round((ne.res.pano||0)*10)/10, "Vino/mes":Math.round((ne.res.vino||0)*10)/10,
       "Sal/mes":Math.round((ne.res.sal||0)*10)/10
     });
   },
-  // Ranking de naciones por métrica: pop | din | troops | fam | growth(=pop) | provs
+  // Ranking de naciones por métrica: pop | din | pc(=riqueza per cápita) | troops | fam | provs
   top(metric="pop",k=15){
     const rows=[];
     for(let n=0;n<NPLAY;n++){if(!S.nations[n]||!S.nations[n].alive)continue;
-      const ne=nationEconomy(n);
-      rows.push({Nación:NATIONS[n].name,Pob:Math.round(nationPop(n)),Prov:nationProvCount(n),
-        Tropas:ne.troops,"Ducados/mes":Math.round((ne.res.dinero||0)*10)/10,"Hambr%":Math.round(nationFamine(n)*100)});
+      const ne=nationEconomy(n),pop=nationPop(n),din=ne.res.dinero||0;
+      rows.push({Nación:NATIONS[n].name,Pob:Math.round(pop),Prov:nationProvCount(n),
+        Tropas:ne.troops,"Ducados/mes":Math.round(din*10)/10,
+        "Duc/100k hab":pop>0?Math.round(din*1e5/pop*10)/10:0,"Hambr%":Math.round(nationFamine(n)*100)});
     }
-    const key={pop:"Pob",din:"Ducados/mes",troops:"Tropas",fam:"Hambr%",provs:"Prov"}[metric]||"Pob";
+    const key={pop:"Pob",din:"Ducados/mes",pc:"Duc/100k hab",troops:"Tropas",fam:"Hambr%",provs:"Prov"}[metric]||"Pob";
     rows.sort((a,b)=>b[key]-a[key]);
     console.table(rows.slice(0,k));
     return rows;

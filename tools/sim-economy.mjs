@@ -105,9 +105,10 @@ const rows=Object.keys(tel).map(n=>{
   return {n:names[n],pop0:t.pop0,popEnd:t.popEnd,gr,fam:t.famSum/t.samples*100,fill:t.fillSum/t.samples*100,
     staff:t.staffSum/t.samples*100,din:ne.res.dinero||0,bott,bv};
 }).sort((a,b)=>b.popEnd-a.popEnd);
-console.log(`\nNación            Pobl.ini  Pobl.fin  %/año  Hambr%  Despensa  Dotac.  Ducados/mes  Cuello de botella`);
+console.log(`\nNación            Pobl.ini  Pobl.fin  %/año  Hambr%  Despensa  Dotac.  Ducados/mes  Duc/100k hab  Cuello de botella`);
 for(const r of rows.slice(0,16)){
   const bn={materiales:"Madera",pano:"Paño",vino:"Vino",sal:"Sal",comida:"Grano"}[r.bott]||r.bott;
+  const pc=r.popEnd>0?r.din*1e5/r.popEnd:0;
   console.log(
     r.n.padEnd(16),
     (r.pop0/M).toFixed(2).padStart(7),(r.popEnd/M).toFixed(2).padStart(9),
@@ -116,6 +117,7 @@ for(const r of rows.slice(0,16)){
     (r.fill.toFixed(0)+"%").padStart(8),
     (r.staff.toFixed(0)+"%").padStart(6),
     ((r.din>=0?"+":"")+r.din.toFixed(1)).padStart(11),
+    ((pc>=0?"+":"")+pc.toFixed(1)).padStart(11),
     "  "+(r.bv<-0.05?bn+" ("+r.bv.toFixed(1)+")":"ninguno"));
 }
 console.log(`\nPistas: Hambr% = % medio de provincias en hambruna · Despensa = llenado medio · `+

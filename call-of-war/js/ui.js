@@ -361,8 +361,10 @@ function ledgerRows(){
   const rows=[];
   for(let n=0;n<NPLAY;n++){
     if(!S.nations[n].alive)continue;
+    const income=nationEconomy(n).res.dinero||0;
     rows.push({n,name:NATIONS[n].name,color:NATIONS[n].color,provs:provsBy[n],pop:popBy[n],
-      troops:Math.round(troopsBy[n]),str:Math.round(strBy[n]),income:nationEconomy(n).res.dinero||0});
+      troops:Math.round(troopsBy[n]),str:Math.round(strBy[n]),income,
+      pc:popBy[n]>0?income*1e5/popBy[n]:0}); // riqueza per cápita: ducados netos/mes por 100.000 hab
   }
   return rows;
 }
@@ -372,13 +374,15 @@ function refreshLedger(){
   const th=(key,lab)=>"<th onclick=\"sortLedger('"+key+"')\" style='cursor:pointer'"+
     (ledgerSort===key?" class='on'":"")+">"+lab+(ledgerSort===key?" ▾":"")+"</th>";
   let h="<table class='dip led'><tr><th>#</th>"+th("name","Nación")+th("provs","Prov.")+
-    th("pop","Población")+th("troops","Tropas")+th("str","Fuerza")+th("income","Ducados/mes")+"</tr>";
+    th("pop","Población")+th("troops","Tropas")+th("str","Fuerza")+th("income","Ducados/mes")+
+    th("pc","Duc/100k hab")+"</tr>";
   rows.forEach((r,i)=>{
     const me=r.n===S.player;
     h+="<tr"+(me?" style='background:rgba(159,184,120,.18)'":"")+"><td>"+(i+1)+"</td>";
     h+="<td><span class='chip' style='background:"+r.color+"'></span> "+r.name+(me?" <b style='color:#9fb878'>(tú)</b>":"")+"</td>";
     h+="<td>"+r.provs+"</td><td>"+fmtPop(r.pop)+"</td><td>"+r.troops+"</td><td>"+r.str+"</td>";
-    h+="<td style='color:"+(r.income<0?"#e08a7a":"#8fce7e")+"'>"+(r.income>=0?"+":"")+n1(r.income)+"</td></tr>";
+    h+="<td style='color:"+(r.income<0?"#e08a7a":"#8fce7e")+"'>"+(r.income>=0?"+":"")+n1(r.income)+"</td>";
+    h+="<td style='color:"+(r.pc<0?"#e08a7a":"#c9c2ae")+"'>"+(r.pc>=0?"+":"")+n1(r.pc)+"</td></tr>";
   });
   h+="</table>";
   document.getElementById("ledgerBody").innerHTML=h;

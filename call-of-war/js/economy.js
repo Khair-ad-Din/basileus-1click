@@ -49,7 +49,7 @@ function foodCap(p){return (p.pop||0)*FOOD_STORE_YEARS*(1+0.8*lvlOf(p,"almacen")
  * (baja la moral). En hambruna, el reino puede comprar grano para paliar la mortandad. */
 const NEED_PC={materiales:0.0000010,pano:0.00000018,vino:0.00000018,sal:0.00000028}; // por habitante y tick
 const NEED_PRICE={materiales:0.5,pano:2.2,vino:2.2,sal:1.6};  // ducados por unidad al comprar en el mercado
-const FOOD_PRICE=1.6;                                          // ducados por unidad de grano (alivio de hambruna)
+const FOOD_PRICE=4.0;                                          // ducados por unidad de grano (alivio de hambruna): caro, para que la hambruna se sienta
 // constantes del tick demográfico (compartidas con el arnés de análisis tools/sim-economy.mjs)
 const SOLD_REGEN=0.0012;          // la soldadesca recupera este % del hueco hasta su techo, por tick
 const POP_GROWTH_BASE=0.008/8760; // crecimiento con la despensa llena ≈1.1%/año; escala con el llenado
@@ -259,5 +259,5 @@ function economyTick(dt=1){
 }
 
 export {
-  canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, armyCount, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, taxOf, SOLD_FRAC, foodProd, foodCons, foodBalance, foodCap, specialistCap, buildJobs, freeLabor, staffing, structPPF, NEED_PC, NEED_PRICE, FOOD_PRICE, economyTick
+  canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, armyCount, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, taxOf, SOLD_FRAC, foodProd, foodCons, foodBalance, foodCap, specialistCap, buildJobs, freeLabor, staffing, structPPF, JOBS_PER_LEVEL, NEED_PC, NEED_PRICE, FOOD_PRICE, economyTick
 };

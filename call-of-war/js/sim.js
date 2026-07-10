@@ -1,7 +1,7 @@
 // sim.js
 import { BUILDINGS, NATIONS, NEUTRAL, NPLAY, RES_KEYS, START_STOCK, TERRAINS, UNITS } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyDef, armyHp, armySpd, buildBlock, buildMax, canAfford, costFor, economyTick, foodCap, lvlOf, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor } from "./economy.js";
+import { armyAtk, armyCount, armyDef, armyHp, armySpd, buildBlock, buildJobs, buildMax, canAfford, costFor, economyTick, foodCap, freeLabor, JOBS_PER_LEVEL, lvlOf, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
 import { drawRoads, repaintProvince } from "./render.js";
 import { saveGame } from "./save.js";
@@ -331,6 +331,9 @@ function aiTurn(n){
     for(const b of pri){
       if(lvlOf(p,b)>=buildMax(p,b))continue;
       if(buildBlock(p,b))continue;
+      // no construir un edificio productivo si la provincia no puede DOTARLO (mano de obra libre)
+      const fx=BUILDINGS[b].fx, economic=fx.prodAdd||fx.goldAdd||fx.prodMul;
+      if(economic&&freeLabor(p)<buildJobs(p)+JOBS_PER_LEVEL)continue;
       pay(n,costFor(p,b));
       p.buildQueue.push({b,hoursLeft:timeFor(p,b)});
       break;
