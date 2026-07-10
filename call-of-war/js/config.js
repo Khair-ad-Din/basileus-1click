@@ -108,7 +108,8 @@ const TERRAINS={
   estepa:{label:"Estepa",mov:1.15,def:0.9,prod:0.85,color:"#c4b168"},
   // los nuevos van al final: los índices guardados en instantáneas no deben moverse
   pradera:{label:"Pradera",mov:1.05,def:0.95,prod:1.1,color:"#8fbc62"},
-  vega:{label:"Vega fértil",mov:1,def:0.85,prod:1.35,color:"#63a83e"}
+  vega:{label:"Vega fértil",mov:1,def:0.85,prod:1.35,color:"#63a83e"},
+  tundra:{label:"Tundra",mov:0.65,def:1.1,prod:0.45,color:"#c6d3d6"}
 };
 const TERRAIN_KEYS=Object.keys(TERRAINS);
 function terrainFx(t){

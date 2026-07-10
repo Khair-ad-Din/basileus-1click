@@ -275,12 +275,22 @@ function generateMap(){
     p.name=name;p.named=true;p.urban=true;
     if(cap)p.capital=true;
   }
+  // marca las provincias con nombre HISTORICO (anclas de pais + ciudades reales de MAPDATA)
+  // ANTES de que el gazetteer las cubra: solo estas dan corredores jugables en el desierto.
+  // Sin esto, assignRealNames pone toponimos reales (radio amplio) hasta en el Sahara profundo
+  // y el desierto dejaba de ser impracticable (el Magreb crecia hacia el sur sin limite).
+  for(const p of S.provs)p.anchor=p.named;
   assignRealNames();
   assignTerrain();
   assignResources();
-  // desierto profundo = territorio impracticable (estilo EU4): sin dueño ni tránsito;
-  // la costa y los oasis con nombre histórico quedan como corredores jugables
-  for(const p of S.provs)if(p.wasteland==null)p.wasteland=p.terrain==="desierto"&&!p.coastal&&!p.named;
+  // territorio impracticable (estilo EU4): sin dueño ni transito. Dos biomas hostiles:
+  //  - Sahara profundo (desierto)
+  //  - norte subártico lat>62.5 (Laponia/interior nórdico, casi permafrost en 1444)
+  // En ambos, la costa y los enclaves con nombre historico (anchor) quedan como corredores.
+  for(const p of S.provs)if(p.wasteland==null){
+    const lat=pxToLonLat(p.x,p.y)[1];
+    p.wasteland=(p.terrain==="desierto"||lat>62.5)&&!p.coastal&&!p.anchor;
+  }
   isolateWastePockets();
   for(const p of S.provs)if(p.wasteland){p.owner=NEUTRAL;p.owner0=NEUTRAL;p.capital=false;p.urban=false}
   applyNationOverrides();
@@ -404,7 +414,16 @@ const MOUNTAIN_ZONES=[
   [43.0,42.5,1.8],[42.5,45.5,1.8],                          // Cáucaso
   [37.3,32.5,1.6],[38.5,35.5,1.5],[39.5,41.0,2.2],[38.5,43.5,2.0], // Tauro, Anatolia oriental
   [34.5,47.0,2.0],[32.5,49.0,1.8],                          // Zagros
-  [31.5,-6.5,1.8],[33.0,-4.0,1.5],[35.5,1.5,1.5],[36.3,4.5,1.2],   // Atlas
+  // Atlas del Magreb: espina INTERIOR (la costa es franja fertil, ver assignTerrain).
+  // Alto/Medio Atlas marroquies, Tell tras la costa argelina, Aures, Atlas Sahariano
+  // (muro sur del Magreb) y Dorsal tunecina. Radios ajustados para no invadir la costa.
+  [31.0,-7.5,1.0],[31.8,-5.3,1.0],[32.6,-4.2,0.8],                 // Alto/Medio Atlas (interior de Marruecos)
+  [34.9,-4.2,0.6],                                                 // Rif (a la costa; pequeno)
+  [35.4,0.2,0.7],[35.9,2.8,0.8],                                   // Atlas Telliano tras la costa (Oran, Argel)
+  [36.2,4.6,0.6],[36.0,5.9,0.6],                                   // Kabilias (pequenas)
+  [35.2,6.5,0.8],                                                  // Aures
+  [33.6,0.5,1.0],[34.1,3.0,1.0],[34.6,5.5,0.9],                    // Atlas Sahariano (muro sur, interior)
+  [35.5,9.0,0.6],                                                  // Dorsal tunecina (pequena)
   [61.5,8.5,2.2],[63.5,11.5,1.8],[65.0,14.0,2.5],           // Alpes escandinavos
   [56.9,-4.5,1.2],                                          // Highlands escocesas
   [45.2,2.8,1.4],[50.2,13.0,1.0]                            // Macizo Central, Sudetes
@@ -431,6 +450,10 @@ function assignTerrain(){
     if(p.terrain)continue;
     const[lon,lat]=pxToLonLat(p.x,p.y);
     const kx=Math.cos(lat*Math.PI/180);
+    // Costa del Magreb (Tell): franja fertil donde se concentro la poblacion. Se asigna
+    // ANTES que el Atlas para que la costa sea vega, no montaña. Excluye la costa sahariana
+    // atlantica (lat<=30) y la costa iberica (lat>=35.8 solo cuenta al este de lon 3).
+    if(p.coastal&&lon>-11&&lon<11&&lat>30&&lat<37.5&&(lat<35.8||lon>3)){p.terrain="vega";continue}
     let t=null,hill=false;
     for(const[zla,zlo,r]of MOUNTAIN_ZONES){
       const d=Math.hypot(lat-zla,(lon-zlo)*kx);
@@ -446,10 +469,19 @@ function assignTerrain(){
       if(d<r){t="vega";break}
     }
     if(!t&&hill)t="colinas";
-    if(!t&&lat<31.2)t="desierto";                            // Sáhara y Arabia
+    // Magreb: el Sahara empieza justo al sur del Atlas, cuya cresta sube de oeste
+    // (~30N en Marruecos) a este (~34N en Tunez); por eso el umbral de desierto depende
+    // de la longitud, no una latitud plana. Entre los dos Atlas queda el altiplano (estepa).
+    if(!t&&lon>-11&&lon<11){
+      const desLat=Math.min(34.3,30.2+(lon+9)*0.28);
+      if(lat<desLat)t="desierto";
+      else if(lat<35&&lon>-2)t="estepa";                     // Altos Plateaux argelinos
+    }
+    if(!t&&lat<31.2)t="desierto";                            // Sahara oriental, Egipto, Arabia
     if(!t&&lat<33.5&&lon>36.5&&lon<48)t="desierto";          // interior sirio-iraquí
     if(!t&&lat>=44&&lat<=49.5&&lon>=28&&lon<=50)t="estepa";  // estepa póntica
     if(!t&&lat>=46&&lat<=48.5&&lon>=18.5&&lon<=22)t="estepa";// puszta húngara
+    if(!t&&lat>62.5)t="tundra";                              // norte subártico (Laponia): casi permafrost
     if(!t&&lat>57)t="bosque";                                // taiga escandinava y rusa
     if(!t&&lat>52&&lon>20)t="bosque";                        // cinturón boscoso báltico-ruso
     if(!t&&lat>44&&lat<57&&S.rand()<0.14)t="bosque";           // bosques dispersos europeos
@@ -475,6 +507,7 @@ function assignResources(){
     let strat;
     if(t==="montana"||t==="colinas")strat=["piedra","piedra","metal","metal","petroleo"];
     else if(t==="bosque"||t==="pantano")strat=["materiales","materiales","materiales","comida"];
+    else if(t==="tundra")strat=["materiales","comida","comida"]; // costa nórdica jugable: pieles/pesca
     else if(t==="estepa"||t==="pradera")strat=["petroleo","petroleo","comida","comida"];
     else if(t==="vega")strat=["comida","comida","comida","vino"];
     else if(t==="desierto")strat=["comida","petroleo","sal"];
