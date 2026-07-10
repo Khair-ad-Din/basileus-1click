@@ -4,9 +4,12 @@ import { S } from "./state.js";
 
 function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
 function hashN(ix,iy){let n=(ix*374761393+iy*668265263)|0;n=Math.imul(n^(n>>>13),1274126177);n^=n>>>16;return(n>>>0)/4294967296}
-const SYL_A=["Bran","Kel","Vos","Tor","Mar","Lun","Ost","Var","Gal","Dor","Bel","Cra","Stal","Nor","Pet","Riv","Sar","Tan","Ulm","Vin","Kos","Bre","Ang","Mon","Tar"];
-const SYL_M=["a","e","o","en","ar","el","in","or","an","ur"];
-const SYL_B=["burgo","grado","via","landia","mark","stein","polis","feld","holm","gorod","novo","berg","minas","puerto","castro","stadt","kovo","mira"];
+const SYL_A=["Bran","Kel","Vos","Tor","Mar","Lun","Ost","Var","Gal","Dor","Bel","Cra","Stal","Nor","Pet","Riv","Sar","Tan","Ulm","Vin","Kos","Bre","Ang","Mon","Tar",
+  "Wers","Krak","Lem","Zven","Halic","Prus","Sten","Dra","Vel","Rud","Bys","Chern","Zag","Vil","Kaun","Sud","Trak","Grod","Volk","Sand","Torn","Els","Ravn","Gorz",
+  "Lip","Mel","Wroc","Opol","Brno","Rze","Byd","Sib","Bra","Vid","Nis","Skop"];
+const SYL_M=["a","e","o","en","ar","el","in","or","an","ur","is","os","ov","yn","itz"];
+const SYL_B=["burgo","grado","via","landia","mark","stein","polis","feld","holm","gorod","novo","berg","minas","puerto","castro","stadt","kovo","mira",
+  "hafen","furt","bruck","wald","thal","heim","dorf","ovce","itsa","ava","gard","borg","nes","vik","sund","toft","ford","ton","by"];
 function genName(used){
   for(let t=0;t<200;t++){
     let n=SYL_A[(S.rand()*SYL_A.length)|0];
@@ -67,21 +70,21 @@ function generateMap(){
     const x=Math.max(1,Math.min(MW-2,Math.round(ax))), y=Math.max(1,Math.min(MH-2,Math.round(ay)));
     if(countryAt[y*MW+x]<=0)continue;
     let ok=true;
-    for(const s of seeds){const dx=s.x-x,dy=s.y-y;if(dx*dx+dy*dy<16*16){ok=false;break}}
+    for(const s of seeds){const dx=s.x-x,dy=s.y-y;if(dx*dx+dy*dy<11*11){ok=false;break}}
     if(ok)seeds.push({x,y,c:countryAt[y*MW+x],comp:compAt[y*MW+x],aname:name});
   }
   // relleno procedural (rejilla con jitter hasta los bordes; si cae en mar se reintenta),
   // dejando sitio alrededor de las anclas
   const anchorCount=seeds.length;
-  for(let gy=28;gy<MH-10;gy+=58){
-    for(let gx=28;gx<MW-10;gx+=58){
+  for(let gy=12;gy<MH-6;gy+=21){
+    for(let gx=12;gx<MW-6;gx+=21){
       for(let t=0;t<5;t++){
-        const x=Math.max(1,Math.min(MW-2,Math.round(gx+(S.rand()-0.5)*44)));
-        const y=Math.max(1,Math.min(MH-2,Math.round(gy+(S.rand()-0.5)*44)));
+        const x=Math.max(1,Math.min(MW-2,Math.round(gx+(S.rand()-0.5)*20)));
+        const y=Math.max(1,Math.min(MH-2,Math.round(gy+(S.rand()-0.5)*20)));
         const c=countryAt[y*MW+x];
         if(c>0){
           let ok=true;
-          for(let s=0;s<anchorCount;s++){const dx=seeds[s].x-x,dy=seeds[s].y-y;if(dx*dx+dy*dy<28*28){ok=false;break}}
+          for(let s=0;s<anchorCount;s++){const dx=seeds[s].x-x,dy=seeds[s].y-y;if(dx*dx+dy*dy<15*15){ok=false;break}}
           if(ok)seeds.push({x,y,c,comp:compAt[y*MW+x]});
           break;
         }
@@ -91,7 +94,7 @@ function generateMap(){
   // garantizar al menos una semilla por componente con territorio suficiente
   const haveSeed=new Set(seeds.map(s=>s.comp));
   const wantPix=new Map();
-  comps.forEach((cm,id)=>{if(cm.size>=160&&!haveSeed.has(id))wantPix.set(id,(cm.size/2)|0)});
+  comps.forEach((cm,id)=>{if(cm.size>=70&&!haveSeed.has(id))wantPix.set(id,(cm.size/2)|0)});
   if(wantPix.size){
     const seen=new Map();
     for(let i=0;i<MW*MH;i++){
@@ -237,22 +240,22 @@ function generateMap(){
     }
     const tiny=new Set();
     for(let s=0;s<seeds.length;s++)
-      if(counts[s]>0&&counts[s]<160&&compBest.get(seeds[s].comp)!==s)tiny.add(s);
+      if(counts[s]>0&&counts[s]<70&&compBest.get(seeds[s].comp)!==s)tiny.add(s);
     if(tiny.size){
       bad=[];
       for(let i=0;i<MW*MH;i++)if(S.provIdx[i]>=0&&tiny.has(S.provIdx[i])){isBad[i]=1;bad.push(i)}
       dilate();
     }
   }
-  // provincias definitivas (los nombres históricos se reservan para no duplicarlos)
-  const used=new Set(seeds.filter(s=>s.aname).map(s=>s.aname));
+  // provincias definitivas (el nombre real se asigna después con el gazetteer; las
+  // anclas históricas conservan el suyo, el resto queda vacío hasta assignRealNames)
   const remap=new Int16Array(seeds.length).fill(-1);
   for(let i=0;i<seeds.length;i++){
-    if(counts[i]<160)continue;
+    if(counts[i]<70)continue;
     remap[i]=S.provs.length;
     const an=seeds[i].aname;
     const own=MAPDATA.countries[seeds[i].c-1].nation;
-    S.provs.push({id:S.provs.length,name:an||genName(used),x:seeds[i].x,y:seeds[i].y,country:seeds[i].c,
+    S.provs.push({id:S.provs.length,name:an||"",x:seeds[i].x,y:seeds[i].y,country:seeds[i].c,
       owner:own,owner0:own,named:!!an,coastal:false,
       morale:60,urban:S.rand()<0.06,resType:null,shade:0.85+S.rand()*0.3,capital:false,
       buildings:newBuildings(),buildQueue:[],recruitQueue:[]});
@@ -272,6 +275,7 @@ function generateMap(){
     p.name=name;p.named=true;p.urban=true;
     if(cap)p.capital=true;
   }
+  assignRealNames();
   assignTerrain();
   assignResources();
   // desierto profundo = territorio impracticable (estilo EU4): sin dueño ni tránsito;
@@ -279,6 +283,99 @@ function generateMap(){
   for(const p of S.provs)if(p.wasteland==null)p.wasteland=p.terrain==="desierto"&&!p.coastal&&!p.named;
   isolateWastePockets();
   for(const p of S.provs)if(p.wasteland){p.owner=NEUTRAL;p.owner0=NEUTRAL;p.capital=false;p.urban=false}
+  applyNationOverrides();
+}
+// Correcciones manuales de frontera: cada [lat, lon, nación] fuerza el dueño de la provincia
+// que CONTIENE ese punto. NO toca el Voronoi (los países conservan su forma), solo cambia de
+// bando provincias concretas contiguas a esa nación. Para retoques finos que el Voronoi por
+// anclas no acierta sin desbordarse. Se aplica al final de generateMap.
+const NATION_OVERRIDES=[
+  [42.32,-6.53,"Castilla"], // El Bierzo (Ponferrada): castellano; el Voronoi lo daba a Portugal
+  [42.00,-7.27,"Castilla"], // Galicia SE (Verín/Ourense): castellano
+  [38.35,-0.48,"Aragón"],   // Alicante: del Reino de Valencia (Corona de Aragón)
+  [38.64,-0.84,"Aragón"],   // Elche: ídem
+  [38.509,-3.766,"Castilla"], // Ciudad Real: castellana, el Voronoi la daba a Granada
+  [38.087,-2.723,"Castilla"], // Campiña: ídem
+  [37.768,-3.800,"Castilla"], // Jaén: ídem
+  // — frontera húngara: le faltaban estas (Burgenland, Banato, Bácska) —
+  [47.353,16.455,"Hungría"],  // Simmering
+  [46.665,16.253,"Hungría"],  // Eisenzicken
+  [46.987,16.926,"Hungría"],  // Szombathely
+  [45.475,22.040,"Hungría"],  // Reşiţa
+  [45.286,21.637,"Hungría"],  // Timişoara
+  [45.049,18.205,"Hungría"],  // Sombor
+  // — y estas le sobraban, son de Serbia —
+  [44.138,20.089,"Serbia"],   // Čačak
+  [44.499,20.392,"Serbia"],   // Belgrado
+  [44.643,19.719,"Serbia"]    // Valjevo
+];
+function applyNationOverrides(){
+  const G=MAPDATA.geo;
+  const yn=Math.log(Math.tan(Math.PI/4+G.NORTH*Math.PI/360)), ys=Math.log(Math.tan(Math.PI/4+G.SOUTH*Math.PI/360));
+  for(const[lat,lon,name]of NATION_OVERRIDES){
+    const ni=MAPDATA.nations.findIndex(n=>n.name===name);
+    if(ni<0)continue;
+    const x=Math.round((lon-G.WEST)/(G.EAST-G.WEST)*MW);
+    const my=Math.log(Math.tan(Math.PI/4+lat*Math.PI/360));
+    const y=Math.round((yn-my)/(yn-ys)*MH);
+    if(x<0||y<0||x>=MW||y>=MH)continue;
+    const pid=S.provIdx[y*MW+x];
+    if(pid<0)continue;
+    const p=S.provs[pid];
+    if(p.wasteland)continue;
+    p.owner=ni;p.owner0=ni;
+  }
+}
+// nombres reales de ciudad por cercanía: recorre el gazetteer PLACES (ordenado por
+// población desc) y cada ciudad reclama la provincia SIN nombre más cercana dentro de un
+// radio. Así cada provincia toma el topónimo real de su zona y las urbes importantes caen
+// primero. Las que no tengan ciudad cerca (interiores despoblados) quedan con nombre por
+// sílabas. Se ignora si el gazetteer no está cargado (mantiene el comportamiento antiguo).
+function assignRealNames(){
+  const used=new Set();
+  for(const p of S.provs)if(p.named&&p.name)used.add(p.name);
+  if(typeof PLACES!=="undefined"&&PLACES){
+    const CS=32,bw=Math.ceil(MW/CS),bh=Math.ceil(MH/CS);
+    const claimed=new Uint8Array(S.provs.length);
+    // pasada 1 (por ciudad, población desc): cada urbe reclama la provincia sin nombre más
+    // cercana en un radio corto → las ciudades importantes caen sobre "su" provincia
+    const provCell=Array.from({length:bw*bh},()=>[]);
+    for(const p of S.provs)if(!p.named)provCell[((p.y/CS)|0)*bw+((p.x/CS)|0)].push(p.id);
+    const R=44,R2=R*R,rc=Math.ceil(R/CS);
+    for(const pl of PLACES){
+      const name=pl[0];if(used.has(name))continue;
+      const x=pl[1],y=pl[2],bx=(x/CS)|0,by=(y/CS)|0;
+      let best=-1,bd=R2;
+      for(let cy=Math.max(0,by-rc);cy<=Math.min(bh-1,by+rc);cy++)
+        for(let cx=Math.max(0,bx-rc);cx<=Math.min(bw-1,bx+rc);cx++)
+          for(const pid of provCell[cy*bw+cx]){
+            if(claimed[pid])continue;
+            const p=S.provs[pid],dx=p.x-x,dy=p.y-y,d=dx*dx+dy*dy;
+            if(d<bd){bd=d;best=pid}
+          }
+      if(best>=0){S.provs[best].name=name;S.provs[best].named=true;claimed[best]=1;used.add(name)}
+    }
+    // pasada 2 (por provincia): las que sigan sin nombre toman la ciudad libre más cercana en
+    // un radio amplio → recoge las provincias rurales lejos de cualquier urbe grande
+    const placeCell=Array.from({length:bw*bh},()=>[]);
+    for(let i=0;i<PLACES.length;i++)placeCell[((PLACES[i][2]/CS)|0)*bw+((PLACES[i][1]/CS)|0)].push(i);
+    const RB=260,RB2=RB*RB,rcb=Math.ceil(RB/CS);
+    for(const p of S.provs){
+      if(p.named)continue;
+      const bx=(p.x/CS)|0,by=(p.y/CS)|0;
+      let best=-1,bd=RB2;
+      for(let cy=Math.max(0,by-rcb);cy<=Math.min(bh-1,by+rcb);cy++)
+        for(let cx=Math.max(0,bx-rcb);cx<=Math.min(bw-1,bx+rcb);cx++)
+          for(const pi of placeCell[cy*bw+cx]){
+            const pl=PLACES[pi];if(used.has(pl[0]))continue;
+            const dx=pl[1]-p.x,dy=pl[2]-p.y,d=dx*dx+dy*dy;
+            if(d<bd){bd=d;best=pi}
+          }
+      if(best>=0){p.name=PLACES[best][0];p.named=true;used.add(PLACES[best][0])}
+    }
+  }
+  // relleno: provincias sin ninguna ciudad real cerca toman nombre por sílabas (no "named")
+  for(const p of S.provs)if(!p.name)p.name=genName(used);
 }
 function isolateWastePockets(){
   const seen=new Set();

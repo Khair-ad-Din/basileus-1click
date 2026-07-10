@@ -21,9 +21,9 @@ const LAND_NAMES=["Northern Cyprus"]; // piezas con id "-99"
 
 // Naciones de 1444 (estilo EU4): [nombre, color, [[ciudad,lat,lon],...]] — la primera ancla es la capital.
 const NATIONS1444=[
-  ["Castilla","#c8a838",[["Toledo",39.86,-4.03],["Burgos",42.34,-3.70],["León",42.60,-5.57],["Sevilla",37.39,-5.99],["Murcia",37.99,-1.13],["Santiago",42.88,-8.54],["Bilbao",43.26,-2.93],["Badajoz",38.88,-6.97]]],
+  ["Castilla","#c8a838",[["Toledo",39.86,-4.03],["Burgos",42.34,-3.70],["León",42.60,-5.57],["Sevilla",37.39,-5.99],["Murcia",37.99,-1.13],["Santiago",42.88,-8.54],["Bilbao",43.26,-2.93],["Badajoz",38.88,-6.97],["Zamora",41.50,-5.75],["Ciudad Rodrigo",40.60,-6.53],["Cáceres",39.48,-6.37],["Huelva",37.26,-6.95]]],
   ["Aragón","#c87060",[["Zaragoza",41.65,-0.88],["Barcelona",41.39,2.17],["Valencia",39.47,-0.38],["Palma",39.57,2.65],["Cagliari",39.22,9.12],["Palermo",38.12,13.36],["Mesina",38.19,15.55]]],
-  ["Portugal","#2e7d4f",[["Lisboa",38.72,-9.14],["Oporto",41.15,-8.61],["Faro",37.02,-7.93]]],
+  ["Portugal","#2e7d4f",[["Lisboa",38.72,-9.14],["Oporto",41.15,-8.61],["Faro",37.02,-7.93],["Bragança",41.81,-6.76],["Guarda",40.54,-7.27],["Castelo Branco",39.82,-7.49],["Elvas",38.88,-7.16],["Évora",38.57,-7.91],["Beja",38.02,-7.86]]],
   ["Granada","#8b2635",[["Granada",37.18,-3.60],["Málaga",36.72,-4.42],["Almería",36.83,-2.46]]],
   ["Navarra","#d4c25a",[["Pamplona",42.82,-1.64]]],
   ["Francia","#4a66b8",[["París",48.85,2.35],["Orleans",47.90,1.90],["Reims",49.26,4.03],["Lyon",45.76,4.84],["Tolosa",43.60,1.44],["Poitiers",46.58,0.34],["Montpellier",43.61,3.88],["La Rochelle",46.16,-1.15],["Bourges",47.08,2.40]]],
