@@ -177,6 +177,9 @@ function captureProv(pid,nation){
 }
 function hourTick(){
   S.hour++;
+  // 0. mano de obra movilizada por provincia (soldados que dejaron el trabajo): retira dotación
+  for(const p of S.provs)p.mob=0;
+  for(const a of S.armies)if(a.src)for(const pid in a.src){const P=S.provs[pid];if(P)P.mob+=a.src[pid]}
   // 1. economía y moral
   for(let n=0;n<NPLAY;n++){
     if(!S.nations[n].alive)continue;

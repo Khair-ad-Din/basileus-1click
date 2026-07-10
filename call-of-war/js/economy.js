@@ -43,6 +43,24 @@ function foodProd(p){                                                    // prod
 function foodBalance(p){return foodProd(p)-foodCons(p)}                  // >0 excedente, <0 déficit (por tick)
 function foodCap(p){return (p.pop||0)*FOOD_STORE_YEARS}                  // capacidad de la despensa
 
+/* ---- Trabajo / especialización (Fase 3) ----
+ * Los edificios exigen trabajadores. Una provincia solo puede liberar del campo tantos
+ * especialistas como permita su excedente agrícola estructural (fértil/desarrollada → más).
+ * Movilizar soldados (p.mob) retira mano de obra. La producción de los edificios escala con
+ * su DOTACIÓN (staffing); los impuestos y la producción base de la tierra, no. */
+const JOBS_PER_LEVEL=550;   // puestos de trabajo que exige cada nivel de edificio
+const SPEC_BASE=0.06;       // fracción de la población especializable (siempre hay algo de artesanía)
+const SPEC_K=0.6;           // + capacidad de especialistas por excedente agrícola estructural
+const SPEC_MAX=0.35;        // tope de especialistas (urbanización máxima medieval)
+function structPPF(p){return (FOOD_FERT[p.terrain]||1)*(1+0.4*lvlOf(p,"granja"))} // comida/campesino (sin cosecha)
+function specialistCap(p){  // cuántos pops puede sostener la provincia fuera del campo
+  const f=Math.max(0.02,Math.min(SPEC_MAX,SPEC_BASE+SPEC_K*(structPPF(p)-1)));
+  return (p.pop||0)*f;
+}
+function buildJobs(p){let j=0;for(const b in BUILDINGS)j+=lvlOf(p,b)*JOBS_PER_LEVEL;return j}
+function freeLabor(p){return Math.max(0,specialistCap(p)-(p.mob||0))}    // libres tras descontar movilizados
+function staffing(p){const j=buildJobs(p);return j>0?Math.min(1,freeLabor(p)/j):1} // dotación 0..1
+
 function canAfford(n,cost){
   for(const k in cost)if(S.nations[n].res[k]<cost[k])return false;
   return true;
@@ -97,15 +115,16 @@ function taxOf(p){ // impuestos que pagan los pops (antes salían de la nada)
 function provEconomy(p){
   const out={res:{},mano:0};
   if(!p||p.owner>=NPLAY||p.wasteland)return out;
-  const mor=p.morale/100,terr=TERRAINS[p.terrain].prod;
+  const mor=p.morale/100,terr=TERRAINS[p.terrain].prod,st=staffing(p);
   const add=(k,v)=>{out.res[k]=(out.res[k]||0)+v};
-  add(p.resType,(p.resType==="dinero"?2.8:1.3)*provProdMul(p)*terr*mor); // recurso propio
-  add("dinero",taxOf(p));                                                 // impuestos de la población
+  const baseProd=(p.resType==="dinero"?2.8:1.3)*terr*mor;
+  add(p.resType,baseProd*(1+(provProdMul(p)-1)*st));                      // tierra base + multiplicador de edificios (con dotación)
+  add("dinero",taxOf(p));                                                 // impuestos de la población (no dependen de la dotación)
   for(const b in BUILDINGS){
     const lvl=lvlOf(p,b);if(!lvl)continue;
     const fx=BUILDINGS[b].fx;
-    if(fx.prodAdd)for(const k in fx.prodAdd)add(k,fx.prodAdd[k]*lvl*terr*mor);
-    if(fx.goldAdd)add("dinero",fx.goldAdd*lvl*mor);
+    if(fx.prodAdd)for(const k in fx.prodAdd)add(k,fx.prodAdd[k]*lvl*terr*mor*st); // los edificios producen según su dotación
+    if(fx.goldAdd)add("dinero",fx.goldAdd*lvl*mor*st);
   }
   const up=provUpkeep(p);
   for(const k in up)add(k,-up[k]); // mantenimiento de los edificios
@@ -115,18 +134,18 @@ function provBreakdown(p){
   const income=[],upkeep=[];let mano=0;
   const net={};
   if(!p||p.owner>=NPLAY||p.wasteland)return{income,upkeep,net,mano};
-  const mor=p.morale/100,terr=TERRAINS[p.terrain].prod;
+  const mor=p.morale/100,terr=TERRAINS[p.terrain].prod,st=staffing(p);
   const baseNoMul=(p.resType==="dinero"?2.8:1.3)*terr*mor;
   income.push({label:p.urban?"Comercio de la ciudad":"Producción",res:p.resType,amt:baseNoMul});
-  for(const b in BUILDINGS){ // multiplicadores de producción (gremio, fundición, universidad)
+  for(const b in BUILDINGS){ // multiplicadores de producción (gremio, fundición, universidad), con dotación
     const fx=BUILDINGS[b].fx,lvl=lvlOf(p,b);
-    if(fx.prodMul&&lvl)income.push({label:BUILDINGS[b].label+" +"+Math.round(fx.prodMul*100)+"%",res:p.resType,amt:baseNoMul*fx.prodMul*lvl});
+    if(fx.prodMul&&lvl)income.push({label:BUILDINGS[b].label+" +"+Math.round(fx.prodMul*100)+"%",res:p.resType,amt:baseNoMul*fx.prodMul*lvl*st});
   }
   income.push({label:"Impuestos de la población",res:"dinero",amt:taxOf(p)});
   for(const b in BUILDINGS){
     const fx=BUILDINGS[b].fx,lvl=lvlOf(p,b);if(!lvl)continue;
-    if(fx.prodAdd)for(const k in fx.prodAdd)income.push({label:BUILDINGS[b].label,res:k,amt:fx.prodAdd[k]*lvl*terr*mor});
-    if(fx.goldAdd)income.push({label:BUILDINGS[b].label,res:"dinero",amt:fx.goldAdd*lvl*mor});
+    if(fx.prodAdd)for(const k in fx.prodAdd)income.push({label:BUILDINGS[b].label,res:k,amt:fx.prodAdd[k]*lvl*terr*mor*st});
+    if(fx.goldAdd)income.push({label:BUILDINGS[b].label,res:"dinero",amt:fx.goldAdd*lvl*mor*st});
   }
   mano=soldAvail(p); // "mano" del desglose ahora = soldadesca disponible (stock, no ingreso)
   const up=provUpkeep(p);
@@ -158,5 +177,5 @@ function recruitTime(p,u){
 }
 
 export {
-  canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, armyCount, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, taxOf, SOLD_FRAC, foodProd, foodCons, foodBalance, foodCap
+  canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, armyCount, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, taxOf, SOLD_FRAC, foodProd, foodCons, foodBalance, foodCap, specialistCap, buildJobs, freeLabor, staffing, structPPF
 };

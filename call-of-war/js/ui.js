@@ -1,7 +1,7 @@
 // ui.js
 import { START_DATE, MESES, BUILDINGS, BUILD_CATS, NATIONS, NPLAY, RES_ICON, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, terrainFx } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyDef, armySpd, buildBlock, buildMax, canAfford, costFor, foodBalance, foodCap, lvlOf, nationEconomy, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitTime, soldAvail, soldCap, timeFor } from "./economy.js";
+import { armyAtk, armyCount, armyDef, armySpd, buildBlock, buildJobs, buildMax, canAfford, costFor, foodBalance, foodCap, freeLabor, lvlOf, nationEconomy, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitTime, soldAvail, soldCap, staffing, timeFor } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
 import { canvas, clampPan } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
@@ -23,6 +23,15 @@ function foodLine(p){ // estado de la despensa (almacén de comida) y balance an
   if(p.famine)return "<div class='tl'><b style='color:#e79070'>🥖 ⚠ HAMBRUNA</b> · despensa vacía</div>";
   const bal="<span style='color:"+(balYr<-0.5?"#e0a17a":"#8fbf78")+"'>"+(balYr>=0?"+":"")+fmtPop(balYr)+"/año</span>";
   return "<div class='tl'>🥖 Despensa "+Math.round(fill*100)+"% · "+bal+"</div>";
+}
+function laborLine(p){ // dotación de los edificios: puestos exigidos vs mano de obra libre
+  if(p.wasteland)return "";
+  const jobs=buildJobs(p);
+  if(jobs<=0)return "";
+  const st=Math.round(staffing(p)*100);
+  const col=st>=90?"#8fbf78":st>=50?"#d9c07a":"#e0a17a";
+  const mob=(p.mob||0)>1?" · "+fmtPop(p.mob)+" movilizados":"";
+  return "<div class='tl'>🔨 Dotación <span style='color:"+col+"'>"+st+"%</span> <span style='color:#9aa3ad'>("+fmtPop(freeLabor(p))+" trab. / "+fmtPop(jobs)+" puestos"+mob+")</span></div>";
 }
 function fmtDur(h){ // horas de juego -> texto legible
   if(h>=8760)return (h/8760).toFixed(1).replace(".0","")+" años";
@@ -139,7 +148,7 @@ function refreshBuildBar(){
     "<div class='tl'>"+(p.urban?"Ciudad":RES_LABEL[p.resType])+" · "+TERRAINS[p.terrain].label+
     " · moral "+Math.round(p.morale)+"%</div>"+
     "<div class='tl'>👥 "+fmtPop(p.pop)+" hab · ⚔ "+fmtPop(soldAvail(p))+"/"+fmtPop(soldCap(p))+" soldadesca</div>"+
-    foodLine(p);
+    foodLine(p)+laborLine(p);
   // Ingresos (por fuente), en /mes
   s+="<div class='bsec'>Ingresos <span class='u'>/mes</span></div>";
   for(const it of bd.income){if(it.amt<0.005)continue;
