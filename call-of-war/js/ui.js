@@ -82,6 +82,7 @@ function fxText(B){
   if(fx.prodMul)t.push("+"+Math.round(fx.prodMul*100)+"% prod");
   if(fx.goldAdd)t.push("+"+n1(fx.goldAdd)+" Duc");
   if(fx.mano)t.push("+"+Math.round(fx.mano*100)+"% soldadesca");
+  if(fx.store)t.push("+"+Math.round(fx.store*100)+"% despensa");
   if(fx.def)t.push("+"+Math.round(fx.def*100)+"% defensa");
   if(fx.moral)t.push("+moral");
   if(fx.realmMoral)t.push("+moral del reino");

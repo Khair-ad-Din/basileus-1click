@@ -71,6 +71,9 @@ const BUILDINGS={
   puerto:{label:"Puerto",cat:"inf",icon:"⚓",max:2,time:3600,coastal:true,
     cost:{materiales:1500,piedra:500,dinero:800},fx:{goldAdd:1.2,mano:0.2,seaMarch:true},up:{dinero:5,materiales:3},
     desc:"Comercio marítimo: más Ducados y Mano de obra."},
+  almacen:{label:"Almacén",cat:"inf",icon:"🏚",max:3,time:2880,
+    cost:{materiales:800,piedra:300},fx:{store:0.8},up:{dinero:2},
+    desc:"Amplía la despensa: guarda más comida para resistir las hambrunas."},
   // ---- Obras únicas (caras, con modificadores especiales; no todos podrán costearlas) ----
   catedral:{label:"Catedral",cat:"uni",icon:"⛪",unique:true,time:26280,urban:true,req:{templo:1},
     cost:{piedra:6000,dinero:8000,materiales:2000,seda:400},fx:{goldAdd:4,moral:0.04,realmMoral:3},up:{dinero:20},

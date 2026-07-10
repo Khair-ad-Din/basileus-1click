@@ -41,7 +41,15 @@ function foodProd(p){                                                    // prod
   return (p.pop||0)/YR_TICKS*fert*(1+0.4*lvlOf(p,"granja"))*harvestMul(p);
 }
 function foodBalance(p){return foodProd(p)-foodCons(p)}                  // >0 excedente, <0 déficit (por tick)
-function foodCap(p){return (p.pop||0)*FOOD_STORE_YEARS}                  // capacidad de la despensa
+function foodCap(p){return (p.pop||0)*FOOD_STORE_YEARS*(1+0.8*lvlOf(p,"almacen"))} // el Almacén amplía la despensa
+
+/* ---- Necesidades de confort y mercado (Fase 4) ----
+ * Además de comida, la población necesita madera, paño, vino y sal. El reino las consume de
+ * su stock; si falta, compra en el mercado con ducados y, si tampoco puede, hay desabastecimiento
+ * (baja la moral). En hambruna, el reino puede comprar grano para paliar la mortandad. */
+const NEED_PC={materiales:0.0000010,pano:0.00000018,vino:0.00000018,sal:0.00000028}; // por habitante y tick
+const NEED_PRICE={materiales:0.5,pano:2.2,vino:2.2,sal:1.6};  // ducados por unidad al comprar en el mercado
+const FOOD_PRICE=1.6;                                          // ducados por unidad de grano (alivio de hambruna)
 
 /* ---- Trabajo / especialización (Fase 3) ----
  * Los edificios exigen trabajadores. Una provincia solo puede liberar del campo tantos
@@ -159,11 +167,13 @@ function provBreakdown(p){
 }
 function nationEconomy(n){
   const res={},prov=S.provs.filter(p=>p.owner===n);
-  for(const p of prov){const e=provEconomy(p);for(const k in e.res)res[k]=(res[k]||0)+e.res[k]}
+  let pop=0;
+  for(const p of prov){if(!p.wasteland)pop+=p.pop||0;const e=provEconomy(p);for(const k in e.res)res[k]=(res[k]||0)+e.res[k]}
   let troops=0;for(const a of S.armies)if(a.nation===n)troops+=armyCount(a);
   res.dinero=(res.dinero||0)-0.6*troops;
   res.comida=(res.comida||0)-0.5*troops;
-  return{res,provs:prov.length,troops,army:{dinero:0.6*troops,comida:0.5*troops}};
+  for(const k in NEED_PC)res[k]=(res[k]||0)-pop*NEED_PC[k]; // necesidades de confort de la población
+  return{res,provs:prov.length,troops,pop,army:{dinero:0.6*troops,comida:0.5*troops}};
 }
 function armyCount(a){let t=0;for(const k in a.units)t+=a.units[k];return t}
 function armyAtk(a){let t=0;for(const k in a.units)t+=a.units[k]*UNITS[k].atk;return t}
@@ -177,5 +187,5 @@ function recruitTime(p,u){
 }
 
 export {
-  canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, armyCount, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, taxOf, SOLD_FRAC, foodProd, foodCons, foodBalance, foodCap, specialistCap, buildJobs, freeLabor, staffing, structPPF
+  canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, armyCount, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, taxOf, SOLD_FRAC, foodProd, foodCons, foodBalance, foodCap, specialistCap, buildJobs, freeLabor, staffing, structPPF, NEED_PC, NEED_PRICE, FOOD_PRICE
 };

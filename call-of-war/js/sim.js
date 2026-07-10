@@ -1,7 +1,7 @@
 // sim.js
 import { BUILDINGS, NATIONS, NEUTRAL, NPLAY, RES_KEYS, START_STOCK, TERRAINS, UNITS } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyDef, armyHp, armySpd, buildBlock, buildMax, canAfford, costFor, foodBalance, foodCap, foodCons, lvlOf, nationProvCount, nationStrength, pay, provDefMul, provEconomy, recruitTime, soldAvail, soldCap, timeFor } from "./economy.js";
+import { armyAtk, armyCount, armyDef, armyHp, armySpd, buildBlock, buildMax, canAfford, costFor, foodBalance, foodCap, foodCons, FOOD_PRICE, lvlOf, nationProvCount, nationStrength, NEED_PC, NEED_PRICE, pay, provDefMul, provEconomy, recruitTime, soldAvail, soldCap, timeFor } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
 import { drawRoads, repaintProvince } from "./render.js";
 import { saveGame } from "./save.js";
@@ -187,8 +187,10 @@ function hourTick(){
     // bono de moral al reino por obras únicas (catedral…)
     let realmMor=0;
     for(const p of S.provs)if(p.owner===n)for(const b in BUILDINGS){const fx=BUILDINGS[b].fx;if(fx.realmMoral)realmMor+=fx.realmMoral*lvlOf(p,b)}
+    let nationPop=0;
     for(const p of S.provs){
       if(p.owner!==n)continue;
+      if(!p.wasteland)nationPop+=p.pop||0;
       const e=provEconomy(p);
       for(const k in e.res)R[k]+=e.res[k];
       // moral: recuperación lenta hacia su techo (100 + fe/prestigio)
@@ -202,6 +204,18 @@ function hourTick(){
     for(const a of S.armies)if(a.nation===n)troops+=armyCount(a);
     R.dinero-=0.6*troops;
     R.comida-=0.5*troops;
+    // necesidades de confort de la población (madera/paño/vino/sal): consumo del stock, compra en
+    // el mercado con ducados si falta, y desabastecimiento (baja moral) si tampoco alcanza el dinero
+    let unmet=0;
+    for(const k in NEED_PC){
+      let need=nationPop*NEED_PC[k]-R[k];
+      if(need<=0){R[k]-=nationPop*NEED_PC[k];continue}  // hay stock: se consume
+      R[k]=0;                                            // agotado el stock; el resto se compra
+      const canBuy=Math.min(need,R.dinero/NEED_PRICE[k]);
+      R.dinero-=canBuy*NEED_PRICE[k];
+      unmet+=(need-canBuy)/Math.max(1,nationPop*NEED_PC[k]); // fracción de la necesidad sin cubrir
+    }
+    if(unmet>0){const drop=Math.min(0.03,unmet*0.03);for(const p of S.provs)if(p.owner===n&&!p.wasteland&&p.morale>25)p.morale=Math.max(25,p.morale-drop)}
     for(const k of RES_KEYS)if(R[k]<0)R[k]=0; // ningún recurso baja de 0 (impagos = escasez)
   }
   // 1b. comida, población y soldadesca (por provincia)
@@ -214,7 +228,12 @@ function hourTick(){
     if(p.food>cap)p.food=cap;
     let famine=false;
     if(p.food<0){
-      const deficit=-p.food;p.food=0;
+      let deficit=-p.food;p.food=0;
+      if(p.owner<NPLAY){ // alivio: el reino compra grano en el mercado para paliar la hambruna
+        const R=S.nations[p.owner].res;
+        const relief=Math.min(deficit,(R.dinero||0)/FOOD_PRICE);
+        if(relief>0){R.dinero-=relief*FOOD_PRICE;deficit-=relief}
+      }
       const cons=foodCons(p);
       if(cons>0&&deficit/cons>FAMINE_DEF){p.pop=Math.max(0,(p.pop||0)-deficit*STARVE_RATE);famine=true} // hambruna
     }
