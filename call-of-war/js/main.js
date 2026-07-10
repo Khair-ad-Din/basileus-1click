@@ -2,16 +2,16 @@ import {
   saveGame, loadSaveMeta, continueGame, runCatchup, buildSnapshot, saveProvMap, loadProvMapSnapshot, loadProvMap
 } from "./save.js";
 import {
-  enterEditor, exitEditor, pushUndo, restoreWorldFromSnap, toggleRoadEdit, dpSimplify, simplifyRing, traceProvince, applyShape, mergeProvinces, rasterPoly, keepLargestFragment, splitProvince, refreshEditorPanel, vertexAt, nearestSegment
+  enterEditor, exitEditor, pushUndo, restoreWorldFromSnap, toggleRoadEdit, setProvinceOwner, dpSimplify, simplifyRing, traceProvince, applyShape, mergeProvinces, rasterPoly, keepLargestFragment, splitProvince, refreshEditorPanel, vertexAt, nearestSegment
 } from "./editor.js";
 import {
-  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, showNationPicker
+  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, showNationPicker, refreshArmyPanel
 } from "./ui.js";
 import {
   atWar, declareWar, makePeace, underTruce, spawnArmy, setupNations, tryRoad, nbrs, bfsPath, startLeg, orderMove, captureProv, hourTick, resolveBattles, applyDamage, mergeIdle, aiTurn, findTarget, tryBuild, tryRecruit, checkVictory, armiesIn
 } from "./sim.js";
 import {
-  hex2rgb, provColor, paintAll, borderIsOuter, setBorderPx, borderIsWasteEdge, paintBorders, updateBordersAround, repaintProvince, roadCurve, drawRoads, fitCanvas, clampPan, armyPos, draw, drawArrow, drawEditorOverlay, NCOL, TCOL, WASTECOL, baseC, baseCtx, borderC, borderCtx, roadsC, canvas, baseData, borderData, selOutline
+  hex2rgb, provColor, paintAll, borderIsOuter, setBorderPx, borderIsWasteEdge, paintBorders, updateBordersAround, repaintProvince, roadCurve, drawRoads, fitCanvas, clampPan, armyPos, draw, drawArrow, drawEditorOverlay, NCOL, TCOL, WASTECOL, baseC, baseCtx, borderC, borderCtx, roadsC, canvas, baseData, borderData, clearSelOutline
 } from "./render.js";
 import {
   canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, armyCount, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime
@@ -29,7 +29,8 @@ import {
 } from "./config.js";
 
 /* ============================= Estado global ============================= */
-let acc=0;
+// El acumulador del bucle de simulación vive en S.acc (lo resetean también editor.js y
+// regenerateWorld al reconstruir el mundo; los locals de módulo no se pueden reasignar desde fuera).
 
 /* ============================= Generación del mapa (Europa real) ============================= */
 
@@ -117,6 +118,11 @@ window.tryBuild=tryBuild;window.tryRecruit=tryRecruit;
 window.haltArmy=function(){if(S.selArmy){S.selArmy.path=[];S.selArmy.legDone=0;S.selArmy.legTotal=0;refreshSide()}};
 window.selectArmyId=function(id){const a=S.armies.find(x=>x.id===id);if(a){S.selArmy=a;S.selProv=-1;refreshSide()}};
 
+// panel de Ejército (botón ⚔ del menú de reino): ejércitos + reclutamiento global
+window.openArmyPanel=function(){S.armyPanelOpen=true;refreshArmyPanel();document.getElementById("armyPanel").style.display="block"};
+window.closeArmyPanel=function(){S.armyPanelOpen=false;document.getElementById("armyPanel").style.display="none"};
+window.setRecruitProv=function(id){S.recruitProv=+id;refreshArmyPanel()};
+
 window.proposePeace=function(n){
   if(nationStrength(n)<nationStrength(S.player)*0.8){makePeace(S.player,n)}
   else log(NATIONS[n].name+" rechaza tu propuesta de paz.");
@@ -154,6 +160,7 @@ window.setTool=function(t){
   S.editTool=t;S.mergeFrom=-1;S.splitFrom=-1;S.roadFrom=-1;S.dragVi=-1;
   refreshEditorPanel();
 };
+window.clearOwnerPaint=function(){S.ownerPaint=-1;refreshEditorPanel()};
 
 // --- vectorización del contorno ---
 
@@ -167,18 +174,32 @@ window.setTool=function(t){
 
 function initWorld(){
   const snap=loadProvMapSnapshot();
-  if(snap)loadProvMap(snap);
-  else generateMap();
+  if(snap){
+    // auto-reparación: si el mapa editado guardado es incompatible (versión antigua/corrupto)
+    // y su carga falla, se descarta y se regenera, para no dejar el juego atascado al arrancar
+    try{
+      loadProvMap(snap);
+      return;
+    }catch(e){
+      console.error("Mapa editado guardado incompatible; se descarta y regenera:",e);
+      try{localStorage.removeItem("basileus_provmap");localStorage.removeItem("basileus_anchors")}catch(_){}
+      S.provs=[];S.armies=[];S.customRoads=false;
+    }
+  }
+  generateMap();
 }
 function regenerateWorld(){
   document.getElementById("loadMsg").style.display="flex";
   document.getElementById("endOverlay").style.display="none";
   setTimeout(()=>{
     S.provs=[];S.armies=[];S.wars=new Set();S.truces=new Map();S.armyIdSeq=1;
-    S.player=-1;S.hour=0;acc=0;S.started=false;S.gameOver=false;
-    S.selProv=-1;S.selArmy=null;S.battleFlash={};selOutline=null;selOutlineProv=-1;
+    S.player=-1;S.hour=0;S.acc=0;S.started=false;S.gameOver=false;
+    S.selProv=-1;S.selArmy=null;S.battleFlash={};clearSelOutline();
     S.shapeSel=-1;S.shapePoly=[];S.dragVi=-1;
-    document.getElementById("nationChip").innerHTML="";
+    S.recruitProv=-1;S.armyPanelOpen=false;
+    document.getElementById("realmMenu").className="";
+    document.getElementById("side").style.display="none";
+    document.getElementById("armyPanel").style.display="none";
     initWorld();setupNations();if(!S.customRoads)generateRoads();paintAll();drawRoads();
     document.getElementById("loadMsg").style.display="none";
     if(S.editMode){
@@ -378,6 +399,13 @@ window.addEventListener("mouseup",e=>{
     if(wasDrag||e.target!==canvas)return;
     const[ewx,ewy]=evWorld(e);
     const pid=provAtWorld(ewx,ewy);
+    if(S.editTool==="owner"){
+      if(pid>=0){
+        if(S.ownerPaint<0){S.ownerPaint=S.provs[pid].owner;refreshEditorPanel()}
+        else setProvinceOwner(pid,S.ownerPaint);
+      }
+      return;
+    }
     if(pid>=0){S.shapeSel=pid;S.shapePoly=traceProvince(pid)}
     else{S.shapeSel=-1;S.shapePoly=[]}
     refreshEditorPanel();
@@ -387,14 +415,16 @@ window.addEventListener("mouseup",e=>{
   const r=canvas.getBoundingClientRect();
   if(e.target!==canvas)return;
   const wx=(e.clientX-r.left-S.panX)/S.zoom, wy=(e.clientY-r.top-S.panY)/S.zoom;
-  // ejército propio cerca
-  let hit=null,hd=28*28;
+  // ejército propio bajo el cursor: hitbox ajustada al sprite pequeño (centrada en el cuerpo,
+  // no en los pies) y solo sobre los propios, para no tapar el clic a la provincia
+  let hit=null,hd=12*12;
   for(const a of S.armies){
+    if(a.nation!==S.player)continue;
     const pos=armyPos(a);
-    const d=(pos.x-wx)**2+(pos.y-wy)**2;
+    const d=(pos.x-wx)**2+(pos.y-3-wy)**2;
     if(d<hd){hd=d;hit=a}
   }
-  if(hit&&hit.nation===S.player){S.selArmy=hit;S.selProv=-1;refreshSide();return}
+  if(hit){S.selArmy=hit;S.selProv=-1;refreshSide();return}
   const ix=wx|0,iy=wy|0;
   if(ix>=0&&iy>=0&&ix<MW&&iy<MH&&S.provIdx[iy*MW+ix]>=0){
     S.selProv=S.provIdx[iy*MW+ix];S.selArmy=null;
@@ -404,6 +434,13 @@ window.addEventListener("mouseup",e=>{
 canvas.addEventListener("contextmenu",e=>{
   e.preventDefault();
   if(S.editMode){
+    if(S.editTool==="owner"){
+      const r=canvas.getBoundingClientRect();
+      const wx=(e.clientX-r.left-S.panX)/S.zoom, wy=(e.clientY-r.top-S.panY)/S.zoom;
+      const pid=provAtWorld(wx,wy);
+      if(pid>=0){S.ownerPaint=S.provs[pid].owner;refreshEditorPanel()}
+      return;
+    }
     if(S.shapeSel>=0&&S.shapePoly.length>3){
       const r=canvas.getBoundingClientRect();
       const wx=(e.clientX-r.left-S.panX)/S.zoom, wy=(e.clientY-r.top-S.panY)/S.zoom;
@@ -465,9 +502,9 @@ document.getElementById("terrBtn").addEventListener("click",()=>window.toggleTer
 // completa, 1444-1544, dura ~50 días reales). 60x y 720x son velocidades de prueba.
 setInterval(()=>{
   if(!S.started||S.gameOver)return;
-  acc+=S.speed*GH_PER_SEC/4;
+  S.acc+=S.speed*GH_PER_SEC/4;
   let steps=0;
-  while(acc>=1&&steps<60){acc-=1;hourTick();steps++}
+  while(S.acc>=1&&steps<60){S.acc-=1;hourTick();steps++}
   if(steps){refreshTop();refreshSide()}
 },250);
 

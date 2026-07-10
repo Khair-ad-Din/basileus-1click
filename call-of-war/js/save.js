@@ -4,7 +4,7 @@ import { S } from "./state.js";
 import { assignResources, assignTerrain, isolateWastePockets, mulberry32, rebuildProvinceData } from "./mapgen.js";
 import { canvas, clampPan, drawRoads, paintAll } from "./render.js";
 import { hourTick } from "./sim.js";
-import { fmtDur, log, refreshSide, refreshTop } from "./ui.js";
+import { buildRealmMenu, fmtDur, log, refreshSide, refreshTop } from "./ui.js";
 
 function buildSnapshot(){
   const rle=[];
@@ -93,12 +93,12 @@ function continueGame(){
   S.nations[S.player].ai=false;
   S.started=true;S.gameOver=false;S.selProv=-1;S.selArmy=null;S.battleFlash={};
   document.getElementById("startOverlay").style.display="none";
-  document.getElementById("nationChip").innerHTML=
-    "<span class='chip' style='background:"+NATIONS[S.player].color+"'></span>"+NATIONS[S.player].name;
+  S.recruitProv=S.nations[S.player].capital;
+  buildRealmMenu();
   paintAll();drawRoads();
   const cap=S.provs[S.nations[S.player].capital];
   if(cap){S.panX=canvas.width/2-cap.x*S.zoom;S.panY=canvas.height/2-cap.y*S.zoom;clampPan()}
-  refreshTop();
+  refreshTop();refreshSide();
   // puesta al día: el mundo siguió su curso mientras no estabas
   const missed=Math.min(8760,Math.floor((Date.now()-s.t)/1000*GH_PER_SEC));
   if(missed>24)runCatchup(missed);

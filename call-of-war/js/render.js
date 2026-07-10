@@ -12,6 +12,72 @@ function hex2rgb(h){return[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),p
 const NCOL=NATIONS.map(n=>hex2rgb(n.color));
 const TCOL=Object.fromEntries(TERRAIN_KEYS.map(k=>[k,hex2rgb(TERRAINS[k].color)]));
 const WASTECOL=hex2rgb("#847c6a");
+// ---- Sprites de ejército por nación (estética 2D en lugar del recuadro con número) ----
+// La hoja de cada reino es el "mockup" tal cual: fondo gris sólido, con títulos arriba y
+// una columna de etiquetas/escudos a la izquierda. Al cargar se PROCESA en el navegador:
+//   1) se recorta a la rejilla 5×4 (SHEET_LAYOUT define dónde empieza y el paso de celda),
+//   2) se quita el gris de fondo (clave de color: píxeles neutros y de brillo ~fondo -> alfa 0),
+//   3) se detecta el recuadro ajustado de cada sprite para poder centrarlo en el mapa.
+//   filas (tropa): 0 Infantería · 1 Piqueros · 2 Caballería · 3 Arqueros · 4 Ballesteros
+//   columnas (estado): 0 Reposo · 1 Movimiento · 2 Atacando · 3 Derrotada
+const NATION_SPRITE={0:"castilla"};            // nación -> archivo sprites/<slug>.png (resto: recuadro)
+// geometría de la rejilla dentro de la hoja, por slug (tras la columna de escudos; afinable)
+const SHEET_LAYOUT={castilla:{x0:150,y0:22,cw:232,ch:139,cols:4,rows:5}};
+// unidad del juego -> fila (las 7 se mapean sobre 5; Bombardas/artilleria sin sprite -> recuadro)
+const UNIT_ROW={miliciano:0,infanteria:1,antitanque:1,motorizada:2,blindadoLigero:2,blindadoMedio:2};
+const _sheets={};
+function processSheet(slug,img){
+  const L=SHEET_LAYOUT[slug]||{x0:0,y0:0,cw:img.naturalWidth/4,ch:img.naturalHeight/5,cols:4,rows:5};
+  const W=img.naturalWidth,H=img.naturalHeight;
+  const cv=Object.assign(document.createElement("canvas"),{width:W,height:H});
+  const c=cv.getContext("2d");c.drawImage(img,0,0);
+  const im=c.getImageData(0,0,W,H),d=im.data;
+  // si el fondo ya es transparente (hoja con alfa), no hace falta clave de color; solo si es
+  // un mockup con fondo gris opaco quitamos el gris (neutros con brillo ~fondo -> transparente)
+  if(d[(2*W+2)*4+3]>128){
+    const bgLum=(d[12]+d[13]+d[14])/3;
+    for(let i=0;i<d.length;i+=4){
+      const r=d[i],g=d[i+1],b=d[i+2];
+      const neutral=Math.max(r,g,b)-Math.min(r,g,b)<16;
+      if(neutral&&Math.abs((r+g+b)/3-bgLum)<32)d[i+3]=0;
+    }
+    c.putImageData(im,0,0);
+  }
+  // recuadro ajustado de cada celda (píxeles no transparentes)
+  const frames=[];
+  for(let r=0;r<L.rows;r++){
+    frames[r]=[];
+    for(let col=0;col<L.cols;col++){
+      const cx0=Math.round(L.x0+col*L.cw),cy0=Math.round(L.y0+r*L.ch);
+      const cx1=Math.min(W,cx0+Math.round(L.cw)),cy1=Math.min(H,cy0+Math.round(L.ch));
+      let mnx=cx1,mny=cy1,mxx=cx0,mxy=cy0,any=false;
+      for(let y=cy0;y<cy1;y++)for(let x=cx0;x<cx1;x++){
+        if(d[(y*W+x)*4+3]>40){any=true;if(x<mnx)mnx=x;if(x>mxx)mxx=x;if(y<mny)mny=y;if(y>mxy)mxy=y}
+      }
+      frames[r][col]=any?{sx:mnx,sy:mny,sw:mxx-mnx+1,sh:mxy-mny+1}:null;
+    }
+  }
+  return{canvas:cv,frames};
+}
+function armySheet(nation){
+  const slug=NATION_SPRITE[nation];
+  if(!slug)return null;
+  let e=_sheets[nation];
+  if(!e){
+    e=_sheets[nation]={ready:false};
+    const img=new Image();
+    img.onload=()=>{try{const p=processSheet(slug,img);e.canvas=p.canvas;e.frames=p.frames;e.ready=true}
+      catch(err){e.bad=true;console.warn("Sprites: no se pudo procesar sprites/"+slug+".png. Si abriste el juego como archivo (file://) el canvas queda 'tainted' y falla getImageData; ábrelo por http://localhost:8123 .",(err&&err.message)||err)}};
+    img.onerror=()=>{e.bad=true;console.warn("Sprites: no se pudo cargar sprites/"+slug+".png (ruta/servidor).")};
+    img.src="sprites/"+slug+".png";
+  }
+  return e.ready?e:null;
+}
+function dominantUnit(a){ // tropa más numerosa que tenga sprite asignado
+  let best=null,bc=-1;
+  for(const k in a.units)if(a.units[k]>bc&&UNIT_ROW[k]!=null){bc=a.units[k];best=k}
+  return best;
+}
 function provColor(p){
   if(S.terrainView)return TCOL[S.provs[p].terrain];
   return S.provs[p].wasteland?WASTECOL:NCOL[S.provs[p].owner];
@@ -232,6 +298,7 @@ function armyPos(a){
   return{x:p.x,y:p.y};
 }
 let selOutline=null,selOutlineProv=-1;
+function clearSelOutline(){selOutline=null;selOutlineProv=-1} // reset del contorno cacheado (otros módulos no pueden reasignar los locals de este)
 function draw(){
   ctx.setTransform(1,0,0,1,0,0);
   ctx.fillStyle="#27384a";ctx.fillRect(0,0,canvas.width,canvas.height);
@@ -280,22 +347,55 @@ function draw(){
     ctx.beginPath();ctx.arc(p.x,p.y,r,0,7);
     ctx.strokeStyle="rgba(255,80,50,.9)";ctx.lineWidth=2.5/S.zoom;ctx.stroke();
   }
-  // ejércitos
+  // ejércitos: sprite 2D por nación/tipo/estado; si no hay hoja, recuadro con número
   ctx.textAlign="center";ctx.textBaseline="middle";
+  const smoothWas=ctx.imageSmoothingEnabled;
   for(const a of S.armies){
     const pos=armyPos(a);
-    const w=40,hh=26;
-    ctx.fillStyle=NATIONS[a.nation].color;
-    ctx.fillRect(pos.x-w/2,pos.y-hh/2,w,hh);
-    ctx.lineWidth=(a===S.selArmy?4.8:2)/Math.max(1,S.zoom*0.7);
-    ctx.strokeStyle=a===S.selArmy?"#fff":(a.nation===S.player?"#ffe9a0":"#15181c");
-    ctx.strokeRect(pos.x-w/2,pos.y-hh/2,w,hh);
-    ctx.fillStyle="#fff";ctx.font="bold 18px Arial";
-    ctx.fillText(Math.round(armyCount(a)),pos.x,pos.y+1);
+    const cnt=Math.round(armyCount(a));
+    const sheet=armySheet(a.nation);
+    const du=sheet?dominantUnit(a):null;
+    let fr=null,row=0;
+    if(sheet&&du!=null){
+      row=UNIT_ROW[du];
+      const col=a.path.length?1:0; // Atacando/Derrotada: pendiente de enganchar al combate
+      fr=(sheet.frames[row]&&sheet.frames[row][col])||(sheet.frames[row]&&sheet.frames[row][0]);
+    }
+    if(fr){
+      const Hd=22, Wd=Hd*fr.sw/fr.sh, half=Math.min(Wd,Hd);
+      let flip=false; // el arte mira a la derecha; al ir hacia la izquierda, espejo
+      if(a.path.length){const tgt=S.provs[a.path[a.path.length-1]];if(tgt&&tgt.x<pos.x)flip=true}
+      ctx.save();
+      ctx.beginPath();ctx.ellipse(pos.x,pos.y+Hd*0.40,half*0.34,Hd*0.10,0,0,7);
+      ctx.fillStyle="rgba(0,0,0,.28)";ctx.fill();
+      if(a===S.selArmy){ctx.lineWidth=2.6/S.zoom;ctx.strokeStyle="#fff";ctx.stroke()}
+      else if(a.nation===S.player){ctx.lineWidth=2/S.zoom;ctx.strokeStyle="#ffe9a0";ctx.stroke()}
+      ctx.imageSmoothingEnabled=false;
+      ctx.translate(pos.x,pos.y);if(flip)ctx.scale(-1,1);
+      ctx.drawImage(sheet.canvas,fr.sx,fr.sy,fr.sw,fr.sh,-Wd/2,-Hd*0.62,Wd,Hd);
+      ctx.restore();
+      if(cnt>0){
+        const bx=pos.x+half*0.42,by=pos.y+Hd*0.30;
+        ctx.beginPath();ctx.arc(bx,by,6,0,7);
+        ctx.fillStyle="rgba(20,24,28,.85)";ctx.fill();
+        ctx.lineWidth=1/S.zoom;ctx.strokeStyle=a===S.selArmy?"#fff":NATIONS[a.nation].color;ctx.stroke();
+        ctx.fillStyle="#fff";ctx.font="bold 8px Arial";ctx.fillText(cnt,bx,by+0.3);
+      }
+    }else{
+      const w=40,hh=26;
+      ctx.fillStyle=NATIONS[a.nation].color;
+      ctx.fillRect(pos.x-w/2,pos.y-hh/2,w,hh);
+      ctx.lineWidth=(a===S.selArmy?4.8:2)/Math.max(1,S.zoom*0.7);
+      ctx.strokeStyle=a===S.selArmy?"#fff":(a.nation===S.player?"#ffe9a0":"#15181c");
+      ctx.strokeRect(pos.x-w/2,pos.y-hh/2,w,hh);
+      ctx.fillStyle="#fff";ctx.font="bold 18px Arial";
+      ctx.fillText(cnt,pos.x,pos.y+1);
+    }
   }
+  ctx.imageSmoothingEnabled=smoothWas;
   requestAnimationFrame(draw);
 }
 
 export {
-  hex2rgb, provColor, paintAll, borderIsOuter, setBorderPx, borderIsWasteEdge, paintBorders, updateBordersAround, repaintProvince, roadCurve, drawRoads, fitCanvas, clampPan, armyPos, draw, drawArrow, drawEditorOverlay, NCOL, TCOL, WASTECOL, baseC, baseCtx, borderC, borderCtx, roadsC, canvas, baseData, borderData, selOutline
+  hex2rgb, provColor, paintAll, borderIsOuter, setBorderPx, borderIsWasteEdge, paintBorders, updateBordersAround, repaintProvince, roadCurve, drawRoads, fitCanvas, clampPan, armyPos, draw, drawArrow, drawEditorOverlay, NCOL, TCOL, WASTECOL, baseC, baseCtx, borderC, borderCtx, roadsC, canvas, baseData, borderData, selOutline, clearSelOutline
 };

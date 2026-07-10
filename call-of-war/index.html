@@ -11,7 +11,6 @@
   .res{display:flex;align-items:center;gap:4px;white-space:nowrap}
   .res b{color:#fff}
   .reslab{color:#9aa3ad;font-size:11px}
-  #nationChip{display:flex;align-items:center;gap:6px;font-weight:bold}
   .chip{width:14px;height:14px;border-radius:3px;border:1px solid #000;display:inline-block}
   #dateBox{margin-left:auto;color:#c9c2ae;white-space:nowrap}
   .spdBtn,.uiBtn{background:#343b43;border:1px solid #4a525b;color:#d8d4c8;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px}
@@ -104,13 +103,64 @@
   .btile .cost .no{color:#e08a7a}
   .btile .foot{font-size:10px;color:#9aa3ad;margin-top:2px}
   .btile .uni{color:#d8b25a;font-weight:bold}
+  /* menú del reino (arriba-izquierda, estilo EU4/5: escudo + botonera) */
+  #realmMenu{position:fixed;top:56px;left:10px;z-index:16;display:none;width:max-content;
+    background:linear-gradient(180deg,#2f353d,#23282e);border:1px solid #454d56;border-radius:8px;
+    box-shadow:0 4px 18px rgba(0,0,0,.45);padding:9px}
+  #realmMenu.show{display:block}
+  #realmMenu .rmRow{display:flex;align-items:center;gap:7px}
+  .rmShield{width:44px;height:53px;flex:0 0 auto;clip-path:polygon(0 0,100% 0,100% 62%,50% 100%,0 62%);
+    box-shadow:inset 0 2px 6px rgba(255,255,255,.18),inset 0 -6px 10px rgba(0,0,0,.35);
+    border:0;position:relative}
+  .rmShield::after{content:"";position:absolute;inset:0;clip-path:inherit;
+    background:linear-gradient(135deg,rgba(255,255,255,.22),rgba(0,0,0,.18))}
+  .rmBtn{background:#343b43;border:1px solid #4a525b;color:#d8d4c8;border-radius:5px;width:52px;height:53px;
+    padding:6px 3px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;flex:0 0 auto}
+  .rmBtn .ic{font-size:18px;line-height:1}
+  .rmBtn .lab{font-size:10px;letter-spacing:.2px}
+  .rmBtn:hover:not(:disabled){background:#414a54;border-color:#7fa56b}
+  .rmBtn:disabled{opacity:.4;cursor:not-allowed}
+  /* log de métricas del reino (arriba-derecha) */
+  #side .mlog{margin:-2px -2px 8px;padding:6px 8px;background:rgba(20,24,28,.5);border-radius:5px;
+    display:flex;align-items:center;gap:8px}
+  #side .mlog .sh{width:20px;height:24px;flex:0 0 auto;clip-path:polygon(0 0,100% 0,100% 62%,50% 100%,0 62%)}
+  #side .mlog b{color:#f0ece0}
+  #side .kpi{display:flex;justify-content:space-between;margin:2px 0;font-size:12px}
+  #side .kpi .v{font-weight:bold}
+  #side .armrow{display:flex;justify-content:space-between;align-items:center;margin:3px 0;gap:6px;
+    padding:3px 5px;border-radius:4px;cursor:pointer}
+  #side .armrow:hover{background:#31373e}
+  #side .armrow.sel{background:#3a463a;border:1px solid #6a7f4e;padding:2px 4px}
+  #side .armrow .comp{font-size:10px;color:#9aa3ad}
+  /* panel de ejército y reclutamiento (flotante, NO modal: deja jugar el mapa) */
+  #armyPanel{position:fixed;top:134px;left:10px;z-index:17;display:none;width:300px;max-height:calc(100% - 350px);
+    overflow-y:auto;background:linear-gradient(180deg,#2b3138,#22272d);border:1px solid #454d56;border-radius:8px;
+    box-shadow:0 6px 22px rgba(0,0,0,.5);padding:12px 14px}
+  #armyPanel.show{display:block}
+  .apHead{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .apHead span{font-size:17px;font-weight:bold;color:#e8e0c8}
+  .apClose{background:#343b43;border:1px solid #4a525b;color:#d8d4c8;border-radius:4px;cursor:pointer;padding:2px 9px;font-size:13px;line-height:1}
+  .apClose:hover{background:#414a54;border-color:#7fa56b}
+  #armyBody{display:flex;flex-direction:column;gap:12px}
+  #armyBody .col{min-width:0}
+  #armyBody h2{margin-top:0;font-size:14px;color:#c9c2ae;margin-bottom:6px;border-bottom:1px solid #3a4047;padding-bottom:3px}
+  .acard{background:#31373e;border:1px solid #454d56;border-radius:6px;padding:8px 10px;margin:6px 0}
+  .acard .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .acard .top b{color:#f0ece0}
+  .acard .comp{font-size:11px;color:#b8b2a4;margin-top:3px}
+  .acard .stat{font-size:11px;color:#9aa3ad;margin-top:2px}
+  .recSel{width:100%;background:#31373e;border:1px solid #4a525b;color:#e8e4d8;border-radius:4px;
+    padding:5px 6px;font-size:12px;margin:4px 0 8px}
+  .recrow{display:flex;justify-content:space-between;align-items:center;margin:4px 0;gap:8px}
+  .recrow .u{font-size:12px}
+  .recrow .u .sm{color:#9aa3ad;font-size:10px}
+  .recrow .cst{font-size:10px;color:#cbb98a}
 </style>
 </head>
 <body>
 <div id="loadMsg">Generando Europa, 11 de noviembre de 1444…</div>
 
 <div id="topbar">
-  <span id="nationChip"></span>
   <span id="resbar"></span>
   <span id="dateBox"></span>
   <button class="spdBtn" data-s="0">II</button>
@@ -123,6 +173,8 @@
   <button class="uiBtn" id="editBtn">Editor</button>
 </div>
 <div id="terrLegend" style="display:none"></div>
+
+<div id="realmMenu"></div>
 
 <div id="canvasWrap"><canvas id="map"></canvas></div>
 <div id="side"></div>
@@ -210,6 +262,11 @@
   </div>
 </div>
 
+<div id="armyPanel" style="display:none">
+  <div class="apHead"><span>⚔ Ejército</span><button class="apClose" onclick="closeArmyPanel()">✕</button></div>
+  <div id="armyBody"></div>
+</div>
+
 <div class="overlay" id="endOverlay" style="display:none">
   <div class="panel" style="text-align:center">
     <h1 id="endTitle"></h1>
@@ -220,6 +277,7 @@
 </div>
 
 <script src="mapdata.js"></script>
+<script src="places.js"></script>
 <script type="module" src="./js/main.js"></script>
 </body>
 </html>

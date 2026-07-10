@@ -2,17 +2,21 @@
 import { MH, MW, NATIONS, TERRAINS, TERRAIN_KEYS, newBuildings, terrainFx } from "./config.js";
 import { S } from "./state.js";
 import { generateRoads, rebuildProvinceData, roadKey } from "./mapgen.js";
-import { drawRoads, paintAll } from "./render.js";
+import { drawRoads, paintAll, repaintProvince, clearSelOutline } from "./render.js";
 import { buildSnapshot, loadProvMap, loadProvMapSnapshot } from "./save.js";
 import { setupNations } from "./sim.js";
 import { log, showNationPicker } from "./ui.js";
 
 function enterEditor(){
   S.editMode=true;S.shapeSel=-1;S.shapePoly=[];S.dragVi=-1;
-  S.editTool="shape";S.mergeFrom=-1;S.splitFrom=-1;S.roadFrom=-1;
+  S.editTool="shape";S.mergeFrom=-1;S.splitFrom=-1;S.roadFrom=-1;S.ownerPaint=-1;
   S.editBackup=buildSnapshot();S.editUndoStack=[];S.editDirty=false;
   document.getElementById("buildbar").style.display="none";
   document.getElementById("buildtabs").style.display="none";
+  document.getElementById("realmMenu").className="";
+  document.getElementById("side").style.display="none";
+  document.getElementById("armyPanel").style.display="none";
+  S.armyPanelOpen=false;
   S.speed=0;
   document.querySelectorAll(".spdBtn").forEach(x=>x.classList.toggle("active",x.dataset.s==="0"));
   document.getElementById("startOverlay").style.display="none";
@@ -28,7 +32,7 @@ function exitEditor(){
     }else return;
   }
   S.editMode=false;S.shapeSel=-1;S.shapePoly=[];S.dragVi=-1;
-  S.editTool="shape";S.mergeFrom=-1;S.splitFrom=-1;S.roadFrom=-1;
+  S.editTool="shape";S.mergeFrom=-1;S.splitFrom=-1;S.roadFrom=-1;S.ownerPaint=-1;
   document.getElementById("side").style.display="none";
   if(!S.started)showNationPicker();
 }
@@ -39,16 +43,29 @@ function pushUndo(){
 }
 function restoreWorldFromSnap(snap){
   S.provs=[];S.armies=[];S.wars=new Set();S.truces=new Map();S.armyIdSeq=1;
-  S.player=-1;S.hour=0;acc=0;S.started=false;S.gameOver=false;
-  S.selProv=-1;S.selArmy=null;S.battleFlash={};selOutline=null;selOutlineProv=-1;
+  S.player=-1;S.hour=0;S.acc=0;S.started=false;S.gameOver=false;
+  S.selProv=-1;S.selArmy=null;S.battleFlash={};clearSelOutline();
   S.shapeSel=-1;S.shapePoly=[];S.dragVi=-1;S.mergeFrom=-1;S.splitFrom=-1;S.roadFrom=-1;
-  document.getElementById("nationChip").innerHTML="";
+  S.armyPanelOpen=false;S.recruitProv=-1;
+  document.getElementById("realmMenu").className="";
+  document.getElementById("side").style.display="none";
   loadProvMap(snap);
   setupNations();
   if(!S.customRoads)generateRoads();
   paintAll();
   drawRoads();
   if(S.editMode)refreshEditorPanel();
+}
+// herramienta "Nación": reasigna el propietario de una provincia (para ajustar fronteras a mano).
+// Cambia owner y owner0 (owner0 es lo que persiste en el snapshot/export). Limpia el flag de
+// capital para no dejar una capital en manos ajenas (setupNations re-deriva capital al cargar).
+function setProvinceOwner(pid,nation){
+  const p=S.provs[pid];
+  if(!p||p.wasteland||nation<0||p.owner===nation)return;
+  pushUndo();
+  p.owner=nation;p.owner0=nation;p.capital=false;
+  repaintProvince(pid); // repinta el relleno y recalcula la frontera nacional alrededor
+  refreshEditorPanel();
 }
 function toggleRoadEdit(a,b){
   if(a===b||!S.adj[a].has(b)){log("Los caminos solo unen provincias adyacentes por tierra.");return}
@@ -193,7 +210,7 @@ function applyShape(pid,poly){
   rebuildProvinceData();
   paintAll();
   drawRoads(); // los centros de provincia pueden haberse movido
-  selOutline=null;selOutlineProv=-1;
+  clearSelOutline();
   if(blocked)log("Edición limitada: "+blocked+" provincia(s) vecina(s) no pueden quedar vacías.");
 }
 function mergeProvinces(a,b){
@@ -239,7 +256,7 @@ function mergeProvinces(a,b){
   }else generateRoads(); // los ids de provincia han cambiado
   paintAll();
   drawRoads();
-  selOutline=null;selOutlineProv=-1;
+  clearSelOutline();
   S.shapeSel=target;S.shapePoly=traceProvince(target);
   refreshEditorPanel();
   log(A.name+" fusionada con "+bName+".");
@@ -318,7 +335,7 @@ function splitProvince(pid,poly,vi,vj,forcedName){
   if(!S.customRoads)generateRoads(); // con red editada, los ids existentes siguen siendo válidos
   paintAll();
   drawRoads();
-  selOutline=null;selOutlineProv=-1;
+  clearSelOutline();
   S.shapeSel=np.id;S.shapePoly=traceProvince(np.id);
   refreshEditorPanel();
   log(src.name+" dividida: nace "+nm+".");
@@ -327,7 +344,7 @@ function refreshEditorPanel(){
   const el=document.getElementById("side");
   let h="<h2>Editor de provincias</h2>";
   const tb=(t,lab)=>"<button class='bbtn' style='flex:1"+(S.editTool===t?";outline:2px solid #9fb878":"")+"' onclick='setTool(\""+t+"\")'>"+lab+"</button>";
-  h+="<div class='row'>"+tb("shape","Formas")+tb("merge","Fusionar")+tb("split","Dividir")+tb("roads","Caminos")+"</div>";
+  h+="<div class='row'>"+tb("shape","Formas")+tb("merge","Fusionar")+tb("split","Dividir")+tb("roads","Caminos")+tb("owner","Nación")+"</div>";
   if(S.editTool==="shape"){
     h+="<p style='font-size:11px;color:#9aa3ad;line-height:1.5'>Clic: seleccionar provincia · arrastra un vértice para remodelar · clic sobre un borde: nuevo vértice · clic derecho en un vértice: borrarlo · Esc: deseleccionar. Los cambios se aplican al soltar, pero no se guardan hasta que pulses <b>Guardar cambios</b>.</p>";
   }else if(S.editTool==="merge"){
@@ -335,6 +352,14 @@ function refreshEditorPanel(){
   }else if(S.editTool==="roads"){
     h+="<p style='font-size:11px;color:#9aa3ad;line-height:1.5'>Arrastra entre dos provincias <b>adyacentes</b>: crea el camino si no existe y lo quita si ya existe. Los caminos se resaltan mientras esta herramienta está activa.</p>";
     h+="<div class='row sm'><span>Caminos en el mapa</span><b>"+S.roads.size+"</b></div>";
+  }else if(S.editTool==="owner"){
+    h+="<p style='font-size:11px;color:#9aa3ad;line-height:1.5'><b>Clic derecho</b> (o el primer clic izquierdo) en una provincia <b>elige su nación</b>; luego <b>clic izquierdo</b> en otras provincias para asignárselas. Ideal para ajustar fronteras. No se guarda hasta <b>Guardar cambios</b>.</p>";
+    if(S.ownerPaint>=0){
+      h+="<div class='row'><span>Pintando</span><span><span class='chip' style='background:"+NATIONS[S.ownerPaint].color+"'></span> <b>"+NATIONS[S.ownerPaint].name+"</b></span></div>";
+      h+="<div class='row'><button class='bbtn' style='width:100%' onclick='clearOwnerPaint()'>Cambiar país (elegir otro)</button></div>";
+    }else{
+      h+="<p style='font-size:11px;color:#d0a050'>Elige una nación: clic en cualquier provincia suya.</p>";
+    }
   }else{
     h+="<p style='font-size:11px;color:#9aa3ad;line-height:1.5'>"+(S.shapeSel>=0?
       "Arrastra desde un vértice hasta otro <b>no contiguo</b>: la provincia se corta por esa línea y el lado del arrastre se convierte en una provincia nueva.":
@@ -397,5 +422,5 @@ function nearestSegment(poly,wx,wy){
 }
 
 export {
-  enterEditor, exitEditor, pushUndo, restoreWorldFromSnap, toggleRoadEdit, dpSimplify, simplifyRing, traceProvince, applyShape, mergeProvinces, rasterPoly, keepLargestFragment, splitProvince, refreshEditorPanel, vertexAt, nearestSegment
+  enterEditor, exitEditor, pushUndo, restoreWorldFromSnap, toggleRoadEdit, setProvinceOwner, dpSimplify, simplifyRing, traceProvince, applyShape, mergeProvinces, rasterPoly, keepLargestFragment, splitProvince, refreshEditorPanel, vertexAt, nearestSegment
 };

@@ -84,12 +84,41 @@ function renderBuildTabs(){
   t.innerHTML=opts.map(o=>"<span class='btab"+(S.buildFilter===o[0]?" on":"")+"' onclick='setBuildCat(\""+o[0]+"\")'>"+o[1]+"</span>").join("");
   t.className="show";t.style.display="flex";
 }
+// ficha de solo lectura para una provincia ajena o impracticable (se gestiona abajo)
+function readonlyProvCard(p){
+  let s="<div class='bsum' style='flex:0 0 320px'><h4>"+p.name+(p.capital?" ★":"")+"</h4>";
+  if(p.wasteland){
+    s+="<div class='tl'>"+TERRAINS[p.terrain].label+"</div>";
+    s+="<div class='prow'><span class='dim'>Territorio impracticable: nadie puede reclamarlo ni atravesarlo.</span></div>";
+    return s+"</div>";
+  }
+  s+="<div class='tl'>"+(p.urban?"Ciudad":RES_LABEL[p.resType])+" · "+TERRAINS[p.terrain].label+" · moral "+Math.round(p.morale)+"%</div>";
+  s+="<div class='prow'><span>Nación</span><b><span class='chip' style='background:"+NATIONS[p.owner].color+"'></span> "+NATIONS[p.owner].name+"</b></div>";
+  s+="<div class='prow'><span class='dim'>"+terrainFx(p.terrain)+"</span></div>";
+  const blist=Object.keys(BUILDINGS).filter(b=>lvlOf(p,b)>0);
+  if(blist.length){
+    s+="<div class='bsec'>Construcciones</div>";
+    for(const b of blist)s+="<div class='prow'><span>"+BUILDINGS[b].icon+" "+BUILDINGS[b].label+"</span><b>"+(BUILDINGS[b].unique?"✓":lvlOf(p,b))+"</b></div>";
+  }
+  const here=armiesIn(p.id);
+  if(here.length){
+    s+="<div class='bsec'>Ejércitos</div>";
+    for(const a of here)s+="<div class='prow'><span><span class='chip' style='background:"+NATIONS[a.nation].color+"'></span> "+
+      Math.round(armyCount(a))+" u</span><b class='dim'>"+NATIONS[a.nation].name+"</b></div>";
+  }
+  return s+"</div>";
+}
 function refreshBuildBar(){
   const bar=document.getElementById("buildbar"),tabs=document.getElementById("buildtabs");
   const hide=()=>{bar.className="";bar.style.display="none";tabs.className="";tabs.style.display="none"};
   if(S.selArmy||S.selProv<0){hide();return}
   const p=S.provs[S.selProv];
-  if(p.owner!==S.player||p.wasteland){hide();return}
+  if(p.owner!==S.player||p.wasteland){
+    tabs.className="";tabs.style.display="none";
+    bar.innerHTML=readonlyProvCard(p);
+    bar.className="show";bar.style.display="flex";
+    return;
+  }
   renderBuildTabs();
   const scroll=bar.scrollLeft;
   // desglose de ingresos y gastos de la provincia (de dónde proviene cada cosa)
@@ -118,6 +147,25 @@ function refreshBuildBar(){
   for(const k of nk)s+=row(RES_ICON[k]+" "+RES_LABEL[k],(bd.net[k]>=0?"+":"")+n1(bd.net[k]),bd.net[k]<0?"neg":"pos");
   const dm=provDefMul(p);
   if(dm>1)s+=row("🏰 Defensa","+"+Math.round((dm-1)*100)+"%","");
+  // Caminos: enlaces a provincias propias adyacentes (se gestionan aquí, en el panel de provincia)
+  s+="<div class='bsec'>Caminos</div>";
+  let anyRoad=false;
+  for(const b of S.adj[p.id]){
+    if(S.provs[b].owner!==S.player)continue;
+    anyRoad=true;
+    const kmR=Math.round(kmBetween(p,S.provs[b]));
+    if(hasRoad(p.id,b)){
+      s+="<div class='prow'><span>→ "+S.provs[b].name+"</span><b class='dim'>camino</b></div>";
+    }else if(S.roadQueue.some(q=>q.key===roadKey(p.id,b))){
+      const q=S.roadQueue.find(q=>q.key===roadKey(p.id,b));
+      s+="<div class='prow'><span>→ "+S.provs[b].name+"</span><b class='dim'>obra "+fmtDur(q.hoursLeft)+"</b></div>";
+    }else{
+      const dis=!canAfford(S.player,{dinero:800,materiales:1200});
+      s+="<div class='prow'><span>→ "+S.provs[b].name+" ("+kmR+" km)</span>"+
+        "<button class='bbtn' "+(dis?"disabled":"")+" title='800 Ducados, 1200 Madera — 6 meses' onclick='tryRoad("+p.id+","+b+")'>Camino</button></div>";
+    }
+  }
+  if(!anyRoad)s+="<div class='prow'><span class='dim'>Sin provincias propias adyacentes.</span></div>";
   s+="</div>";
   // tarjetas de la categoría activa (o todas si el filtro es "Todos")
   const showAll=S.buildFilter==="all";
@@ -161,95 +209,104 @@ function refreshBuildBar(){
   bar.className="show";bar.style.display="flex";
   bar.scrollLeft=scroll;
 }
-function refreshSide(){
-  refreshBuildBar();
+// menú del reino (arriba-izquierda, estilo EU4): escudo + botonera de ajustes del reino
+function buildRealmMenu(){
+  if(S.player<0)return;
+  const el=document.getElementById("realmMenu");
+  const N=NATIONS[S.player];
+  const btns=[
+    {ic:"⚔",lab:"Ejército",on:"openArmyPanel()"},
+    {ic:"🏛",lab:"Corte",dis:1},
+    {ic:"📜",lab:"Leyes",dis:1},
+    {ic:"⛪",lab:"Iglesia",dis:1}
+  ];
+  el.innerHTML="<div class='rmRow'><span class='rmShield' style='background:"+N.color+"' title='"+N.name+"'></span>"+
+    btns.map(b=>"<button class='rmBtn'"+
+      (b.dis?" disabled title='Próximamente'":" onclick='"+b.on+"'")+">"+
+      "<span class='ic'>"+b.ic+"</span><span class='lab'>"+b.lab+"</span></button>").join("")+"</div>";
+  el.className="show";
+}
+// log de métricas del reino (arriba-derecha, fijo): KPIs de tesorería + ejércitos desplegados
+function refreshMetricsLog(){
   const el=document.getElementById("side");
-  if(S.selArmy){
+  if(S.player<0||!S.started){el.style.display="none";return}
+  const ne=nationEconomy(S.player),N=NATIONS[S.player];
+  let h="<div class='mlog'><span class='sh' style='background:"+N.color+"'></span>"+
+    "<div><b>"+N.name+"</b><div style='color:#9aa3ad;font-size:11px'>"+ne.provs+" provincias · "+ne.troops+" tropas</div></div></div>";
+  h+="<h3>Tesorería del reino <span style='color:#7a828b;font-weight:normal'>/mes</span></h3>";
+  const ks=Object.keys(ne.res).filter(k=>Math.abs(ne.res[k])>0.05).sort((a,b)=>ne.res[b]-ne.res[a]);
+  if(!ks.length)h+="<div class='kpi'><span class='dim' style='color:#7a828b'>Sin balance neto.</span></div>";
+  for(const k of ks){const v=ne.res[k];
+    h+="<div class='kpi'><span>"+RES_ICON[k]+" "+RES_LABEL[k]+"</span><span class='v' style='color:"+(v<0?"#e08a7a":"#8fce7e")+"'>"+(v>=0?"+":"")+n1(v)+"</span></div>";}
+  const mine=S.armies.filter(a=>a.nation===S.player);
+  h+="<h3>Ejércitos desplegados <span style='color:#7a828b;font-weight:normal'>"+mine.length+"</span></h3>";
+  if(!mine.length)h+="<div class='kpi'><span style='color:#7a828b'>Ninguno. Recluta en ⚔ Ejército.</span></div>";
+  for(const a of mine){
+    const sel=S.selArmy&&S.selArmy.id===a.id;
+    const loc=a.path.length?"→ "+S.provs[a.path[a.path.length-1]].name:S.provs[a.prov].name;
+    const comp=Object.keys(a.units).filter(k=>a.units[k]>0.5).map(k=>Math.round(a.units[k])+" "+UNITS[k].label).join(", ");
+    h+="<div class='armrow"+(sel?" sel":"")+"' onclick='selectArmyId("+a.id+")'>"+
+      "<div><b>"+Math.round(armyCount(a))+" u</b> <span class='comp'>· "+loc+"</span><div class='comp'>"+comp+"</div></div>"+
+      "<span class='comp'>"+armySpd(a)+" km/d</span></div>";
+  }
+  if(S.selArmy&&S.selArmy.nation===S.player){
     const a=S.selArmy;
-    let h="<h2>Ejército de "+NATIONS[a.nation].name+"</h2>";
-    h+="<div class='row'><span>Posición</span><b>"+S.provs[a.prov].name+"</b></div>";
-    h+="<h3>Composición</h3>";
-    for(const k in a.units)h+="<div class='row'><span>"+UNITS[k].label+"</span><b>"+Math.round(a.units[k])+"</b></div>";
-    h+="<div class='row sm'><span>Ataque "+armyAtk(a).toFixed(1)+" · Defensa "+armyDef(a).toFixed(1)+"</span><span>"+armySpd(a)+" km/día</span></div>";
-    if(a.path.length)h+="<div class='row'><span class='sm'>En marcha hacia "+S.provs[a.path[a.path.length-1]].name+"</span>"+
-      (a.nation===S.player?"<button class='bbtn red' onclick='haltArmy()'>Detener</button>":"")+"</div>";
-    else h+="<p class='sm' style='margin-top:6px;color:#9aa3ad'>Clic derecho en una provincia para mover.</p>";
-    el.innerHTML=h;el.style.display="block";return;
-  }
-  if(S.selProv<0){el.style.display="none";return}
-  const p=S.provs[S.selProv];
-  if(p.wasteland){
-    el.innerHTML="<h2>"+p.name+"</h2>"+
-      "<div class='row'><span>Terreno</span><b>"+TERRAINS[p.terrain].label+"</b></div>"+
-      "<p class='sm' style='color:#9aa3ad;margin-top:6px'>Territorio impracticable: nadie puede reclamarlo ni atravesarlo.</p>";
-    el.style.display="block";return;
-  }
-  const own=p.owner===S.player;
-  let h="<h2>"+p.name+(p.capital?" ★":"")+"</h2>";
-  h+="<div class='row'><span>Nación</span><span><span class='chip' style='background:"+NATIONS[p.owner].color+"'></span> "+NATIONS[p.owner].name+"</span></div>";
-  h+="<div class='row'><span>Recurso</span><b>"+(p.resType==="dinero"?"Ciudad (Ducados)":RES_LABEL[p.resType])+"</b></div>";
-  h+="<div class='row'><span>Terreno</span><b title='"+terrainFx(p.terrain)+"'>"+TERRAINS[p.terrain].label+"</b></div>";
-  h+="<div class='row sm'><span>"+terrainFx(p.terrain)+"</span></div>";
-  h+="<div class='row'><span>Moral</span><b>"+Math.round(p.morale)+"%</b></div>";
-  if(own){
-    const ne=nationEconomy(S.player);
-    h+="<h3>Tesorería del reino</h3>";
-    h+="<div class='row sm'><span>"+ne.provs+" provincias · mantiene "+ne.troops+" tropas</span></div>";
-    const ks=Object.keys(ne.res).filter(k=>Math.abs(ne.res[k])>0.05).sort((a,b)=>ne.res[b]-ne.res[a]);
-    for(const k of ks){const v=ne.res[k];
-      h+="<div class='row'><span>"+RES_ICON[k]+" "+RES_LABEL[k]+"</span><b style='color:"+(v<0?"#e08a7a":"#8fce7e")+"'>"+(v>=0?"+":"")+n1(v)+"/mes</b></div>";}
-    if(p.buildQueue.length)h+="<div class='row sm'><span>En obra: "+BUILDINGS[p.buildQueue[0].b].label+"</span><span>"+fmtDur(p.buildQueue[0].hoursLeft)+"</span></div>";
-    h+="<p class='sm' style='color:#9aa3ad;margin-top:3px'>Gestiona los edificios en la barra inferior ↓</p>";
-  }else{
-    const blist=Object.keys(BUILDINGS).filter(b=>lvlOf(p,b)>0);
-    if(blist.length){
-      h+="<h3>Construcciones enemigas</h3>";
-      for(const b of blist)h+="<div class='row sm'><span>"+BUILDINGS[b].icon+" "+BUILDINGS[b].label+"</span><b>"+(BUILDINGS[b].unique?"✓":lvlOf(p,b))+"</b></div>";
-    }
-  }
-  if(own){
-    h+="<h3>Caminos</h3>";
-    let anyRoadRow=false;
-    for(const b of S.adj[p.id]){
-      if(S.provs[b].owner!==S.player)continue;
-      anyRoadRow=true;
-      const kmR=Math.round(kmBetween(p,S.provs[b]));
-      if(hasRoad(p.id,b)){
-        h+="<div class='row sm'><span>→ "+S.provs[b].name+" ("+kmR+" km)</span><span>camino</span></div>";
-      }else if(S.roadQueue.some(q=>q.key===roadKey(p.id,b))){
-        const q=S.roadQueue.find(q=>q.key===roadKey(p.id,b));
-        h+="<div class='row sm'><span>→ "+S.provs[b].name+"</span><span>en obra ("+fmtDur(q.hoursLeft)+")</span></div>";
-      }else{
-        const dis=!canAfford(S.player,{dinero:800,materiales:1200});
-        h+="<div class='row'><span class='sm'>→ "+S.provs[b].name+" ("+kmR+" km)</span>"+
-          "<button class='bbtn' "+(dis?"disabled":"")+" title='800 Ducados, 1200 Madera — 6 meses' onclick='tryRoad("+p.id+","+b+")'>Camino</button></div>";
-      }
-    }
-    if(!anyRoadRow)h+="<p class='sm' style='color:#9aa3ad'>Sin provincias propias adyacentes.</p>";
-    h+="<h3>Reclutamiento</h3>";
-    for(const u in UNITS){
-      const U=UNITS[u];
-      let okReq=true;
-      for(const r in U.req)if(p.buildings[r]<U.req[r])okReq=false;
-      if(!okReq)continue;
-      const dis=!canAfford(S.player,U.cost)||S.nations[S.player].mano<U.mano;
-      h+="<div class='row'><span>"+U.label+" <span class='sm'>("+fmtDur(recruitTime(p,u))+")</span></span>"+
-        "<button class='bbtn' "+(dis?"disabled":"")+" title='"+costStr(U.cost,U.mano)+"' onclick='tryRecruit("+p.id+",\""+u+"\")'>Reclutar</button></div>";
-    }
-    if(p.recruitQueue.length){
-      h+="<div class='row sm'><span>En cola: "+p.recruitQueue.map(q=>UNITS[q.u].label).join(", ")+"</span><span>"+fmtDur(p.recruitQueue[0].hoursLeft)+"</span></div>";
-    }
-  }
-  const here=armiesIn(p.id);
-  if(here.length){
-    h+="<h3>Ejércitos</h3>";
-    for(const a of here){
-      h+="<div class='row'><span><span class='chip' style='background:"+NATIONS[a.nation].color+"'></span> "+
-        Math.round(armyCount(a))+" unidades</span>"+
-        (a.nation===S.player?"<button class='bbtn' onclick='selectArmyId("+a.id+")'>Seleccionar</button>":"")+"</div>";
-    }
+    h+="<h3>Ejército seleccionado</h3>";
+    h+="<div class='kpi'><span>Ataque "+armyAtk(a).toFixed(1)+" · Def "+armyDef(a).toFixed(1)+"</span><span class='v'>"+armySpd(a)+" km/d</span></div>";
+    if(a.path.length)h+="<div class='row'><span class='sm'>En marcha → "+S.provs[a.path[a.path.length-1]].name+"</span><button class='bbtn red' onclick='haltArmy()'>Detener</button></div>";
+    else h+="<div class='kpi'><span style='color:#7a828b'>Clic derecho en el mapa para mover.</span></div>";
   }
   el.innerHTML=h;el.style.display="block";
+}
+// panel de Ejército (overlay): ejércitos del reino + reclutamiento global con selector de provincia
+function refreshArmyPanel(){
+  if(!S.armyPanelOpen)return;
+  const el=document.getElementById("armyBody");
+  const mine=S.armies.filter(a=>a.nation===S.player);
+  let L="<div class='col'><h2>Tus ejércitos ("+mine.length+")</h2>";
+  if(!mine.length)L+="<p class='sm' style='color:#9aa3ad'>No tienes ejércitos. Recluta unidades a la derecha; al completarse aparecerán en su provincia.</p>";
+  for(const a of mine){
+    const loc=a.path.length?"en marcha → "+S.provs[a.path[a.path.length-1]].name:"en "+S.provs[a.prov].name;
+    const comp=Object.keys(a.units).filter(k=>a.units[k]>0.5).map(k=>Math.round(a.units[k])+"× "+UNITS[k].label).join(", ")||"—";
+    L+="<div class='acard'><div class='top'><b>"+Math.round(armyCount(a))+" unidades</b>"+
+      "<button class='bbtn' onclick='selectArmyId("+a.id+");closeArmyPanel()'>Seleccionar</button></div>"+
+      "<div class='comp'>"+comp+"</div>"+
+      "<div class='stat'>"+loc+" · Ataque "+armyAtk(a).toFixed(1)+" · Defensa "+armyDef(a).toFixed(1)+" · "+armySpd(a)+" km/día</div></div>";
+  }
+  L+="</div>";
+  const provs=S.provs.filter(p=>p.owner===S.player&&!p.wasteland).sort((a,b)=>a.name.localeCompare(b.name));
+  if(S.recruitProv<0||!provs.some(p=>p.id===S.recruitProv))S.recruitProv=provs.length?provs[0].id:-1;
+  let R="<div class='col'><h2>Reclutamiento</h2>";
+  if(!provs.length)R+="<p class='sm' style='color:#9aa3ad'>Sin provincias donde reclutar.</p>";
+  else{
+    R+="<select class='recSel' onchange='setRecruitProv(this.value)'>"+
+      provs.map(p=>"<option value='"+p.id+"'"+(p.id===S.recruitProv?" selected":"")+">"+p.name+(p.capital?" ★":"")+"</option>").join("")+"</select>";
+    const p=S.provs[S.recruitProv];
+    let any=false;
+    for(const u in UNITS){
+      const U=UNITS[u];
+      let okReq=true;for(const r in U.req)if(p.buildings[r]<U.req[r])okReq=false;
+      if(!okReq)continue;
+      any=true;
+      const dis=!canAfford(S.player,U.cost)||S.nations[S.player].mano<U.mano;
+      R+="<div class='recrow'><span class='u'>"+U.label+" <span class='sm'>("+fmtDur(recruitTime(p,u))+")</span>"+
+        "<div class='cst'>"+costStr(U.cost,U.mano)+"</div></span>"+
+        "<button class='bbtn' "+(dis?"disabled":"")+" onclick='tryRecruit("+p.id+",\""+u+"\")'>Reclutar</button></div>";
+    }
+    if(!any)R+="<p class='sm' style='color:#9aa3ad'>Esta provincia aún no puede reclutar: construye un Cuartel de levas.</p>";
+    if(p.recruitQueue.length){
+      R+="<h3 style='color:#c9c2ae;font-size:13px;margin:12px 0 4px;border-bottom:1px solid #3a4047;padding-bottom:2px'>En cola</h3>";
+      for(const q of p.recruitQueue)R+="<div class='recrow'><span class='u'>"+UNITS[q.u].label+"</span><span class='cst'>"+fmtDur(q.hoursLeft)+"</span></div>";
+    }
+  }
+  R+="</div>";
+  el.innerHTML=L+R;
+}
+// orquestador: refresca el log de métricas (dcha), la barra de provincia (abajo) y el panel de ejército
+function refreshSide(){
+  refreshMetricsLog();
+  refreshBuildBar();
+  refreshArmyPanel();
 }
 function refreshDiplomacy(){
   let h="<table class='dip'><tr><th>Nación</th><th>Provincias</th><th>Fuerza</th><th>Estado</th><th></th></tr>";
@@ -294,9 +351,9 @@ function showNationPicker(){
     S.player=+c.dataset.n;
     S.nations[S.player].ai=false;
     document.getElementById("startOverlay").style.display="none";
-    document.getElementById("nationChip").innerHTML=
-      "<span class='chip' style='background:"+NATIONS[S.player].color+"'></span>"+NATIONS[S.player].name;
     S.started=true;
+    S.recruitProv=S.nations[S.player].capital;
+    buildRealmMenu();
     const cap=S.provs[S.nations[S.player].capital];
     S.panX=canvas.width/2-cap.x*S.zoom;S.panY=canvas.height/2-cap.y*S.zoom;clampPan();
     S.selProv=cap.id;refreshSide();refreshTop();
@@ -306,5 +363,5 @@ function showNationPicker(){
 }
 
 export {
-  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, showNationPicker
+  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, showNationPicker, buildRealmMenu, refreshMetricsLog, refreshArmyPanel
 };

@@ -7,14 +7,16 @@ export const S = {
   provs: [], provIdx: null, pixOfProv: [], borderPxOfProv: [], adj: [], seaAdj: [],
   nations: [], armies: [], wars: new Set(), truces: new Map(), armyIdSeq: 1,
   roads: new Set(), roadQueue: [], customRoads: false,
-  player: -1, hour: 0, speed: 1, started: false, gameOver: false,
+  player: -1, hour: 0, acc: 0, speed: 1, started: false, gameOver: false,
   selProv: -1, selArmy: null, battleFlash: {},
   // vista (compartida por render, entrada y guardado)
   zoom: 1, panX: 0, panY: 0, terrainView: false,
   // editor (compartido por editor, entrada y render del overlay)
   editMode: false, shapeSel: -1, shapePoly: [], dragVi: -1, editTool: "shape",
   mergeFrom: -1, mergeCur: null, splitFrom: -1, splitCur: null,
-  roadFrom: -1, roadCur: null, dragWas: null, dragIns: false,
+  roadFrom: -1, roadCur: null, dragWas: null, dragIns: false, ownerPaint: -1,
   buildFilter: "eco",
+  // panel de reino / ejército (arriba-izquierda estilo EU4)
+  recruitProv: -1, armyPanelOpen: false,
   editUndoStack: [], editBackup: null, editDirty: false
 };
