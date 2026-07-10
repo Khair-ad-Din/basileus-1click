@@ -1,15 +1,21 @@
 // sim.js
 import { BUILDINGS, NATIONS, NEUTRAL, NPLAY, RES_KEYS, START_STOCK, TERRAINS, UNITS } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyDef, armyHp, armySpd, buildBlock, buildMax, canAfford, costFor, lvlOf, nationProvCount, nationStrength, pay, provDefMul, provEconomy, recruitTime, timeFor } from "./economy.js";
+import { armyAtk, armyCount, armyDef, armyHp, armySpd, buildBlock, buildMax, canAfford, costFor, lvlOf, nationProvCount, nationStrength, pay, provDefMul, provEconomy, recruitTime, soldAvail, soldCap, timeFor } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
 import { drawRoads, repaintProvince } from "./render.js";
 import { saveGame } from "./save.js";
 import { log, refreshBuildBar, refreshSide, refreshTop } from "./ui.js";
 
+// POPs Fase 1: 1 tick = 1 hora de juego (8760/año). Ver [[basileus-pop-economy-vision]].
+const POP_GROWTH_TICK=0.006/8760; // crecimiento base ~0.6%/año; la Fase 2 lo ligará al excedente de comida
+const SOLD_REGEN=0.0012;          // la soldadesca recupera este % del hueco hasta su techo, por tick
+
 function setupNations(){
   S.nations=NATIONS.map((n,i)=>({idx:i,res:Object.fromEntries(RES_KEYS.map(k=>[k,START_STOCK[k]||0])),
-    mano:3000,ai:true,capital:-1,alive:!n.neutral,lastAI:0,startProvs:0}));
+    ai:true,capital:-1,alive:!n.neutral,lastAI:0,startProvs:0}));
+  // sembrar la soldadesca de cada provincia a su techo (cupo movilizable inicial)
+  for(const p of S.provs)if(!p.wasteland&&p.owner<NPLAY)p.sold=soldCap(p);
   // capitales históricas (marcadas por las ciudades del mapa) y tropas iniciales
   for(let n=0;n<NPLAY;n++){
     let cap=-1;
@@ -64,7 +70,11 @@ function setupNations(){
   }
 }
 function spawnArmy(nation,prov,units){
-  const a={id:S.armyIdSeq++,nation,prov,units:Object.assign({},units),path:[],legDone:0,legTotal:0};
+  // a.src = mapa provincia->pops que la componen (para que las bajas resten pop a su origen)
+  const src={};
+  let w=0;for(const k in units)w+=units[k]*(UNITS[k].mano||0);
+  if(w>0)src[prov]=w;
+  const a={id:S.armyIdSeq++,nation,prov,units:Object.assign({},units),src,path:[],legDone:0,legTotal:0};
   S.armies.push(a);
   return a;
 }
@@ -175,7 +185,6 @@ function hourTick(){
       if(p.owner!==n)continue;
       const e=provEconomy(p);
       for(const k in e.res)R[k]+=e.res[k];
-      S.nations[n].mano=Math.min(99999,S.nations[n].mano+e.mano);
       // moral: recuperación lenta hacia su techo (100 + fe/prestigio)
       let mreg=0.004;
       for(const b in BUILDINGS){const fx=BUILDINGS[b].fx;if(fx.moral)mreg+=fx.moral*lvlOf(p,b)}
@@ -188,6 +197,15 @@ function hourTick(){
     R.dinero-=0.6*troops;
     R.comida-=0.5*troops;
     for(const k of RES_KEYS)if(R[k]<0)R[k]=0; // ningún recurso baja de 0 (impagos = escasez)
+  }
+  // 1b. población y soldadesca (por provincia): la gente crece y el cupo movilizable se recupera
+  for(const p of S.provs){
+    if(p.wasteland)continue;
+    p.pop=(p.pop||0)*(1+POP_GROWTH_TICK);           // crecimiento demográfico
+    if(p.owner<NPLAY){
+      const cap=soldCap(p),s=p.sold!=null?p.sold:cap;
+      p.sold=s+(cap-s)*SOLD_REGEN;                   // la soldadesca tiende a su techo (= %pop)
+    }
   }
   // 2. construcción
   for(const p of S.provs){
@@ -206,6 +224,7 @@ function hourTick(){
           let a=S.armies.find(x=>x.nation===q.nation&&x.prov===p.id&&x.path.length===0);
           if(!a)a=spawnArmy(q.nation,p.id,{});
           a.units[q.u]=(a.units[q.u]||0)+1;
+          a.src=a.src||{};a.src[p.id]=(a.src[p.id]||0)+(UNITS[q.u].mano||0); // pops que aporta esta provincia
           if(q.nation===S.player)log(UNITS[q.u].label+" reclutado en "+p.name+".");
         }
       }
@@ -299,9 +318,17 @@ function resolveBattles(){
 function applyDamage(list,dmg,totalHp){
   if(totalHp<=0)return;
   const frac=Math.min(0.9,dmg/totalHp);
-  for(const a of list)for(const k in a.units){
-    a.units[k]*=(1-frac);
-    if(a.units[k]<0.05)delete a.units[k];
+  for(const a of list){
+    // los caídos se restan PARA SIEMPRE de la población de las provincias que los aportaron
+    if(a.src)for(const pid in a.src){
+      const loss=a.src[pid]*frac;
+      const P=S.provs[pid];if(P&&!P.wasteland)P.pop=Math.max(0,(P.pop||0)-loss);
+      a.src[pid]-=loss;
+    }
+    for(const k in a.units){
+      a.units[k]*=(1-frac);
+      if(a.units[k]<0.05)delete a.units[k];
+    }
   }
 }
 function mergeIdle(){
@@ -313,6 +340,7 @@ function mergeIdle(){
     if(key.has(k)){
       const t=key.get(k);
       for(const u in a.units)t.units[u]=(t.units[u]||0)+a.units[u];
+      if(a.src){t.src=t.src||{};for(const pid in a.src)t.src[pid]=(t.src[pid]||0)+a.src[pid]}
       if(S.selArmy===a)S.selArmy=t;
       S.armies.splice(i,1);
     }else key.set(k,a);
@@ -351,8 +379,8 @@ function aiTurn(n){
       if(p.buildings.fabrica>=3&&S.rand()<0.3)u="blindadoMedio";
       else if(p.buildings.fabrica>=1&&S.rand()<0.35)u="blindadoLigero";
       else if(p.buildings.fabrica>=2&&S.rand()<0.3)u="artilleria";
-      if(canAfford(n,UNITS[u].cost)&&N.mano>=UNITS[u].mano){
-        pay(n,UNITS[u].cost);N.mano-=UNITS[u].mano;
+      if(canAfford(n,UNITS[u].cost)&&soldAvail(p)>=UNITS[u].mano){
+        pay(n,UNITS[u].cost);p.sold=soldAvail(p)-UNITS[u].mano;
         p.recruitQueue.push({u,nation:n,hoursLeft:recruitTime(p,u)});
         break;
       }
@@ -462,8 +490,8 @@ function tryRecruit(pid,u){
   if(p.owner!==S.player)return;
   const U=UNITS[u];
   for(const r in U.req)if(p.buildings[r]<U.req[r])return;
-  if(!canAfford(S.player,U.cost)||S.nations[S.player].mano<U.mano)return;
-  pay(S.player,U.cost);S.nations[S.player].mano-=U.mano;
+  if(!canAfford(S.player,U.cost)||soldAvail(p)<U.mano)return;
+  pay(S.player,U.cost);p.sold=soldAvail(p)-U.mano;
   p.recruitQueue.push({u,nation:S.player,hoursLeft:recruitTime(p,u)});
   refreshSide();refreshTop();
 }

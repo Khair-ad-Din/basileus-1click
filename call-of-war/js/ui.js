@@ -1,7 +1,7 @@
 // ui.js
 import { START_DATE, MESES, BUILDINGS, BUILD_CATS, NATIONS, NPLAY, RES_ICON, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, terrainFx } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyDef, armySpd, buildBlock, buildMax, canAfford, costFor, lvlOf, nationEconomy, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitTime, timeFor } from "./economy.js";
+import { armyAtk, armyCount, armyDef, armySpd, buildBlock, buildMax, canAfford, costFor, lvlOf, nationEconomy, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitTime, soldAvail, soldCap, timeFor } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
 import { canvas, clampPan } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
@@ -31,7 +31,7 @@ function buildResBar(){
   let h=RES_STRAT.map(k=>cell(k,"strat")).join("");
   h+="<span class='sep'></span>";
   h+=RES_TRADE.map(k=>cell(k,"trade")).join("");
-  h+="<span class='sep'></span><span class='res' title='Mano de obra'><span class='ic'>👥</span><b id='r_mano'>0</b></span>";
+  h+="<span class='sep'></span><span class='res' title='Soldadesca del reino (cupo movilizable disponible)'><span class='ic'>👥</span><b id='r_mano'>0</b></span>";
   bar.innerHTML=h;bar.dataset.built="1";
 }
 function refreshTop(){
@@ -46,7 +46,8 @@ function refreshTop(){
     el.title=RES_LABEL[k]+": "+(g>=0?"+":"")+(Math.round(g*10)/10)+"/mes";
     el.style.color=g<-0.05?"#e08a7a":"#fff";
   }
-  document.getElementById("r_mano").textContent=fmt(S.nations[S.player].mano);
+  let realmSold=0;for(const p of S.provs)if(p.owner===S.player&&!p.wasteland)realmSold+=soldAvail(p);
+  document.getElementById("r_mano").textContent=fmt(realmSold);
   const d=new Date(START_DATE+S.hour*3600e3);
   document.getElementById("dateBox").textContent=
     "Día "+(1+(S.hour/24|0))+" · "+d.getUTCDate()+" "+MESES[d.getUTCMonth()]+" "+d.getUTCFullYear()+
@@ -55,7 +56,7 @@ function refreshTop(){
 function costStr(cost,mano){
   const parts=[];
   for(const k in cost)parts.push(fmt(cost[k])+" "+RES_LABEL[k]);
-  if(mano)parts.push(mano+" MO");
+  if(mano)parts.push(mano+" soldadesca");
   return parts.join(", ");
 }
 function n1(v){return (Math.round(v*10)/10).toString().replace(/\.0$/,"")}
@@ -64,7 +65,7 @@ function fxText(B){
   if(fx.prodAdd)for(const k in fx.prodAdd)t.push("+"+n1(fx.prodAdd[k])+" "+RES_SHORT[k]);
   if(fx.prodMul)t.push("+"+Math.round(fx.prodMul*100)+"% prod");
   if(fx.goldAdd)t.push("+"+n1(fx.goldAdd)+" Duc");
-  if(fx.mano)t.push("+"+n1(fx.mano)+" MO");
+  if(fx.mano)t.push("+"+Math.round(fx.mano*100)+"% soldadesca");
   if(fx.def)t.push("+"+Math.round(fx.def*100)+"% defensa");
   if(fx.moral)t.push("+moral");
   if(fx.realmMoral)t.push("+moral del reino");
@@ -129,12 +130,11 @@ function refreshBuildBar(){
   let s="<div class='bsum'><h4>"+p.name+(p.capital?" ★":"")+"</h4>"+
     "<div class='tl'>"+(p.urban?"Ciudad":RES_LABEL[p.resType])+" · "+TERRAINS[p.terrain].label+
     " · moral "+Math.round(p.morale)+"%</div>"+
-    "<div class='tl'>👥 "+fmtPop(p.pop)+" habitantes</div>";
+    "<div class='tl'>👥 "+fmtPop(p.pop)+" hab · ⚔ "+fmtPop(soldAvail(p))+"/"+fmtPop(soldCap(p))+" soldadesca</div>";
   // Ingresos (por fuente), en /mes
   s+="<div class='bsec'>Ingresos <span class='u'>/mes</span></div>";
   for(const it of bd.income){if(it.amt<0.005)continue;
     s+=row(RES_ICON[it.res]+" "+it.label,"+"+n1(it.amt),"pos");}
-  if(bd.mano>0.005)s+=row("👥 Mano de obra","+"+n1(bd.mano),"pos");
   // Mantenimiento (anual), por edificio
   s+="<div class='bsec'>Mantenimiento <span class='u'>/año</span></div>";
   let anyUp=false;
@@ -286,13 +286,14 @@ function refreshArmyPanel(){
     R+="<select class='recSel' onchange='setRecruitProv(this.value)'>"+
       provs.map(p=>"<option value='"+p.id+"'"+(p.id===S.recruitProv?" selected":"")+">"+p.name+(p.capital?" ★":"")+"</option>").join("")+"</select>";
     const p=S.provs[S.recruitProv];
+    R+="<div class='sm' style='margin:4px 0 6px;color:#c9c2ae'>⚔ Soldadesca disponible: <b>"+fmtPop(soldAvail(p))+"</b> / "+fmtPop(soldCap(p))+" <span style='color:#9aa3ad'>(de "+fmtPop(p.pop)+" hab)</span></div>";
     let any=false;
     for(const u in UNITS){
       const U=UNITS[u];
       let okReq=true;for(const r in U.req)if(p.buildings[r]<U.req[r])okReq=false;
       if(!okReq)continue;
       any=true;
-      const dis=!canAfford(S.player,U.cost)||S.nations[S.player].mano<U.mano;
+      const dis=!canAfford(S.player,U.cost)||soldAvail(p)<U.mano;
       R+="<div class='recrow'><span class='u'>"+U.label+" <span class='sm'>("+fmtDur(recruitTime(p,u))+")</span>"+
         "<div class='cst'>"+costStr(U.cost,U.mano)+"</div></span>"+
         "<button class='bbtn' "+(dis?"disabled":"")+" onclick='tryRecruit("+p.id+",\""+u+"\")'>Reclutar</button></div>";

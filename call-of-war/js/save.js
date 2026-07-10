@@ -64,9 +64,9 @@ function saveGame(){
   try{
     const s={v:2,t:Date.now(),hour:S.hour,player:S.player,armyIdSeq:S.armyIdSeq,
       wars:[...S.wars],truces:[...S.truces],roads:[...S.roads],roadQueue:S.roadQueue,
-      nations:S.nations.map(x=>({res:x.res,mano:x.mano,ai:x.ai,capital:x.capital,alive:x.alive,startProvs:x.startProvs})),
-      provs:S.provs.map(p=>[p.owner,Math.round(p.morale*10)/10,p.buildings,p.buildQueue,p.recruitQueue]),
-      armies:S.armies.map(a=>({id:a.id,nation:a.nation,prov:a.prov,units:a.units,path:a.path,legDone:a.legDone,legTotal:a.legTotal})),
+      nations:S.nations.map(x=>({res:x.res,ai:x.ai,capital:x.capital,alive:x.alive,startProvs:x.startProvs})),
+      provs:S.provs.map(p=>[p.owner,Math.round(p.morale*10)/10,p.buildings,p.buildQueue,p.recruitQueue,Math.round(p.pop||0),Math.round(p.sold||0)]),
+      armies:S.armies.map(a=>({id:a.id,nation:a.nation,prov:a.prov,units:a.units,src:a.src,path:a.path,legDone:a.legDone,legTotal:a.legTotal})),
       mapCheck:S.provs.length+"|"+S.provs[0].name};
     localStorage.setItem("basileus_save",JSON.stringify(s));
   }catch(e){}
@@ -90,8 +90,11 @@ function continueGame(){
     p.owner=d[0];p.morale=d[1];
     p.buildings=Object.assign(newBuildings(),d[2]||{});
     p.buildQueue=d[3]||[];p.recruitQueue=d[4]||[];
+    if(d[5]!=null)p.pop=d[5];   // población viva (creció/decreció durante la partida)
+    if(d[6]!=null)p.sold=d[6];  // soldadesca acumulada
   });
   S.armies=s.armies;
+  for(const a of S.armies)a.src=a.src||{}; // partidas antiguas sin origen: sin baja de pop
   S.nations[S.player].ai=false;
   S.started=true;S.gameOver=false;S.selProv=-1;S.selArmy=null;S.battleFlash={};
   document.getElementById("startOverlay").style.display="none";

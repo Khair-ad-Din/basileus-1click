@@ -2,6 +2,22 @@
 import { NPLAY, BUILDINGS, TERRAINS, UNITS } from "./config.js";
 import { S } from "./state.js";
 
+/* ===================== POPs Fase 1: constantes ======================
+ * La población es ahora el motor: paga impuestos, aporta la soldadesca (el cupo
+ * movilizable) y crece. Ver [[basileus-pop-economy-vision]]. */
+const SOLD_FRAC=0.02;      // techo de soldadesca = 2% de la población (movilización máxima realista)
+const TAX_PC=0.000012;     // ducados/mes por habitante (campo); la ciudad rinde más
+const TAX_URBAN=2.4;       // multiplicador de impuestos en provincia urbana
+// Soldadesca: el cupo de gente movilizable de una provincia. Su techo escala con la
+// población y con los edificios militares (fx.mano, reinterpretado como % de cupo extra).
+function soldCap(p){
+  if(!p||p.wasteland||p.owner>=NPLAY)return 0;
+  let bonus=1;
+  for(const b in BUILDINGS){const fx=BUILDINGS[b].fx;if(fx.mano)bonus+=fx.mano*lvlOf(p,b)}
+  return (p.pop||0)*SOLD_FRAC*bonus;
+}
+function soldAvail(p){return p.sold!=null?p.sold:soldCap(p)} // stock actual (o el techo si aún no se sembró)
+
 function canAfford(n,cost){
   for(const k in cost)if(S.nations[n].res[k]<cost[k])return false;
   return true;
@@ -50,20 +66,21 @@ function provUpkeep(p){
   }
   return u;
 }
+function taxOf(p){ // impuestos que pagan los pops (antes salían de la nada)
+  return (p.pop||0)*TAX_PC*(p.urban?TAX_URBAN:1)*(p.morale/100);
+}
 function provEconomy(p){
   const out={res:{},mano:0};
   if(!p||p.owner>=NPLAY||p.wasteland)return out;
   const mor=p.morale/100,terr=TERRAINS[p.terrain].prod;
   const add=(k,v)=>{out.res[k]=(out.res[k]||0)+v};
   add(p.resType,(p.resType==="dinero"?2.8:1.3)*provProdMul(p)*terr*mor); // recurso propio
-  add("dinero",0.4*mor);                                                  // oro base
-  out.mano+=(p.urban?0.5:0.2)*mor;                                        // MO base
+  add("dinero",taxOf(p));                                                 // impuestos de la población
   for(const b in BUILDINGS){
     const lvl=lvlOf(p,b);if(!lvl)continue;
     const fx=BUILDINGS[b].fx;
     if(fx.prodAdd)for(const k in fx.prodAdd)add(k,fx.prodAdd[k]*lvl*terr*mor);
     if(fx.goldAdd)add("dinero",fx.goldAdd*lvl*mor);
-    if(fx.mano)out.mano+=fx.mano*lvl*mor;
   }
   const up=provUpkeep(p);
   for(const k in up)add(k,-up[k]); // mantenimiento de los edificios
@@ -80,14 +97,13 @@ function provBreakdown(p){
     const fx=BUILDINGS[b].fx,lvl=lvlOf(p,b);
     if(fx.prodMul&&lvl)income.push({label:BUILDINGS[b].label+" +"+Math.round(fx.prodMul*100)+"%",res:p.resType,amt:baseNoMul*fx.prodMul*lvl});
   }
-  income.push({label:"Impuestos",res:"dinero",amt:0.4*mor});
+  income.push({label:"Impuestos de la población",res:"dinero",amt:taxOf(p)});
   for(const b in BUILDINGS){
     const fx=BUILDINGS[b].fx,lvl=lvlOf(p,b);if(!lvl)continue;
     if(fx.prodAdd)for(const k in fx.prodAdd)income.push({label:BUILDINGS[b].label,res:k,amt:fx.prodAdd[k]*lvl*terr*mor});
     if(fx.goldAdd)income.push({label:BUILDINGS[b].label,res:"dinero",amt:fx.goldAdd*lvl*mor});
-    if(fx.mano)mano+=fx.mano*lvl*mor;
   }
-  mano+=(p.urban?0.5:0.2)*mor;
+  mano=soldAvail(p); // "mano" del desglose ahora = soldadesca disponible (stock, no ingreso)
   const up=provUpkeep(p);
   for(const b in BUILDINGS){
     const bu=BUILDINGS[b].up,lvl=lvlOf(p,b);if(!lvl||!bu)continue;
@@ -117,5 +133,5 @@ function recruitTime(p,u){
 }
 
 export {
-  canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, armyCount, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime
+  canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, armyCount, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, taxOf, SOLD_FRAC
 };
