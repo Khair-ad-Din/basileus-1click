@@ -18,6 +18,31 @@ function soldCap(p){
 }
 function soldAvail(p){return p.sold!=null?p.sold:soldCap(p)} // stock actual (o el techo si aún no se sembró)
 
+/* ---- Comida / subsistencia (Fase 2) ----
+ * Cada provincia produce comida trabajando su tierra y la consume su población. El excedente
+ * se guarda en la DESPENSA (almacén, p.food); su llenado impulsa el crecimiento. La cosecha
+ * varía cada año (±HARVEST_AMP): en un mal año, si la despensa está vacía, hay HAMBRUNA. */
+const YR_TICKS=8760;             // ticks (horas de juego) por año
+const FOOD_STORE_YEARS=0.7;      // capacidad de despensa ≈ 8 meses de consumo
+const HARVEST_AMP=0.33;          // variación anual de cosecha (±33%)
+// rendimiento alimentario del terreno: ~1 = autosuficiente por defecto; >1 da excedente (crece).
+// Suelo en 1.0: el terreno pobre no crece pero tampoco se muere de hambre; la hambruna llega
+// por una mala racha de cosechas (harvestMul) cuando la despensa está baja.
+const FOOD_FERT={vega:1.4,pradera:1.25,llanura:1.1,colinas:1.05,bosque:1.02,pantano:1.0,
+  estepa:1.02,desierto:1.0,montana:1.0,tundra:1.0};
+function harvestMul(p){ // calidad de la cosecha de este año (determinista por provincia+año)
+  const year=Math.floor(S.hour/YR_TICKS);
+  let n=(p.id*73856093^year*19349663)|0;n=Math.imul(n^(n>>>13),1274126177);n^=n>>>16;
+  return 1+HARVEST_AMP*((n>>>0)/4294967296*2-1);
+}
+function foodCons(p){return (p.pop||0)/YR_TICKS}                         // consumo por tick
+function foodProd(p){                                                    // producción de subsistencia por tick
+  const fert=FOOD_FERT[p.terrain]||1;
+  return (p.pop||0)/YR_TICKS*fert*(1+0.4*lvlOf(p,"granja"))*harvestMul(p);
+}
+function foodBalance(p){return foodProd(p)-foodCons(p)}                  // >0 excedente, <0 déficit (por tick)
+function foodCap(p){return (p.pop||0)*FOOD_STORE_YEARS}                  // capacidad de la despensa
+
 function canAfford(n,cost){
   for(const k in cost)if(S.nations[n].res[k]<cost[k])return false;
   return true;
@@ -133,5 +158,5 @@ function recruitTime(p,u){
 }
 
 export {
-  canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, armyCount, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, taxOf, SOLD_FRAC
+  canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, armyCount, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, taxOf, SOLD_FRAC, foodProd, foodCons, foodBalance, foodCap
 };

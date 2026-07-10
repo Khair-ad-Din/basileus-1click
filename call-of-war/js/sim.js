@@ -1,21 +1,24 @@
 // sim.js
 import { BUILDINGS, NATIONS, NEUTRAL, NPLAY, RES_KEYS, START_STOCK, TERRAINS, UNITS } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyDef, armyHp, armySpd, buildBlock, buildMax, canAfford, costFor, lvlOf, nationProvCount, nationStrength, pay, provDefMul, provEconomy, recruitTime, soldAvail, soldCap, timeFor } from "./economy.js";
+import { armyAtk, armyCount, armyDef, armyHp, armySpd, buildBlock, buildMax, canAfford, costFor, foodBalance, foodCap, foodCons, lvlOf, nationProvCount, nationStrength, pay, provDefMul, provEconomy, recruitTime, soldAvail, soldCap, timeFor } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
 import { drawRoads, repaintProvince } from "./render.js";
 import { saveGame } from "./save.js";
 import { log, refreshBuildBar, refreshSide, refreshTop } from "./ui.js";
 
-// POPs Fase 1: 1 tick = 1 hora de juego (8760/año). Ver [[basileus-pop-economy-vision]].
-const POP_GROWTH_TICK=0.006/8760; // crecimiento base ~0.6%/año; la Fase 2 lo ligará al excedente de comida
+// POPs: 1 tick = 1 hora de juego (8760/año). Ver [[basileus-pop-economy-vision]].
 const SOLD_REGEN=0.0012;          // la soldadesca recupera este % del hueco hasta su techo, por tick
+// Fase 2 (demografía por comida):
+const POP_GROWTH_BASE=0.008/8760; // crecimiento con la despensa llena ≈1.1%/año; escala con el llenado
+const STARVE_RATE=0.6;            // en hambruna, fracción del déficit que se lleva por delante a la población
+const FAMINE_DEF=0.12;            // déficit (fracción del consumo sin cubrir) por encima del cual hay hambruna
 
 function setupNations(){
   S.nations=NATIONS.map((n,i)=>({idx:i,res:Object.fromEntries(RES_KEYS.map(k=>[k,START_STOCK[k]||0])),
     ai:true,capital:-1,alive:!n.neutral,lastAI:0,startProvs:0}));
-  // sembrar la soldadesca de cada provincia a su techo (cupo movilizable inicial)
-  for(const p of S.provs)if(!p.wasteland&&p.owner<NPLAY)p.sold=soldCap(p);
+  // sembrar la soldadesca (cupo movilizable) y la despensa (almacén de comida) iniciales
+  for(const p of S.provs)if(!p.wasteland){if(p.owner<NPLAY)p.sold=soldCap(p);p.food=foodCap(p)*0.6}
   // capitales históricas (marcadas por las ciudades del mapa) y tropas iniciales
   for(let n=0;n<NPLAY;n++){
     let cap=-1;
@@ -198,13 +201,28 @@ function hourTick(){
     R.comida-=0.5*troops;
     for(const k of RES_KEYS)if(R[k]<0)R[k]=0; // ningún recurso baja de 0 (impagos = escasez)
   }
-  // 1b. población y soldadesca (por provincia): la gente crece y el cupo movilizable se recupera
+  // 1b. comida, población y soldadesca (por provincia)
   for(const p of S.provs){
     if(p.wasteland)continue;
-    p.pop=(p.pop||0)*(1+POP_GROWTH_TICK);           // crecimiento demográfico
+    // despensa: acumula el excedente, se vacía con el déficit; su llenado impulsa el crecimiento
+    const cap=foodCap(p);
+    if(p.food==null)p.food=cap*0.6;
+    p.food+=foodBalance(p);
+    if(p.food>cap)p.food=cap;
+    let famine=false;
+    if(p.food<0){
+      const deficit=-p.food;p.food=0;
+      const cons=foodCons(p);
+      if(cons>0&&deficit/cons>FAMINE_DEF){p.pop=Math.max(0,(p.pop||0)-deficit*STARVE_RATE);famine=true} // hambruna
+    }
+    p.famine=famine;
+    if(!famine){                                     // crecimiento ligado al excedente almacenado
+      const fill=cap>0?p.food/cap:0;
+      p.pop=(p.pop||0)*(1+POP_GROWTH_BASE*(0.4+fill));
+    }
     if(p.owner<NPLAY){
-      const cap=soldCap(p),s=p.sold!=null?p.sold:cap;
-      p.sold=s+(cap-s)*SOLD_REGEN;                   // la soldadesca tiende a su techo (= %pop)
+      const sc=soldCap(p),s=p.sold!=null?p.sold:sc;
+      p.sold=s+(sc-s)*SOLD_REGEN;                     // la soldadesca tiende a su techo (= %pop)
     }
   }
   // 2. construcción

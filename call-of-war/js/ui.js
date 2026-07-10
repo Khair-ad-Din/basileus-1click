@@ -1,7 +1,7 @@
 // ui.js
 import { START_DATE, MESES, BUILDINGS, BUILD_CATS, NATIONS, NPLAY, RES_ICON, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, terrainFx } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyDef, armySpd, buildBlock, buildMax, canAfford, costFor, lvlOf, nationEconomy, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitTime, soldAvail, soldCap, timeFor } from "./economy.js";
+import { armyAtk, armyCount, armyDef, armySpd, buildBlock, buildMax, canAfford, costFor, foodBalance, foodCap, lvlOf, nationEconomy, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitTime, soldAvail, soldCap, timeFor } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
 import { canvas, clampPan } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
@@ -17,6 +17,13 @@ function log(msg){
 }
 function fmt(v){return v>=10000?(v/1000).toFixed(1)+"k":Math.floor(v)}
 function fmtPop(n){return Math.round(n||0).toLocaleString("es-ES")}
+function foodLine(p){ // estado de la despensa (almacén de comida) y balance anual
+  if(p.wasteland)return "";
+  const cap=foodCap(p),fill=cap>0?(p.food||0)/cap:0,balYr=foodBalance(p)*8760;
+  if(p.famine)return "<div class='tl'><b style='color:#e79070'>🥖 ⚠ HAMBRUNA</b> · despensa vacía</div>";
+  const bal="<span style='color:"+(balYr<-0.5?"#e0a17a":"#8fbf78")+"'>"+(balYr>=0?"+":"")+fmtPop(balYr)+"/año</span>";
+  return "<div class='tl'>🥖 Despensa "+Math.round(fill*100)+"% · "+bal+"</div>";
+}
 function fmtDur(h){ // horas de juego -> texto legible
   if(h>=8760)return (h/8760).toFixed(1).replace(".0","")+" años";
   if(h>=720)return Math.round(h/730)+" meses";
@@ -96,6 +103,7 @@ function readonlyProvCard(p){
   }
   s+="<div class='tl'>"+(p.urban?"Ciudad":RES_LABEL[p.resType])+" · "+TERRAINS[p.terrain].label+" · moral "+Math.round(p.morale)+"%</div>";
   s+="<div class='prow'><span>👥 Población</span><b>"+fmtPop(p.pop)+"</b></div>";
+  s+=foodLine(p);
   s+="<div class='prow'><span>Nación</span><b><span class='chip' style='background:"+NATIONS[p.owner].color+"'></span> "+NATIONS[p.owner].name+"</b></div>";
   s+="<div class='prow'><span class='dim'>"+terrainFx(p.terrain)+"</span></div>";
   const blist=Object.keys(BUILDINGS).filter(b=>lvlOf(p,b)>0);
@@ -130,7 +138,8 @@ function refreshBuildBar(){
   let s="<div class='bsum'><h4>"+p.name+(p.capital?" ★":"")+"</h4>"+
     "<div class='tl'>"+(p.urban?"Ciudad":RES_LABEL[p.resType])+" · "+TERRAINS[p.terrain].label+
     " · moral "+Math.round(p.morale)+"%</div>"+
-    "<div class='tl'>👥 "+fmtPop(p.pop)+" hab · ⚔ "+fmtPop(soldAvail(p))+"/"+fmtPop(soldCap(p))+" soldadesca</div>";
+    "<div class='tl'>👥 "+fmtPop(p.pop)+" hab · ⚔ "+fmtPop(soldAvail(p))+"/"+fmtPop(soldCap(p))+" soldadesca</div>"+
+    foodLine(p);
   // Ingresos (por fuente), en /mes
   s+="<div class='bsec'>Ingresos <span class='u'>/mes</span></div>";
   for(const it of bd.income){if(it.amt<0.005)continue;
