@@ -20,7 +20,8 @@ const WASTECOL=hex2rgb("#847c6a");
 //   3) se detecta el recuadro ajustado de cada sprite para poder centrarlo en el mapa.
 //   filas (tropa): 0 Infantería · 1 Piqueros · 2 Caballería · 3 Arqueros · 4 Ballesteros
 //   columnas (estado): 0 Reposo · 1 Movimiento · 2 Atacando · 3 Derrotada
-const NATION_SPRITE={0:"castilla"};            // nación -> archivo sprites/<slug>.png (resto: recuadro)
+const NATION_SPRITE={0:"castilla"};            // nación -> archivo sprites/<slug>.png (override por país)
+const DEFAULT_SPRITE="castilla";               // TEMPORAL: las naciones sin hoja propia usan esta
 // geometría de la rejilla dentro de la hoja, por slug (tras la columna de escudos; afinable)
 const SHEET_LAYOUT={castilla:{x0:150,y0:22,cw:232,ch:139,cols:4,rows:5}};
 // unidad del juego -> fila (las 7 se mapean sobre 5; Bombardas/artilleria sin sprite -> recuadro)
@@ -60,11 +61,11 @@ function processSheet(slug,img){
   return{canvas:cv,frames};
 }
 function armySheet(nation){
-  const slug=NATION_SPRITE[nation];
+  const slug=NATION_SPRITE[nation]||DEFAULT_SPRITE; // cache por HOJA: una sola carga compartida
   if(!slug)return null;
-  let e=_sheets[nation];
+  let e=_sheets[slug];
   if(!e){
-    e=_sheets[nation]={ready:false};
+    e=_sheets[slug]={ready:false};
     const img=new Image();
     img.onload=()=>{try{const p=processSheet(slug,img);e.canvas=p.canvas;e.frames=p.frames;e.ready=true}
       catch(err){e.bad=true;console.warn("Sprites: no se pudo procesar sprites/"+slug+".png. Si abriste el juego como archivo (file://) el canvas queda 'tainted' y falla getImageData; ábrelo por http://localhost:8123 .",(err&&err.message)||err)}};
