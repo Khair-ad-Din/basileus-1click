@@ -173,6 +173,9 @@ window.clearOwnerPaint=function(){S.ownerPaint=-1;refreshEditorPanel()};
 // --- instantánea del mapa editado ---
 
 function initWorld(){
+  // precedencia del mapa: (1) ediciones locales del jugador en localStorage,
+  // (2) mapa OFICIAL empaquetado en el repo (OFFICIAL_MAP, cargado como global), (3) generacion procedural.
+  // El oficial evita que cada carga regenere un mapa distinto y fija el que se ve en el deploy.
   const snap=loadProvMapSnapshot();
   if(snap){
     // auto-reparación: si el mapa editado guardado es incompatible (versión antigua/corrupto)
@@ -183,6 +186,15 @@ function initWorld(){
     }catch(e){
       console.error("Mapa editado guardado incompatible; se descarta y regenera:",e);
       try{localStorage.removeItem("basileus_provmap");localStorage.removeItem("basileus_anchors")}catch(_){}
+      S.provs=[];S.armies=[];S.customRoads=false;
+    }
+  }
+  if(typeof OFFICIAL_MAP!=="undefined"&&OFFICIAL_MAP){
+    try{
+      loadProvMap(OFFICIAL_MAP);
+      return;
+    }catch(e){
+      console.error("Mapa oficial incompatible; se regenera:",e);
       S.provs=[];S.armies=[];S.customRoads=false;
     }
   }
