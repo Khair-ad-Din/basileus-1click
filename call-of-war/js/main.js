@@ -5,7 +5,7 @@ import {
   enterEditor, exitEditor, pushUndo, restoreWorldFromSnap, toggleRoadEdit, setProvinceOwner, dpSimplify, simplifyRing, traceProvince, applyShape, mergeProvinces, rasterPoly, keepLargestFragment, splitProvince, refreshEditorPanel, vertexAt, nearestSegment
 } from "./editor.js";
 import {
-  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, showNationPicker, refreshArmyPanel
+  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, showNationPicker, refreshArmyPanel
 } from "./ui.js";
 import {
   atWar, declareWar, makePeace, underTruce, spawnArmy, setupNations, tryRoad, nbrs, bfsPath, startLeg, orderMove, captureProv, hourTick, resolveBattles, applyDamage, mergeIdle, aiTurn, findTarget, tryBuild, tryRecruit, checkVictory, armiesIn
@@ -17,7 +17,7 @@ import {
   canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, armyCount, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime
 } from "./economy.js";
 import {
-  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, rebuildProvinceData, kmBetween, roadKey, hasRoad, landPath, generateRoads
+  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, rebuildProvinceData, kmBetween, roadKey, hasRoad, landPath, generateRoads
 } from "./mapgen.js";
 import { S } from "./state.js";
 /* ============================= RNG ============================= */
@@ -245,15 +245,52 @@ window.toggleWasteland=function(){
   pushUndo();
   const p=S.provs[S.shapeSel];
   p.wasteland=!p.wasteland;
-  if(p.wasteland){p.owner=NEUTRAL;p.owner0=NEUTRAL;p.capital=false;p.urban=false}
+  if(p.wasteland){p.owner=NEUTRAL;p.owner0=NEUTRAL;p.capital=false;p.urban=false;p.pop=0}
+  else{p.pop=null;assignPopulation()} // al reactivarla, el modelo la resiembra (solo esta, que está a null)
   repaintProvince(S.shapeSel);
   refreshEditorPanel();
 };
-window.toggleTerrainView=function(){
-  S.terrainView=!S.terrainView;
-  paintAll();
+// Editor de población: fija a mano la población de la provincia seleccionada (valor persistente
+// que viaja con el mapa y el modelo ya no sobrescribe). "Fijar" toma el input; los botones escalan.
+window.setProvPop=function(){
+  if(S.shapeSel<0)return;
+  const p=S.provs[S.shapeSel];
+  if(p.wasteland)return;
+  const el=document.getElementById("provPop");
+  const v=Math.max(0,Math.round(parseFloat(el&&el.value)||0));
+  if(v===Math.round(p.pop||0))return;
+  pushUndo();
+  p.pop=v;
+  if(S.popView)repaintProvince(S.shapeSel);
+  refreshEditorPanel();
+};
+window.scaleProvPop=function(f){
+  if(S.shapeSel<0)return;
+  const p=S.provs[S.shapeSel];
+  if(p.wasteland)return;
+  pushUndo();
+  p.pop=Math.max(0,Math.round((p.pop||0)*f));
+  if(S.popView)repaintProvince(S.shapeSel);
+  refreshEditorPanel();
+};
+function syncMapModeUI(){
   document.getElementById("terrBtn").textContent=S.terrainView?"Político":"Terreno";
   document.getElementById("terrLegend").style.display=S.terrainView?"block":"none";
+  const pb=document.getElementById("popBtn");if(pb)pb.textContent=S.popView?"Político":"Población";
+  const pl=document.getElementById("popLegend");if(pl)pl.style.display=S.popView?"block":"none";
+}
+window.toggleTerrainView=function(){
+  S.terrainView=!S.terrainView;
+  if(S.terrainView)S.popView=false; // los modos de mapa son excluyentes
+  paintAll();
+  syncMapModeUI();
+  if(S.editMode)refreshEditorPanel();
+};
+window.togglePopView=function(){
+  S.popView=!S.popView;
+  if(S.popView)S.terrainView=false;
+  paintAll();
+  syncMapModeUI();
   if(S.editMode)refreshEditorPanel();
 };
 window.downloadMap=function(){
@@ -497,7 +534,12 @@ document.querySelectorAll(".spdBtn").forEach(b=>b.addEventListener("click",()=>{
 }));
 document.getElementById("helpBtn").addEventListener("click",()=>document.getElementById("helpOverlay").style.display="flex");
 document.getElementById("dipBtn").addEventListener("click",()=>{refreshDiplomacy();document.getElementById("dipOverlay").style.display="flex"});
+document.getElementById("ledgerBtn").addEventListener("click",()=>{refreshLedger();document.getElementById("ledgerOverlay").style.display="flex"});
 document.getElementById("terrBtn").addEventListener("click",()=>window.toggleTerrainView());
+{
+  const pb=document.getElementById("popBtn");
+  if(pb)pb.addEventListener("click",()=>window.togglePopView());
+}
 {
   let lh="<b style='font-size:12px'>Terrenos</b>";
   for(const k of TERRAIN_KEYS){
@@ -505,6 +547,23 @@ document.getElementById("terrBtn").addEventListener("click",()=>window.toggleTer
       "'></span> "+TERRAINS[k].label+"</span><span style='color:#9aa3ad;font-size:10px'>"+terrainFx(k)+"</span></div>";
   }
   document.getElementById("terrLegend").innerHTML=lh;
+}
+{
+  // leyenda del mapa de población: rampa con los mismos cortes que popColor en render.js
+  const pl=document.getElementById("popLegend");
+  if(pl){
+    const stops=[["#f7f2d8","despoblado"],["#f4c752","~2.000"],["#e07a2a","~15.000"],
+      ["#b5341f","~60.000"],["#6e1414","gran urbe"]];
+    let lh="<b style='font-size:12px'>Población de la provincia</b>";
+    lh+="<div style='height:12px;margin:6px 0 3px;border-radius:3px;border:1px solid #0006;"+
+      "background:linear-gradient(90deg,#f7f2d8,#f4c752,#e07a2a,#b5341f,#6e1414)'></div>";
+    lh+="<div class='row' style='font-size:10px;color:#9aa3ad'>";
+    for(const s of stops)lh+="<span>"+s[1]+"</span>";
+    lh+="</div>";
+    lh+="<div class='row' style='margin-top:5px'><span><span class='chip' style='background:#847c6a'></span> Impracticable</span>"+
+      "<span style='color:#9aa3ad;font-size:10px'>sin población</span></div>";
+    pl.innerHTML=lh;
+  }
 }
 
 /* ============================= Dibujo ============================= */

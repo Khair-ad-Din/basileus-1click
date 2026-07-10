@@ -1,7 +1,7 @@
 // save.js
 import { GH_PER_SEC, MH, MW, NATIONS, NEUTRAL, TERRAIN_KEYS, newBuildings } from "./config.js";
 import { S } from "./state.js";
-import { assignResources, assignTerrain, isolateWastePockets, mulberry32, rebuildProvinceData } from "./mapgen.js";
+import { assignPopulation, assignResources, assignTerrain, isolateWastePockets, mulberry32, rebuildProvinceData } from "./mapgen.js";
 import { canvas, clampPan, drawRoads, paintAll } from "./render.js";
 import { hourTick } from "./sim.js";
 import { buildRealmMenu, fmtDur, log, refreshSide, refreshTop } from "./ui.js";
@@ -15,7 +15,7 @@ function buildSnapshot(){
   }
   rle.push(cur,run);
   return{v:1,W:MW,H:MH,rle,roads:[...S.roads],
-    provs:S.provs.map(p=>[p.name,p.x,p.y,p.owner0,p.named?1:0,p.urban?1:0,p.capital?1:0,TERRAIN_KEYS.indexOf(p.terrain),p.wasteland?1:0])};
+    provs:S.provs.map(p=>[p.name,p.x,p.y,p.owner0,p.named?1:0,p.urban?1:0,p.capital?1:0,TERRAIN_KEYS.indexOf(p.terrain),p.wasteland?1:0,p.pop!=null?Math.round(p.pop):null])};
 }
 function saveProvMap(){
   try{localStorage.setItem("basileus_provmap",JSON.stringify(buildSnapshot()))}
@@ -46,6 +46,7 @@ function loadProvMap(snap){
     named:!!a[4],coastal:false,morale:60,urban:!!a[5],resType:null,shade:0.85+S.rand()*0.3,capital:!!a[6],
     terrain:(a[7]!=null&&TERRAIN_KEYS[a[7]])||null,
     wasteland:a[8]!=null?!!a[8]:null,
+    pop:a[9]!=null?a[9]:null, // población persistida (editable); null = la siembra el modelo
     buildings:newBuildings(),buildQueue:[],recruitQueue:[]}));
   rebuildProvinceData();
   assignTerrain(); // rellena el terreno si la instantánea es antigua y no lo trae
@@ -54,6 +55,7 @@ function loadProvMap(snap){
   for(const p of S.provs)if(p.wasteland==null){p.wasteland=p.terrain==="desierto"&&!p.coastal&&!p.named;computed=true}
   if(computed)isolateWastePockets(); // los flags editados a mano se respetan tal cual
   for(const p of S.provs)if(p.wasteland){p.owner=NEUTRAL;p.owner0=NEUTRAL;p.capital=false;p.urban=false}
+  assignPopulation();
   if(snap.roads){S.roads=new Set(snap.roads);S.roadQueue=[];S.customRoads=true}
   else S.customRoads=false;
 }

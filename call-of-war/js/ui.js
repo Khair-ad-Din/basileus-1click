@@ -16,6 +16,7 @@ function log(msg){
   setTimeout(()=>{if(d.parentNode)d.parentNode.removeChild(d)},25000);
 }
 function fmt(v){return v>=10000?(v/1000).toFixed(1)+"k":Math.floor(v)}
+function fmtPop(n){return Math.round(n||0).toLocaleString("es-ES")}
 function fmtDur(h){ // horas de juego -> texto legible
   if(h>=8760)return (h/8760).toFixed(1).replace(".0","")+" años";
   if(h>=720)return Math.round(h/730)+" meses";
@@ -93,6 +94,7 @@ function readonlyProvCard(p){
     return s+"</div>";
   }
   s+="<div class='tl'>"+(p.urban?"Ciudad":RES_LABEL[p.resType])+" · "+TERRAINS[p.terrain].label+" · moral "+Math.round(p.morale)+"%</div>";
+  s+="<div class='prow'><span>👥 Población</span><b>"+fmtPop(p.pop)+"</b></div>";
   s+="<div class='prow'><span>Nación</span><b><span class='chip' style='background:"+NATIONS[p.owner].color+"'></span> "+NATIONS[p.owner].name+"</b></div>";
   s+="<div class='prow'><span class='dim'>"+terrainFx(p.terrain)+"</span></div>";
   const blist=Object.keys(BUILDINGS).filter(b=>lvlOf(p,b)>0);
@@ -126,7 +128,8 @@ function refreshBuildBar(){
   const row=(lab,val,cls)=>"<div class='prow'><span>"+lab+"</span><b class='"+(cls||"")+"'>"+val+"</b></div>";
   let s="<div class='bsum'><h4>"+p.name+(p.capital?" ★":"")+"</h4>"+
     "<div class='tl'>"+(p.urban?"Ciudad":RES_LABEL[p.resType])+" · "+TERRAINS[p.terrain].label+
-    " · moral "+Math.round(p.morale)+"%</div>";
+    " · moral "+Math.round(p.morale)+"%</div>"+
+    "<div class='tl'>👥 "+fmtPop(p.pop)+" habitantes</div>";
   // Ingresos (por fuente), en /mes
   s+="<div class='bsec'>Ingresos <span class='u'>/mes</span></div>";
   for(const it of bd.income){if(it.amt<0.005)continue;
@@ -231,8 +234,9 @@ function refreshMetricsLog(){
   const el=document.getElementById("side");
   if(S.player<0||!S.started){el.style.display="none";return}
   const ne=nationEconomy(S.player),N=NATIONS[S.player];
+  let realmPop=0;for(const p of S.provs)if(p.owner===S.player&&!p.wasteland)realmPop+=p.pop||0;
   let h="<div class='mlog'><span class='sh' style='background:"+N.color+"'></span>"+
-    "<div><b>"+N.name+"</b><div style='color:#9aa3ad;font-size:11px'>"+ne.provs+" provincias · "+ne.troops+" tropas</div></div></div>";
+    "<div><b>"+N.name+"</b><div style='color:#9aa3ad;font-size:11px'>"+ne.provs+" provincias · 👥 "+fmtPop(realmPop)+"<br>"+ne.troops+" tropas</div></div></div>";
   h+="<h3>Tesorería del reino <span style='color:#7a828b;font-weight:normal'>/mes</span></h3>";
   const ks=Object.keys(ne.res).filter(k=>Math.abs(ne.res[k])>0.05).sort((a,b)=>ne.res[b]-ne.res[a]);
   if(!ks.length)h+="<div class='kpi'><span class='dim' style='color:#7a828b'>Sin balance neto.</span></div>";
@@ -326,6 +330,40 @@ function refreshDiplomacy(){
   h+="</table>";
   document.getElementById("dipBody").innerHTML=h;
 }
+// Registro (ledger estilo EU4): tabla ordenable de todas las naciones vivas con provincias,
+// población, tropas, fuerza militar e ingreso neto de ducados/mes. Referencia para balancear.
+let ledgerSort="pop";
+function ledgerRows(){
+  const provsBy=new Array(NPLAY).fill(0),popBy=new Array(NPLAY).fill(0);
+  for(const p of S.provs){const o=p.owner;if(o<0||o>=NPLAY||p.wasteland)continue;provsBy[o]++;popBy[o]+=p.pop||0}
+  const troopsBy=new Array(NPLAY).fill(0),strBy=new Array(NPLAY).fill(0);
+  for(const a of S.armies){const o=a.nation;if(o<0||o>=NPLAY)continue;troopsBy[o]+=armyCount(a);strBy[o]+=armyAtk(a)+armyDef(a)}
+  const rows=[];
+  for(let n=0;n<NPLAY;n++){
+    if(!S.nations[n].alive)continue;
+    rows.push({n,name:NATIONS[n].name,color:NATIONS[n].color,provs:provsBy[n],pop:popBy[n],
+      troops:Math.round(troopsBy[n]),str:Math.round(strBy[n]),income:nationEconomy(n).res.dinero||0});
+  }
+  return rows;
+}
+function refreshLedger(){
+  const rows=ledgerRows();
+  rows.sort((a,b)=>ledgerSort==="name"?a.name.localeCompare(b.name):(b[ledgerSort]-a[ledgerSort]));
+  const th=(key,lab)=>"<th onclick=\"sortLedger('"+key+"')\" style='cursor:pointer'"+
+    (ledgerSort===key?" class='on'":"")+">"+lab+(ledgerSort===key?" ▾":"")+"</th>";
+  let h="<table class='dip led'><tr><th>#</th>"+th("name","Nación")+th("provs","Prov.")+
+    th("pop","Población")+th("troops","Tropas")+th("str","Fuerza")+th("income","Ducados/mes")+"</tr>";
+  rows.forEach((r,i)=>{
+    const me=r.n===S.player;
+    h+="<tr"+(me?" style='background:rgba(159,184,120,.18)'":"")+"><td>"+(i+1)+"</td>";
+    h+="<td><span class='chip' style='background:"+r.color+"'></span> "+r.name+(me?" <b style='color:#9fb878'>(tú)</b>":"")+"</td>";
+    h+="<td>"+r.provs+"</td><td>"+fmtPop(r.pop)+"</td><td>"+r.troops+"</td><td>"+r.str+"</td>";
+    h+="<td style='color:"+(r.income<0?"#e08a7a":"#8fce7e")+"'>"+(r.income>=0?"+":"")+n1(r.income)+"</td></tr>";
+  });
+  h+="</table>";
+  document.getElementById("ledgerBody").innerHTML=h;
+}
+window.sortLedger=function(k){ledgerSort=k;refreshLedger()};
 function showNationPicker(){
   const grid=document.getElementById("nationGrid");
   let h="";
@@ -363,5 +401,5 @@ function showNationPicker(){
 }
 
 export {
-  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, showNationPicker, buildRealmMenu, refreshMetricsLog, refreshArmyPanel
+  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, showNationPicker, buildRealmMenu, refreshMetricsLog, refreshArmyPanel
 };

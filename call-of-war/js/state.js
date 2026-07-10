@@ -10,7 +10,7 @@ export const S = {
   player: -1, hour: 0, acc: 0, speed: 1, started: false, gameOver: false,
   selProv: -1, selArmy: null, battleFlash: {},
   // vista (compartida por render, entrada y guardado)
-  zoom: 1, panX: 0, panY: 0, terrainView: false,
+  zoom: 1, panX: 0, panY: 0, terrainView: false, popView: false,
   // editor (compartido por editor, entrada y render del overlay)
   editMode: false, shapeSel: -1, shapePoly: [], dragVi: -1, editTool: "shape",
   mergeFrom: -1, mergeCur: null, splitFrom: -1, splitCur: null,

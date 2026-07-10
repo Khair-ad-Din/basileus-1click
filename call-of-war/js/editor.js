@@ -220,6 +220,7 @@ function mergeProvinces(a,b){
   const bName=B.name;
   B.urban=B.urban||A.urban;
   if(A.capital)B.capital=true;
+  B.pop=B.wasteland?0:(B.pop||0)+(A.pop||0); // la fusionada conserva la población de ambas
   // eliminar la provincia origen y reindexar todo lo que apunta a ids
   const newIdOf=i=>i<a?i:i-1;
   const target=newIdOf(b);
@@ -322,9 +323,10 @@ function splitProvince(pid,poly,vi,vj,forcedName){
   if(S.provs.some(p=>p.name===nm)){alert("Ya existe una provincia con ese nombre.");return}
   pushUndo();
   const src=S.provs[pid];
+  const srcPop=src.pop||0; // se repartirá por área entre las dos partes
   const np={id:S.provs.length,name:nm,x:0,y:0,country:src.country,owner:src.owner,owner0:src.owner0,
     named:true,coastal:false,morale:60,urban:false,resType:src.resType,shade:0.85+S.rand()*0.3,capital:false,
-    terrain:src.terrain,wasteland:src.wasteland,
+    terrain:src.terrain,wasteland:src.wasteland,pop:0,
     buildings:newBuildings(),buildQueue:[],recruitQueue:[]};
   S.provs.push(np);
   for(const i of part)S.provIdx[i]=np.id;
@@ -332,6 +334,12 @@ function splitProvince(pid,poly,vi,vj,forcedName){
   keepLargestFragment(np.id,pid);
   keepLargestFragment(pid,np.id);
   rebuildProvinceData();
+  // repartir la población de la original entre las dos partes según su área nueva
+  if(!src.wasteland){
+    const aNew=S.pixOfProv[np.id].length,aOld=S.pixOfProv[pid].length,tot=aNew+aOld;
+    np.pop=tot?Math.round(srcPop*aNew/tot):0;
+    S.provs[pid].pop=Math.max(0,srcPop-np.pop);
+  }
   if(!S.customRoads)generateRoads(); // con red editada, los ids existentes siguen siendo válidos
   paintAll();
   drawRoads();
@@ -381,6 +389,11 @@ function refreshEditorPanel(){
     h+="</div>";
     h+="<div class='row'><span>Impracticable</span><button class='bbtn"+(p.wasteland?" red":"")+
       "' onclick='toggleWasteland()'>"+(p.wasteland?"Sí (quitar)":"No (marcar)")+"</button></div>";
+    if(!p.wasteland){
+      h+="<h3>Población <span style='font-weight:normal;color:#9aa3ad;font-size:11px'>habitantes</span></h3>";
+      h+="<div class='row'><input id='provPop' type='number' min='0' step='500' style='flex:1;background:#1c2127;border:1px solid #4a525b;color:#e8e4d8;padding:4px 6px;border-radius:4px' value='"+Math.round(p.pop||0)+"' onkeydown=\"if(event.key==='Enter')setProvPop()\"><button class='bbtn' onclick='setProvPop()'>Fijar</button></div>";
+      h+="<div class='row sm'><button class='bbtn' style='flex:1' onclick='scaleProvPop(0.75)'>−25%</button><button class='bbtn' style='flex:1' onclick='scaleProvPop(1.33)'>+33%</button></div>";
+    }
   }
   h+="<h3>Cambios</h3>";
   h+=S.editDirty

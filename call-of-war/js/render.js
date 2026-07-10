@@ -79,7 +79,26 @@ function dominantUnit(a){ // tropa más numerosa que tenga sprite asignado
   for(const k in a.units)if(a.units[k]>bc&&UNIT_ROW[k]!=null){bc=a.units[k];best=k}
   return best;
 }
+// rampa de color del mapa de población: escala logarítmica de crema pálida (poca gente)
+// a granate profundo (gran urbe). El páramo va en gris; sin población, crema.
+const POP_STOPS=[[0,[247,242,216]],[0.35,[244,199,82]],[0.6,[224,122,42]],[0.8,[181,52,31]],[1,[110,20,20]]];
+const POP_LO=Math.log(200),POP_HI=Math.log(220000);
+function popColor(pid){
+  const p=S.provs[pid];
+  if(p.wasteland)return WASTECOL;
+  const pop=p.pop||0;
+  if(pop<=0)return[236,232,214];
+  let t=(Math.log(pop)-POP_LO)/(POP_HI-POP_LO);t=t<0?0:t>1?1:t;
+  for(let i=1;i<POP_STOPS.length;i++){
+    if(t<=POP_STOPS[i][0]){
+      const a=POP_STOPS[i-1],b=POP_STOPS[i],f=(t-a[0])/(b[0]-a[0]||1);
+      return[a[1][0]+(b[1][0]-a[1][0])*f,a[1][1]+(b[1][1]-a[1][1])*f,a[1][2]+(b[1][2]-a[1][2])*f];
+    }
+  }
+  return POP_STOPS[POP_STOPS.length-1][1];
+}
 function provColor(p){
+  if(S.popView)return popColor(p);
   if(S.terrainView)return TCOL[S.provs[p].terrain];
   return S.provs[p].wasteland?WASTECOL:NCOL[S.provs[p].owner];
 }

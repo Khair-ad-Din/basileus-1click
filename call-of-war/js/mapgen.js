@@ -294,6 +294,7 @@ function generateMap(){
   isolateWastePockets();
   for(const p of S.provs)if(p.wasteland){p.owner=NEUTRAL;p.owner0=NEUTRAL;p.capital=false;p.urban=false}
   applyNationOverrides();
+  assignPopulation();
 }
 // Correcciones manuales de frontera: cada [lat, lon, nación] fuerza el dueño de la provincia
 // que CONTIENE ese punto. NO toca el Voronoi (los países conservan su forma), solo cambia de
@@ -515,6 +516,118 @@ function assignResources(){
     p.resType=strat[(S.rand()*strat.length)|0];
   }
 }
+/* ============================== Población =============================
+ * Población realista de ~1444. Es DERIVADA (no se guarda en la instantánea):
+ * se recalcula al cargar tanto en generateMap como en loadProvMap, así el mapa
+ * oficial y el procedural quedan iguales y determinista para todos los jugadores.
+ * No es plana por país: sale de (a) densidad RURAL = densidad regional histórica ×
+ * fertilidad del terreno × área real de la provincia (km², con corrección Mercator)
+ * y (b) un núcleo URBANO para las ciudades, con tabla de las grandes urbes de la
+ * época para que las principales lleven su peso real. El páramo no tiene población. */
+const POP_GAIN=0.62;   // palanca global de calibración del total
+const RURAL_CAP=70000; // tope de población RURAL por provincia (el campo no concentra cientos de miles)
+// Área real (km²) de un píxel a una latitud dada. El mapa es equirectangular en x
+// (lon lineal) y Mercator en y; el ancho y el alto reales de un píxel escalan ambos
+// con cos(lat), de ahí el cos² (ver pxToLonLat para las constantes de proyección).
+function pxAreaConst(){
+  const G=MAPDATA.geo,R=6371;
+  const dlon=(G.EAST-G.WEST)/MW*Math.PI/180;
+  const yn=Math.log(Math.tan(Math.PI/4+G.NORTH*Math.PI/360)), ys=Math.log(Math.tan(Math.PI/4+G.SOUTH*Math.PI/360));
+  const dmerc=(yn-ys)/MH;
+  return R*R*dlon*dmerc; // km²/px a cos²=1 (ecuador); multiplicar por cos²(lat)
+}
+// Densidad rural base (hab/km²) por región histórica. [latMin,latMax,lonMin,lonMax,dens];
+// primer rectángulo que contiene el punto gana. Fuera de todos, se usa un valor por latitud.
+const POP_REGIONS=[
+  [26.5,31.5,29,33.5, 46],  // valle y delta del Nilo (el corazón demográfico del área)
+  [50.3,53.6,2,7.6, 42],    // Flandes / Países Bajos
+  [43.5,46.6,7,13.5, 40],   // Norte de Italia (Po, Toscana, Lombardía)
+  [45.6,50,0,5.5, 30],      // Francia norte (cuenca de París)
+  [46.8,52,5.5,10.5, 27],   // Renania / Alemania occidental
+  [40.5,43.6,11.5,18.5, 24],// Italia central-sur
+  [36.5,40.5,12,17, 22],    // Sicilia / Calabria / Nápoles
+  [42.8,46.6,-1.5,6, 22],   // Francia sur / Occitania
+  [49.8,53.6,-5.5,1.8, 21], // Inglaterra sur + Gales
+  [35.5,39.6,-7.5,0.5, 18], // Iberia sur (Andalucía, Murcia, Valencia)
+  [35.5,41,19,29.5, 17],    // Grecia / Egeo / costa oeste de Anatolia
+  [30.5,37,37.5,48.5, 19],  // Mesopotamia (Tigris-Éufrates)
+  [30.5,37.5,33.5,37.8, 17],// Levante costero
+  [45,51.5,9.5,20, 16],     // Bohemia / Austria / Baviera / Hungría
+  [29.5,37.6,-9,11.5, 12],  // costa del Magreb (Tell) — franja poblada
+  [39.4,43.6,-9,3.5, 12],   // Iberia norte-centro (Meseta, Cataluña, Portugal norte)
+  [40.5,46,14.5,25.5, 12],  // Balcanes
+  [48.5,55.5,14.5,25.5, 9], // Polonia / Báltico sur
+  [36.5,41.5,29,42.5, 8],   // Anatolia interior
+  [50,60,25,50.5, 5.5],     // Rusia occidental
+  [53.5,60.5,4.5,18, 6],    // Escandinavia meridional (Dinamarca, Escania, sur de Suecia/Noruega)
+  [43.5,50.5,27,50.5, 3.5], // estepa póntica / Crimea
+  [26.5,33,33.5,50.5, 2.5], // bordes de Arabia/desierto (casi vacío)
+  [60,66.5,4,50.5, 1.5]     // Escandinavia y Rusia septentrionales (subártico)
+];
+function regionDensity(lon,lat){
+  for(const[la0,la1,lo0,lo1,d]of POP_REGIONS)
+    if(lat>=la0&&lat<=la1&&lon>=lo0&&lon<=lo1)return d;
+  return lat<40?12:lat<50?15:lat<58?7:3; // fallback por latitud
+}
+const POP_TERR_FERT={vega:1.5,pradera:1.25,llanura:1.1,bosque:0.7,colinas:0.85,
+  pantano:0.55,estepa:0.5,montana:0.35,desierto:0.15,tundra:0.1};
+// Grandes urbes con población histórica aproximada de mediados del s.XV (clave sin acentos).
+// Las que no estén en la tabla se modelan por región. Cubre las que existen en el mapa.
+const CITY_POP_RAW={
+  "el cairo":200000,"cairo":200000,"constantinopla":50000,"istanbul":50000,
+  "paris":100000,"venecia":100000,"milan":90000,"napoles":80000,"granada":70000,
+  "genova":60000,"florencia":60000,"tunez":60000,"fez":55000,"damasco":50000,
+  "sevilla":50000,"lisboa":50000,"londres":50000,"brujas":45000,"gante":45000,
+  "alepo":45000,"bagdad":45000,"colonia":40000,"praga":40000,"palermo":40000,
+  "cordoba":40000,"valencia":40000,"tabriz":40000,"roma":35000,"barcelona":35000,
+  "bolonia":35000,"ruan":30000,"bruselas":30000,"moscu":30000,"verona":30000,
+  "marrakech":30000,"tlemcen":30000,"bursa":30000,"sarai":30000,"nuremberg":25000,
+  "viena":25000,"lubeck":25000,"toulouse":25000,"burdeos":25000,"lyon":25000,
+  "salonica":25000,"toledo":25000,"zaragoza":25000,"novgorod":25000,"amberes":25000,
+  "adrianopolis":22000,"estrasburgo":20000,"augsburgo":20000,"hamburgo":18000,
+  "danzig":20000,"cracovia":20000,"buda":20000,"belgrado":20000,"valladolid":20000,
+  "tiflis":20000,"mesina":20000,"malaga":16000,"murcia":15000,"oporto":15000,
+  "esmirna":15000,"konya":15000,"diyarbakir":15000,"edimburgo":12000,"york":12000,
+  "bristol":12000,"atenas":10000,"dublin":10000,"copenhague":10000,"vilna":10000,
+  "cagliari":10000,"trebisonda":10000,"nicosia":10000,"riga":8000,"ragusa":8000,
+  "rodas":8000,"bergen":7000,"estocolmo":6000,"hail":5000
+};
+function popNormKey(s){return(s||"").toLowerCase().normalize("NFD").replace(/[^a-z ]/g,"").trim()}
+const CITY_POP=(()=>{const m={};for(const k in CITY_POP_RAW)m[popNormKey(k)]=CITY_POP_RAW[k];return m})();
+// Rellena la población SOLO donde no hay valor (p.pop==null): siembra inicial en la
+// generación y red de seguridad al cargar. Los valores ya guardados o editados a mano se
+// respetan (el tope RURAL_CAP vive aquí, así que solo afecta a la siembra, nunca a tus ediciones).
+function assignPopulation(){
+  const K=pxAreaConst();
+  for(const p of S.provs){
+    if(p.wasteland){p.pop=0;continue}        // el páramo nunca tiene población
+    if(p.pop!=null)continue;                 // valor guardado/editado: se respeta
+    const npx=(S.pixOfProv[p.id]||[]).length;
+    if(!npx){p.pop=0;continue}
+    const[lon,lat]=pxToLonLat(p.x,p.y);
+    const c=Math.cos(lat*Math.PI/180);
+    const areaKm2=npx*K*c*c;
+    let dens=regionDensity(lon,lat)*(POP_TERR_FERT[p.terrain]||1);
+    if(p.coastal)dens*=1.15;                 // la gente se concentra en la costa
+    dens=Math.max(0.2,Math.min(58,dens));
+    const rural=Math.min(RURAL_CAP,areaKm2*dens*POP_GAIN); // rural, con tope por comarca
+    let pop=p.urban?rural*0.5:rural;                        // la ciudad edifica parte del campo
+    // núcleo urbano (solo ciudades reales, no los duplicados rurales del gazetteer):
+    // tabla histórica para las grandes; el resto de urbes se modelan por región.
+    if(p.urban){
+      const tabled=CITY_POP[popNormKey(p.name)];
+      if(tabled!=null)pop+=tabled;
+      else{
+        const jit=0.7+0.6*hashN(p.x,p.y);       // determinista por posición
+        const rd=regionDensity(lon,lat);
+        let core=rd*(p.capital?900:340)*jit;
+        core=Math.max(p.capital?6000:2000,Math.min(p.capital?34000:20000,core));
+        pop+=core;
+      }
+    }
+    p.pop=Math.max(0,Math.round(pop));
+  }
+}
 function rebuildProvinceData(){
   S.adj=S.provs.map(()=>new Set());
   S.seaAdj=S.provs.map(()=>new Set());
@@ -619,5 +732,5 @@ function kmBetween(a,b){
 }
 
 export {
-  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, rebuildProvinceData, kmBetween, roadKey, hasRoad, landPath, generateRoads
+  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, rebuildProvinceData, kmBetween, roadKey, hasRoad, landPath, generateRoads
 };
