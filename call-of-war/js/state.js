@@ -14,5 +14,7 @@ export const S = {
   // editor (compartido por editor, entrada y render del overlay)
   editMode: false, shapeSel: -1, shapePoly: [], dragVi: -1, editTool: "shape",
   mergeFrom: -1, mergeCur: null, splitFrom: -1, splitCur: null,
-  roadFrom: -1, roadCur: null, dragWas: null, dragIns: false
+  roadFrom: -1, roadCur: null, dragWas: null, dragIns: false,
+  buildFilter: "eco",
+  editUndoStack: [], editBackup: null, editDirty: false
 };

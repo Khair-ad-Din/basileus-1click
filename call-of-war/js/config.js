@@ -119,6 +119,12 @@ function terrainFx(t){
   return fx.length?fx.join(" · "):"sin modificadores";
 }
 
+// fecha de inicio y meses (para la UI del calendario)
+const GH_PER_SEC=730.5/3600; // horas de juego por segundo real a 1x
+const START_DATE=Date.UTC(1444,10,11,6);
+const MESES=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+
 export {
+  GH_PER_SEC, START_DATE, MESES,
   MW, MH, NATIONS, NPLAY, NEUTRAL, RES_KEYS, RES_STRAT, RES_TRADE, RES_LABEL, RES_SHORT, RES_ICON, START_STOCK, BUILDINGS, BUILD_CATS, newBuildings, UNITS, TERRAINS, TERRAIN_KEYS, terrainFx
 };
