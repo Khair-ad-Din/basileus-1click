@@ -84,7 +84,7 @@
     <p>11 de noviembre de 1444: la cristiandad tiembla tras la cruzada de Varna. De Castilla a los Timúridas,
        60 naciones con fronteras históricas. Elige la tuya, desarrolla tus provincias, recluta ejércitos y
        conquista el <b>33% del mapa</b> (o casi el doble de tu territorio inicial) para ganar antes de 1544.
-       La partida corre en <b>tiempo real</b>: 1 hora = 1 mes de juego.
+       La partida corre en <b>tiempo real</b>: 1 hora = 1 mes de juego, y se guarda sola entre visitas.
        Clic izquierdo: seleccionar. Clic derecho: mover ejército (las tropas cruzan el mar embarcadas, lento).
        Rueda: zoom.</p>
     <div id="nationGrid"></div>
@@ -102,7 +102,8 @@
        y grano cada hora.</p>
     <h2>El paso del tiempo</h2>
     <p>La partida transcurre en <b>tiempo real</b>: 1 hora real = 1 mes de juego (12 horas = 1 año). La era dura
-       100 años, de 1444 a 1544: al final, gana quien domine más provincias. Los tiempos son
+       100 años, de 1444 a 1544: al final, gana quien domine más provincias. La partida <b>se guarda sola</b> y
+       al volver el mundo se pone al día con el tiempo transcurrido (hasta 1 año de juego). Los tiempos son
        históricos: los ejércitos marchan a su ritmo real en km/día, un castillo tarda años y reclutar piqueros,
        meses. Usa 60x y 720x para probar.</p>
     <h2>Construcciones y caminos</h2>
@@ -1107,8 +1108,9 @@ function hourTick(){
   mergeIdle();
   // 6. IA cada 6 horas
   if(hour%6===0)for(let n=0;n<NPLAY;n++)if(nations[n].alive&&nations[n].ai)aiTurn(n);
-  // 7. diario: moral
+  // 7. diario: moral y autoguardado
   if(hour%24===0){
+    saveGame();
     for(const p of provs){
       if(p.wasteland)continue;
       let hostile=0;
@@ -2425,16 +2427,101 @@ setInterval(()=>{
   if(steps){refreshTop();refreshSide()}
 },250);
 
+/* ============================= Partida guardada ============================= */
+// La campaña dura ~50 días reales: se guarda sola (cada día de juego y al cerrar)
+// y al volver el mundo se pone al día con el tiempo real transcurrido (máx. 1 año de juego).
+function saveGame(){
+  if(!started||gameOver||player<0)return;
+  try{
+    const s={v:1,t:Date.now(),hour,player,armyIdSeq,
+      wars:[...wars],truces:[...truces],roads:[...roads],roadQueue,
+      nations:nations.map(x=>({res:x.res,mano:x.mano,ai:x.ai,capital:x.capital,alive:x.alive,startProvs:x.startProvs})),
+      provs:provs.map(p=>[p.owner,Math.round(p.morale*10)/10,p.buildings.cuartel,p.buildings.fabrica,p.buildings.fortaleza,p.buildQueue,p.recruitQueue]),
+      armies:armies.map(a=>({id:a.id,nation:a.nation,prov:a.prov,units:a.units,path:a.path,legDone:a.legDone,legTotal:a.legTotal})),
+      mapCheck:provs.length+"|"+provs[0].name};
+    localStorage.setItem("basileus_save",JSON.stringify(s));
+  }catch(e){}
+}
+function loadSaveMeta(){
+  try{
+    const s=JSON.parse(localStorage.getItem("basileus_save"));
+    if(!s||s.v!==1||s.mapCheck!==provs.length+"|"+provs[0].name)return null;
+    return s;
+  }catch(e){return null}
+}
+function continueGame(){
+  const s=loadSaveMeta();
+  if(!s)return;
+  hour=s.hour;player=s.player;armyIdSeq=s.armyIdSeq;
+  wars=new Set(s.wars);truces=new Map(s.truces);
+  roads=new Set(s.roads);roadQueue=s.roadQueue||[];
+  s.nations.forEach((x,i)=>Object.assign(nations[i],x));
+  s.provs.forEach((d,i)=>{
+    const p=provs[i];
+    p.owner=d[0];p.morale=d[1];
+    p.buildings={cuartel:d[2],fabrica:d[3],fortaleza:d[4]};
+    p.buildQueue=d[5]||[];p.recruitQueue=d[6]||[];
+  });
+  armies=s.armies;
+  nations[player].ai=false;
+  started=true;gameOver=false;selProv=-1;selArmy=null;battleFlash={};
+  document.getElementById("startOverlay").style.display="none";
+  document.getElementById("nationChip").innerHTML=
+    "<span class='chip' style='background:"+NATIONS[player].color+"'></span>"+NATIONS[player].name;
+  paintAll();drawRoads();
+  const cap=provs[nations[player].capital];
+  if(cap){panX=canvas.width/2-cap.x*zoom;panY=canvas.height/2-cap.y*zoom;clampPan()}
+  refreshTop();
+  // puesta al día: el mundo siguió su curso mientras no estabas
+  const missed=Math.min(8760,Math.floor((Date.now()-s.t)/1000*GH_PER_SEC));
+  if(missed>24)runCatchup(missed);
+  else log("Partida retomada. Bienvenido de nuevo, soberano.");
+}
+function runCatchup(ticks){
+  const msg=document.getElementById("loadMsg");
+  msg.style.display="flex";
+  const total=ticks;
+  const wasSpeed=speed;speed=0;
+  (function step(){
+    const n=Math.min(600,ticks);
+    for(let i=0;i<n&&!gameOver;i++)hourTick();
+    ticks-=n;
+    msg.textContent="El mundo avanzó en tu ausencia… "+Math.round((1-ticks/total)*100)+"% ("+fmtDur(total-ticks)+" de juego)";
+    if(ticks>0&&!gameOver)setTimeout(step,0);
+    else{
+      msg.style.display="none";
+      speed=wasSpeed;
+      refreshTop();refreshSide();
+      saveGame();
+      log("Han pasado "+fmtDur(total)+" desde tu última visita.");
+    }
+  })();
+}
+window.addEventListener("beforeunload",saveGame);
+
 /* ============================= Arranque ============================= */
 function showNationPicker(){
   const grid=document.getElementById("nationGrid");
   let h="";
+  const sv=loadSaveMeta();
+  if(sv){
+    const d=new Date(START_DATE+sv.hour*3600e3);
+    h+="<div class='ncard' id='continueCard' style='grid-column:1/-1;border-color:#9fb878'>"+
+      "<b>▶ Continuar partida</b><span>"+NATIONS[sv.player].name+" · "+d.getUTCDate()+" "+MESES[d.getUTCMonth()]+" "+d.getUTCFullYear()+"</span></div>";
+  }
   for(let n=0;n<NPLAY;n++){
     h+="<div class='ncard' data-n='"+n+"'><span class='chip' style='background:"+NATIONS[n].color+"'></span>"+
       "<b>"+NATIONS[n].name+"</b><span>"+nationProvCount(n)+" provincias</span></div>";
   }
   grid.innerHTML=h;
   grid.querySelectorAll(".ncard").forEach(c=>c.addEventListener("click",()=>{
+    if(c.id==="continueCard"){
+      document.getElementById("startOverlay").style.display="none";
+      continueGame();
+      return;
+    }
+    if(sv&&!confirm("Empezar una partida nueva descartará la guardada. ¿Continuar?"))return;
+    try{localStorage.removeItem("basileus_save")}catch(e){}
     player=+c.dataset.n;
     nations[player].ai=false;
     document.getElementById("startOverlay").style.display="none";
