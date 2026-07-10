@@ -105,10 +105,12 @@
        100 años, de 1444 a 1544: al final, gana quien domine más provincias. Los tiempos son
        históricos: los ejércitos marchan a su ritmo real en km/día, un castillo tarda años y reclutar piqueros,
        meses. Usa 60x y 720x para probar.</p>
-    <h2>Construcciones</h2>
+    <h2>Construcciones y caminos</h2>
     <p><b>Cuartel de levas</b> (4 meses): desbloquea piqueros y acelera el reclutamiento. <b>Herrería</b>
        (9 meses): +15% producción, necesaria para caballería pesada y bombardas. <b>Castillo</b> (2 años por
-       nivel): +30% defensa.</p>
+       nivel): +30% defensa. Los <b>caminos</b> ya no son un edificio: se construyen <b>entre dos provincias
+       propias adyacentes</b> (6 meses) desde el panel de provincia, se ven sobre el mapa y aceleran la marcha
+       un 50%. Cada reino empieza con su red de caminos histórica.</p>
     <h2>Terreno</h2>
     <p>Cada provincia tiene un tipo de terreno con efectos propios. <b>Montañas</b> y <b>colinas</b>: gran bonus
        defensivo pero movimiento lento y menor producción. <b>Bosques</b> y <b>pantanos</b>: defensivos y lentos.
@@ -205,6 +207,8 @@ function terrainFx(t){
 /* ============================= Estado global ============================= */
 let provs=[],provIdx,pixOfProv=[],borderPxOfProv=[],adj=[],seaAdj=[];
 let nations=[],armies=[],wars=new Set(),truces=new Map(),armyIdSeq=1;
+let roads=new Set(),roadQueue=[]; // caminos: enlaces entre provincias adyacentes ("a|b")
+let customRoads=false; // true si la red viene editada a mano (instantánea) y no debe regenerarse
 let player=-1,hour=0,speed=1,acc=0,started=false,gameOver=false;
 let selProv=-1,selArmy=null;
 let battleFlash={}; // provId -> hour del último combate
@@ -241,6 +245,7 @@ function decodeCountries(){
 }
 function generateMap(){
   rand=mulberry32(193909); // determinista también al regenerar desde el editor
+  customRoads=false; // mundo generado = red de caminos generada
   decodeCountries();
   // componentes conexas de cada nación (para no fusionar territorios separados por mar u otras naciones)
   const compAt=new Int32Array(MW*MH).fill(-1);
@@ -688,6 +693,67 @@ function spawnArmy(nation,prov,units){
   return a;
 }
 
+/* ============================= Caminos ============================= */
+// Los caminos son enlaces entre dos provincias adyacentes, no un edificio de provincia.
+function roadKey(a,b){return a<b?a+"|"+b:b+"|"+a}
+function hasRoad(a,b){return roads.has(roadKey(a,b))}
+function landPath(from,to,allow){
+  if(from===to)return[from];
+  const prev=new Map([[from,-1]]);
+  const q=[from];
+  while(q.length){
+    const c=q.shift();
+    for(const a of adj[c]){
+      if(prev.has(a)||(a!==to&&!allow(a)))continue;
+      prev.set(a,c);
+      if(a===to){
+        const path=[a];let cur=c;
+        while(cur!==-1){path.unshift(cur);cur=prev.get(cur)}
+        return path;
+      }
+      q.push(a);
+    }
+  }
+  return null;
+}
+// Red inicial plausible: radiales de cada capital a sus ciudades, y arterias
+// entre capitales vecinas (las viejas calzadas que unen los reinos).
+function generateRoads(){
+  roads=new Set();roadQueue=[];
+  for(let n=0;n<NPLAY;n++){
+    const cap=nations[n].capital;
+    if(cap<0)continue;
+    for(const p of provs){
+      if(p.owner!==n||!p.urban||p.id===cap)continue;
+      const path=landPath(cap,p.id,x=>provs[x].owner===n&&!provs[x].wasteland);
+      if(path)for(let i=0;i<path.length-1;i++)roads.add(roadKey(path[i],path[i+1]));
+    }
+  }
+  // arteria hacia la capital extranjera más cercana
+  for(let n=0;n<NPLAY;n++){
+    const capN=nations[n].capital;
+    if(capN<0)continue;
+    let best=-1,bd=1e18;
+    for(let m=0;m<NPLAY;m++){
+      if(m===n||nations[m].capital<0)continue;
+      const d=kmBetween(provs[capN],provs[nations[m].capital]);
+      if(d<bd){bd=d;best=m}
+    }
+    if(best<0||n>best)continue; // cada pareja una sola vez
+    const path=landPath(capN,nations[best].capital,x=>!provs[x].wasteland);
+    if(path&&path.length<=14)for(let i=0;i<path.length-1;i++)roads.add(roadKey(path[i],path[i+1]));
+  }
+}
+function tryRoad(a,b){
+  const cost={dinero:800,materiales:1200};
+  if(provs[a].owner!==player||provs[b].owner!==player)return;
+  if(hasRoad(a,b)||roadQueue.some(q=>q.key===roadKey(a,b)))return;
+  if(!canAfford(player,cost))return;
+  pay(player,cost);
+  roadQueue.push({key:roadKey(a,b),hoursLeft:4320,nation:player}); // 6 meses de obra
+  refreshSide();refreshTop();
+}
+window.tryRoad=tryRoad;
 
 /* ============================= Render del mapa base ============================= */
 const baseC=document.createElement("canvas");baseC.width=MW;baseC.height=MH;
@@ -782,6 +848,66 @@ function repaintProvince(pid){
   baseCtx.putImageData(baseData,0,0);
   updateBordersAround(pid); // la frontera nacional se mueve con la conquista
 }
+// capa de caminos: curvas serpenteantes entre provincias enlazadas (las obras, discontinuas).
+// La curvatura es determinista (hash de las dos provincias), así el camino siempre luce igual.
+const roadsC=document.createElement("canvas");roadsC.width=MW;roadsC.height=MH;
+function roadCurve(c,a,b){
+  const ax=provs[a].x,ay=provs[a].y,bx=provs[b].x,by=provs[b].y;
+  const dx=bx-ax,dy=by-ay,L=Math.hypot(dx,dy)||1;
+  const nx=-dy/L,ny=dx/L; // perpendicular al tramo
+  const h1=hashN(a*7+1,b*13+3)-0.5, h2=hashN(a*11+5,b*17+7)-0.5;
+  const w=Math.min(34,L*0.3);
+  const isLand=(x,y)=>{
+    const ix=x|0,iy=y|0;
+    return ix>=0&&iy>=0&&ix<MW&&iy<MH&&provIdx[iy*MW+ix]>=0;
+  };
+  // probar curvaturas cada vez más suaves (y espejadas) hasta que el trazo no pise el mar
+  for(const k of[1,-1,0.5,-0.5,0.25,-0.25,0]){
+    const c1x=ax+dx/3+nx*w*h1*2*k, c1y=ay+dy/3+ny*w*h1*2*k;
+    const c2x=ax+dx*2/3+nx*w*h2*2*k, c2y=ay+dy*2/3+ny*w*h2*2*k;
+    let ok=true;
+    for(let t=0.05;t<1&&ok;t+=0.05){
+      const u=1-t;
+      const x=u*u*u*ax+3*u*u*t*c1x+3*u*t*t*c2x+t*t*t*bx;
+      const y=u*u*u*ay+3*u*u*t*c1y+3*u*t*t*c2y+t*t*t*by;
+      if(!isLand(x,y))ok=false;
+    }
+    if(ok){
+      c.moveTo(ax,ay);
+      c.bezierCurveTo(c1x,c1y,c2x,c2y,bx,by);
+      return;
+    }
+  }
+  // ni la recta vale (una bahía en medio): pasar por el centro de la frontera compartida
+  let sx=0,sy=0,cnt=0;
+  for(const i of borderPxOfProv[a]){
+    const x=i%MW,y=(i/MW)|0;
+    if((x>0&&provIdx[i-1]===b)||(x<MW-1&&provIdx[i+1]===b)||
+       (i>=MW&&provIdx[i-MW]===b)||(i<MW*MH-MW&&provIdx[i+MW]===b)){sx+=x;sy+=y;cnt++}
+  }
+  c.moveTo(ax,ay);
+  if(cnt){c.lineTo(sx/cnt,sy/cnt);c.lineTo(bx,by)}
+  else c.lineTo(bx,by);
+}
+function drawRoads(){
+  const c=roadsC.getContext("2d");
+  c.clearRect(0,0,MW,MH);
+  c.lineCap="round";c.lineJoin="round";
+  const seg=(a,b)=>{c.beginPath();roadCurve(c,a,b);c.stroke()};
+  for(const k of roads){
+    const[a,b]=k.split("|").map(Number);
+    if(!provs[a]||!provs[b])continue;
+    c.setLineDash([]);
+    c.strokeStyle="rgba(45,34,20,.2)";c.lineWidth=3.4;seg(a,b); // sombra sutil
+    c.strokeStyle="rgba(112,86,54,.45)";c.lineWidth=1.7;seg(a,b); // tierra apagada
+  }
+  for(const q of roadQueue){
+    const[a,b]=q.key.split("|").map(Number);
+    if(!provs[a]||!provs[b])continue;
+    c.strokeStyle="rgba(112,86,54,.3)";c.lineWidth=1.6;c.setLineDash([7,8]);seg(a,b);
+  }
+  c.setLineDash([]);
+}
 
 /* ============================= Cámara y canvas ============================= */
 const canvas=document.getElementById("map"),ctx=canvas.getContext("2d");
@@ -871,7 +997,8 @@ function startLeg(a){
     a.legTotal=Math.max(24,km/90*24);
   }else{
     const terr=(TERRAINS[from.terrain].mov+TERRAINS[to.terrain].mov)/2;
-    a.legTotal=Math.max(6,km/(armySpd(a)*terr)*24);
+    const road=hasRoad(a.prov,a.path[0])?1.5:1; // los caminos aceleran la marcha un 50%
+    a.legTotal=Math.max(6,km/(armySpd(a)*terr*road)*24);
   }
   a.legDone=0;
 }
@@ -942,6 +1069,17 @@ function hourTick(){
           if(q.nation===player)log(UNITS[q.u].label+" reclutado en "+p.name+".");
         }
       }
+    }
+  }
+  // 2b. caminos en obra
+  for(let i=roadQueue.length-1;i>=0;i--){
+    const q=roadQueue[i];
+    if(--q.hoursLeft<=0){
+      roads.add(q.key);
+      roadQueue.splice(i,1);
+      drawRoads();
+      const[ra,rb]=q.key.split("|").map(Number);
+      if(q.nation===player)log("Camino terminado entre "+provs[ra].name+" y "+provs[rb].name+".");
     }
   }
   // 3. movimiento
@@ -1291,6 +1429,24 @@ function refreshSide(){
   }
   if(p.buildQueue.length)h+="<div class='row sm'><span>En obra: "+BUILDINGS[p.buildQueue[0].b].label+"</span><span>"+fmtDur(p.buildQueue[0].hoursLeft)+"</span></div>";
   if(own){
+    h+="<h3>Caminos</h3>";
+    let anyRoadRow=false;
+    for(const b of adj[p.id]){
+      if(provs[b].owner!==player)continue;
+      anyRoadRow=true;
+      const kmR=Math.round(kmBetween(p,provs[b]));
+      if(hasRoad(p.id,b)){
+        h+="<div class='row sm'><span>→ "+provs[b].name+" ("+kmR+" km)</span><span>camino</span></div>";
+      }else if(roadQueue.some(q=>q.key===roadKey(p.id,b))){
+        const q=roadQueue.find(q=>q.key===roadKey(p.id,b));
+        h+="<div class='row sm'><span>→ "+provs[b].name+"</span><span>en obra ("+fmtDur(q.hoursLeft)+")</span></div>";
+      }else{
+        const dis=!canAfford(player,{dinero:800,materiales:1200});
+        h+="<div class='row'><span class='sm'>→ "+provs[b].name+" ("+kmR+" km)</span>"+
+          "<button class='bbtn' "+(dis?"disabled":"")+" title='800 Ducados, 1200 Madera — 6 meses' onclick='tryRoad("+p.id+","+b+")'>Camino</button></div>";
+      }
+    }
+    if(!anyRoadRow)h+="<p class='sm' style='color:#9aa3ad'>Sin provincias propias adyacentes.</p>";
     h+="<h3>Reclutamiento</h3>";
     for(const u in UNITS){
       const U=UNITS[u];
@@ -1351,16 +1507,17 @@ window.playerDeclare=function(n){declareWar(player,n);refreshDiplomacy()};
 // vecina y los perdidos se le ceden. El mapa editado se guarda como instantánea (localStorage)
 // y se carga al arrancar en lugar de regenerarse.
 let editMode=false,shapeSel=-1,shapePoly=[],dragVi=-1;
-let editTool="shape"; // "shape" | "merge" | "split"
+let editTool="shape"; // "shape" | "merge" | "split" | "roads"
 let mergeFrom=-1,mergeCur=null;   // gesto de fusión (provincia origen y cursor)
 let splitFrom=-1,splitCur=null;   // gesto de división (vértice origen y cursor)
+let roadFrom=-1,roadCur=null;     // gesto de camino (provincia origen y cursor)
 let dragWas=null,dragIns=false;   // posición original del vértice arrastrado / si fue insertado
 // sesión de edición: nada se persiste hasta «Guardar cambios»
 let editUndoStack=[],editBackup=null,editDirty=false;
 
 function enterEditor(){
   editMode=true;shapeSel=-1;shapePoly=[];dragVi=-1;
-  editTool="shape";mergeFrom=-1;splitFrom=-1;
+  editTool="shape";mergeFrom=-1;splitFrom=-1;roadFrom=-1;
   editBackup=buildSnapshot();editUndoStack=[];editDirty=false;
   speed=0;
   document.querySelectorAll(".spdBtn").forEach(x=>x.classList.toggle("active",x.dataset.s==="0"));
@@ -1377,7 +1534,7 @@ function exitEditor(){
     }else return;
   }
   editMode=false;shapeSel=-1;shapePoly=[];dragVi=-1;
-  editTool="shape";mergeFrom=-1;splitFrom=-1;
+  editTool="shape";mergeFrom=-1;splitFrom=-1;roadFrom=-1;
   document.getElementById("side").style.display="none";
   if(!started)showNationPicker();
 }
@@ -1390,11 +1547,13 @@ function restoreWorldFromSnap(snap){
   provs=[];armies=[];wars=new Set();truces=new Map();armyIdSeq=1;
   player=-1;hour=0;acc=0;started=false;gameOver=false;
   selProv=-1;selArmy=null;battleFlash={};selOutline=null;selOutlineProv=-1;
-  shapeSel=-1;shapePoly=[];dragVi=-1;mergeFrom=-1;splitFrom=-1;
+  shapeSel=-1;shapePoly=[];dragVi=-1;mergeFrom=-1;splitFrom=-1;roadFrom=-1;
   document.getElementById("nationChip").innerHTML="";
   loadProvMap(snap);
   setupNations();
+  if(!customRoads)generateRoads();
   paintAll();
+  drawRoads();
   if(editMode)refreshEditorPanel();
 }
 window.saveChanges=function(){
@@ -1417,9 +1576,20 @@ window.discardChanges=function(){
   refreshEditorPanel();
 };
 window.setTool=function(t){
-  editTool=t;mergeFrom=-1;splitFrom=-1;dragVi=-1;
+  editTool=t;mergeFrom=-1;splitFrom=-1;roadFrom=-1;dragVi=-1;
   refreshEditorPanel();
 };
+function toggleRoadEdit(a,b){
+  if(a===b||!adj[a].has(b)){log("Los caminos solo unen provincias adyacentes por tierra.");return}
+  if(provs[a].wasteland||provs[b].wasteland)return;
+  pushUndo();
+  customRoads=true;
+  const k=roadKey(a,b);
+  if(roads.has(k))roads.delete(k);else roads.add(k);
+  roadQueue=roadQueue.filter(q=>q.key!==k);
+  drawRoads();
+  refreshEditorPanel();
+}
 
 // --- vectorización del contorno ---
 function dpSimplify(pts,tol){
@@ -1555,6 +1725,7 @@ function applyShape(pid,poly){
   }
   rebuildProvinceData();
   paintAll();
+  drawRoads(); // los centros de provincia pueden haberse movido
   selOutline=null;selOutlineProv=-1;
   if(blocked)log("Edición limitada: "+blocked+" provincia(s) vecina(s) no pueden quedar vacías.");
 }
@@ -1590,7 +1761,19 @@ function mergeProvinces(a,b){
   battleFlash={};
   selProv=-1;selArmy=null;
   rebuildProvinceData();
+  if(customRoads){
+    // remapear las claves de camino a los nuevos ids de provincia
+    const nr=new Set();
+    for(const k of roads){
+      let[x,y]=k.split("|").map(Number);
+      x=x===a?target:newIdOf(x);
+      y=y===a?target:newIdOf(y);
+      if(x!==y&&adj[x]&&adj[x].has(y))nr.add(roadKey(x,y));
+    }
+    roads=nr;roadQueue=[];
+  }else generateRoads(); // los ids de provincia han cambiado
   paintAll();
+  drawRoads();
   selOutline=null;selOutlineProv=-1;
   shapeSel=target;shapePoly=traceProvince(target);
   refreshEditorPanel();
@@ -1669,7 +1852,9 @@ function splitProvince(pid,poly,vi,vj,forcedName){
   keepLargestFragment(np.id,pid);
   keepLargestFragment(pid,np.id);
   rebuildProvinceData();
+  if(!customRoads)generateRoads(); // con red editada, los ids existentes siguen siendo válidos
   paintAll();
+  drawRoads();
   selOutline=null;selOutlineProv=-1;
   shapeSel=np.id;shapePoly=traceProvince(np.id);
   refreshEditorPanel();
@@ -1685,7 +1870,7 @@ function buildSnapshot(){
     else{rle.push(cur,run);cur=provIdx[i];run=1}
   }
   rle.push(cur,run);
-  return{v:1,W:MW,H:MH,rle,
+  return{v:1,W:MW,H:MH,rle,roads:[...roads],
     provs:provs.map(p=>[p.name,p.x,p.y,p.owner0,p.named?1:0,p.urban?1:0,p.capital?1:0,TERRAIN_KEYS.indexOf(p.terrain),p.wasteland?1:0])};
 }
 function saveProvMap(){
@@ -1726,6 +1911,8 @@ function loadProvMap(snap){
   for(const p of provs)if(p.wasteland==null){p.wasteland=p.terrain==="desierto"&&!p.coastal&&!p.named;computed=true}
   if(computed)isolateWastePockets(); // los flags editados a mano se respetan tal cual
   for(const p of provs)if(p.wasteland){p.owner=NEUTRAL;p.owner0=NEUTRAL;p.capital=false;p.urban=false}
+  if(snap.roads){roads=new Set(snap.roads);roadQueue=[];customRoads=true}
+  else customRoads=false;
 }
 function initWorld(){
   const snap=loadProvMapSnapshot();
@@ -1741,7 +1928,7 @@ function regenerateWorld(){
     selProv=-1;selArmy=null;battleFlash={};selOutline=null;selOutlineProv=-1;
     shapeSel=-1;shapePoly=[];dragVi=-1;
     document.getElementById("nationChip").innerHTML="";
-    initWorld();setupNations();paintAll();
+    initWorld();setupNations();if(!customRoads)generateRoads();paintAll();drawRoads();
     document.getElementById("loadMsg").style.display="none";
     if(editMode){
       editBackup=buildSnapshot();editUndoStack=[];editDirty=false;
@@ -1755,11 +1942,14 @@ function refreshEditorPanel(){
   const el=document.getElementById("side");
   let h="<h2>Editor de provincias</h2>";
   const tb=(t,lab)=>"<button class='bbtn' style='flex:1"+(editTool===t?";outline:2px solid #9fb878":"")+"' onclick='setTool(\""+t+"\")'>"+lab+"</button>";
-  h+="<div class='row'>"+tb("shape","Formas")+tb("merge","Fusionar")+tb("split","Dividir")+"</div>";
+  h+="<div class='row'>"+tb("shape","Formas")+tb("merge","Fusionar")+tb("split","Dividir")+tb("roads","Caminos")+"</div>";
   if(editTool==="shape"){
     h+="<p style='font-size:11px;color:#9aa3ad;line-height:1.5'>Clic: seleccionar provincia · arrastra un vértice para remodelar · clic sobre un borde: nuevo vértice · clic derecho en un vértice: borrarlo · Esc: deseleccionar. Los cambios se aplican al soltar, pero no se guardan hasta que pulses <b>Guardar cambios</b>.</p>";
   }else if(editTool==="merge"){
     h+="<p style='font-size:11px;color:#9aa3ad;line-height:1.5'>Arrastra desde una provincia hasta otra: la primera se <b>disuelve dentro</b> de la segunda (que conserva su nombre).</p>";
+  }else if(editTool==="roads"){
+    h+="<p style='font-size:11px;color:#9aa3ad;line-height:1.5'>Arrastra entre dos provincias <b>adyacentes</b>: crea el camino si no existe y lo quita si ya existe. Los caminos se resaltan mientras esta herramienta está activa.</p>";
+    h+="<div class='row sm'><span>Caminos en el mapa</span><b>"+roads.size+"</b></div>";
   }else{
     h+="<p style='font-size:11px;color:#9aa3ad;line-height:1.5'>"+(shapeSel>=0?
       "Arrastra desde un vértice hasta otro <b>no contiguo</b>: la provincia se corta por esa línea y el lado del arrastre se convierte en una provincia nueva.":
@@ -1924,6 +2114,22 @@ function drawEditorOverlay(){
     const p=provs[mergeFrom];
     drawArrow(p.x,p.y,mergeCur[0],mergeCur[1]);
   }
+  if(editTool==="roads"){
+    // resaltar la red mientras se edita
+    ctx.lineWidth=1.6/zoom;
+    ctx.strokeStyle="rgba(255,214,110,.75)";
+    for(const k of roads){
+      const[x,y]=k.split("|").map(Number);
+      if(!provs[x]||!provs[y])continue;
+      ctx.beginPath();ctx.moveTo(provs[x].x,provs[x].y);ctx.lineTo(provs[y].x,provs[y].y);ctx.stroke();
+    }
+    if(roadFrom>=0&&roadCur){
+      const p=provs[roadFrom];
+      ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(roadCur[0],roadCur[1]);
+      ctx.strokeStyle="rgba(130,220,130,.9)";ctx.lineWidth=2.2/zoom;
+      ctx.setLineDash([6/zoom,5/zoom]);ctx.stroke();ctx.setLineDash([]);
+    }
+  }
 }
 document.getElementById("editBtn").addEventListener("click",()=>{editMode?exitEditor():enterEditor()});
 document.getElementById("editFromPicker").addEventListener("click",enterEditor);
@@ -1935,7 +2141,7 @@ window.addEventListener("keydown",e=>{
     return;
   }
   if(e.key==="Escape"){
-    if(mergeFrom>=0||splitFrom>=0){mergeFrom=-1;mergeCur=null;splitFrom=-1;splitCur=null;return}
+    if(mergeFrom>=0||splitFrom>=0||roadFrom>=0){mergeFrom=-1;mergeCur=null;splitFrom=-1;splitCur=null;roadFrom=-1;roadCur=null;return}
     if(shapeSel>=0){shapeSel=-1;shapePoly=[];dragVi=-1;refreshEditorPanel()}
   }
 });
@@ -1957,6 +2163,9 @@ canvas.addEventListener("mousedown",e=>{
       if(editTool==="merge"){
         const pid=provAtWorld(wx,wy);
         if(pid>=0){mergeFrom=pid;mergeCur=[wx,wy];return}
+      }else if(editTool==="roads"){
+        const pid=provAtWorld(wx,wy);
+        if(pid>=0&&!provs[pid].wasteland){roadFrom=pid;roadCur=[wx,wy];return}
       }else if(editTool==="split"&&shapeSel>=0&&shapePoly.length){
         const vi=vertexAt(wx,wy);
         if(vi>=0){splitFrom=vi;splitCur=[wx,wy];return}
@@ -1984,6 +2193,7 @@ window.addEventListener("mousemove",e=>{
     return;
   }
   if(mergeFrom>=0){mergeCur=evWorld(e);return}
+  if(roadFrom>=0){roadCur=evWorld(e);return}
   if(splitFrom>=0){splitCur=evWorld(e);return}
   if(!dragging)return;
   const dx=e.clientX-lastMx,dy=e.clientY-lastMy;
@@ -2014,6 +2224,14 @@ window.addEventListener("mouseup",e=>{
     const[wx,wy]=evWorld(e);
     const pid=provAtWorld(wx,wy);
     if(pid>=0&&pid!==from)mergeProvinces(from,pid);
+    return;
+  }
+  if(roadFrom>=0){
+    const from=roadFrom;
+    roadFrom=-1;roadCur=null;
+    const[wx,wy]=evWorld(e);
+    const pid=provAtWorld(wx,wy);
+    if(pid>=0&&pid!==from&&!provs[pid].wasteland)toggleRoadEdit(from,pid);
     return;
   }
   if(splitFrom>=0){
@@ -2137,6 +2355,7 @@ function draw(){
   ctx.setTransform(zoom,0,0,zoom,panX,panY);
   ctx.imageSmoothingEnabled=zoom<1.5;
   ctx.drawImage(baseC,0,0);
+  ctx.drawImage(roadsC,0,0);
   ctx.drawImage(borderC,0,0);
   // contorno de provincia seleccionada
   if(selProv>=0){
@@ -2234,7 +2453,9 @@ function init(){
     fitCanvas();
     initWorld();
     setupNations();
+    if(!customRoads)generateRoads();
     paintAll();
+    drawRoads();
     zoom=Math.max(0.35,Math.min(canvas.width/MW,canvas.height/MH));
     panX=(canvas.width-MW*zoom)/2;panY=(canvas.height-MH*zoom)/2;
     document.getElementById("loadMsg").style.display="none";
