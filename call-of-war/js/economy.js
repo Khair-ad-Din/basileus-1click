@@ -8,6 +8,12 @@ import { S } from "./state.js";
 const SOLD_FRAC=0.02;      // techo de soldadesca = 2% de la población (movilización máxima realista)
 const TAX_PC=0.000012;     // ducados/mes por habitante (campo); la ciudad rinde más
 const TAX_URBAN=2.4;       // multiplicador de impuestos en provincia urbana
+// Producción del BIEN BASE de la provincia: escala con la POBLACIÓN (los "pops de serie" trabajan
+// su tierra), no con el nº de provincias. Así la riqueza va con la gente, no con tener mucho
+// territorio despoblado. La provincia tiene AFINIDAD por su bien (+15%, bonus pequeño y stackeable).
+const BASE_PC=0.00005;     // producción base del bien de la provincia por habitante (calibrado a nivel jugable)
+const BASE_URBAN=1.6;      // la ciudad rinde más por habitante (comercio/artesanía)
+const AFFINITY=0.15;       // +15% al bien base (pops de serie y fábricas de ESE bien)
 // Soldadesca: el cupo de gente movilizable de una provincia. Su techo escala con la
 // población y con los edificios militares (fx.mano, reinterpretado como % de cupo extra).
 function soldCap(p){
@@ -130,14 +136,16 @@ function provEconomy(p){
   if(!p||p.owner>=NPLAY||p.wasteland)return out;
   const mor=p.morale/100,terr=TERRAINS[p.terrain].prod,st=staffing(p);
   const add=(k,v)=>{out.res[k]=(out.res[k]||0)+v};
-  const baseProd=(p.resType==="dinero"?2.8:1.3)*terr*mor;
-  add(p.resType,baseProd*(1+(provProdMul(p)-1)*st));                      // tierra base + multiplicador de edificios (con dotación)
+  // producción base del bien de la provincia: pop-driven (pops de serie), con afinidad; SIN dotación
+  const base=(p.pop||0)*BASE_PC*(p.urban?BASE_URBAN:1)*terr*mor;
+  add(p.resType,base*(1+AFFINITY)*(1+(provProdMul(p)-1)*st));             // afinidad + multiplicador de edificios (este sí con dotación)
   add("dinero",taxOf(p));                                                 // impuestos de la población (no dependen de la dotación)
   for(const b in BUILDINGS){
     const lvl=lvlOf(p,b);if(!lvl)continue;
     const fx=BUILDINGS[b].fx;
-    if(fx.prodAdd)for(const k in fx.prodAdd)add(k,fx.prodAdd[k]*lvl*terr*mor*st); // los edificios producen según su dotación
-    if(fx.goldAdd)add("dinero",fx.goldAdd*lvl*mor*st);
+    // las fábricas del bien base de la provincia reciben también la afinidad
+    if(fx.prodAdd)for(const k in fx.prodAdd)add(k,fx.prodAdd[k]*lvl*terr*mor*st*(k===p.resType?1+AFFINITY:1));
+    if(fx.goldAdd)add("dinero",fx.goldAdd*lvl*mor*st*(p.resType==="dinero"?1+AFFINITY:1));
   }
   const up=provUpkeep(p);
   for(const k in up)add(k,-up[k]); // mantenimiento de los edificios
@@ -148,7 +156,7 @@ function provBreakdown(p){
   const net={};
   if(!p||p.owner>=NPLAY||p.wasteland)return{income,upkeep,net,mano};
   const mor=p.morale/100,terr=TERRAINS[p.terrain].prod,st=staffing(p);
-  const baseNoMul=(p.resType==="dinero"?2.8:1.3)*terr*mor;
+  const baseNoMul=(p.pop||0)*BASE_PC*(p.urban?BASE_URBAN:1)*terr*mor*(1+AFFINITY); // pop-driven + afinidad
   income.push({label:p.urban?"Comercio de la ciudad":"Producción",res:p.resType,amt:baseNoMul});
   for(const b in BUILDINGS){ // multiplicadores de producción (gremio, fundición, universidad), con dotación
     const fx=BUILDINGS[b].fx,lvl=lvlOf(p,b);
@@ -157,8 +165,8 @@ function provBreakdown(p){
   income.push({label:"Impuestos de la población",res:"dinero",amt:taxOf(p)});
   for(const b in BUILDINGS){
     const fx=BUILDINGS[b].fx,lvl=lvlOf(p,b);if(!lvl)continue;
-    if(fx.prodAdd)for(const k in fx.prodAdd)income.push({label:BUILDINGS[b].label,res:k,amt:fx.prodAdd[k]*lvl*terr*mor*st});
-    if(fx.goldAdd)income.push({label:BUILDINGS[b].label,res:"dinero",amt:fx.goldAdd*lvl*mor*st});
+    if(fx.prodAdd)for(const k in fx.prodAdd)income.push({label:BUILDINGS[b].label,res:k,amt:fx.prodAdd[k]*lvl*terr*mor*st*(k===p.resType?1+AFFINITY:1)});
+    if(fx.goldAdd)income.push({label:BUILDINGS[b].label,res:"dinero",amt:fx.goldAdd*lvl*mor*st*(p.resType==="dinero"?1+AFFINITY:1)});
   }
   mano=soldAvail(p); // "mano" del desglose ahora = soldadesca disponible (stock, no ingreso)
   const up=provUpkeep(p);
