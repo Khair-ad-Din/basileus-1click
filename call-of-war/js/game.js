@@ -137,9 +137,8 @@ function hex2rgb(h){return[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),p
 const NCOL=NATIONS.map(n=>hex2rgb(n.color));
 const TCOL={};for(const k of TERRAIN_KEYS)TCOL[k]=hex2rgb(TERRAINS[k].color);
 const WASTECOL=hex2rgb("#847c6a"); // territorio impracticable en vista política
-let terrainView=false; // modo de mapa: false = político, true = terreno
 function provColor(p){
-  if(terrainView)return TCOL[S.provs[p].terrain];
+  if(S.terrainView)return TCOL[S.provs[p].terrain];
   return S.provs[p].wasteland?WASTECOL:NCOL[S.provs[p].owner];
 }
 function paintAll(){
@@ -284,15 +283,14 @@ function drawRoads(){
 
 /* ============================= Cámara y canvas ============================= */
 const canvas=document.getElementById("map"),ctx=canvas.getContext("2d");
-let zoom=1,panX=0,panY=0;
 function fitCanvas(){
   const w=canvas.parentElement.clientWidth,h=canvas.parentElement.clientHeight;
   canvas.width=w;canvas.height=h;
 }
 window.addEventListener("resize",fitCanvas);
 function clampPan(){
-  panX=Math.min(60,Math.max(canvas.width-MW*zoom-60,panX));
-  panY=Math.min(60,Math.max(canvas.height-MH*zoom-60,panY));
+  S.panX=Math.min(60,Math.max(canvas.width-MW*S.zoom-60,S.panX));
+  S.panY=Math.min(60,Math.max(canvas.height-MH*S.zoom-60,S.panY));
 }
 
 /* ============================= Utilidades de juego ============================= */
@@ -1040,18 +1038,12 @@ window.playerDeclare=function(n){declareWar(S.player,n);refreshDiplomacy()};
 // Editar los vértices y soltar re-rasteriza: los píxeles ganados se toman de la provincia
 // vecina y los perdidos se le ceden. El mapa editado se guarda como instantánea (localStorage)
 // y se carga al arrancar en lugar de regenerarse.
-let editMode=false,shapeSel=-1,shapePoly=[],dragVi=-1;
-let editTool="shape"; // "shape" | "merge" | "split" | "roads"
-let mergeFrom=-1,mergeCur=null;   // gesto de fusión (provincia origen y cursor)
-let splitFrom=-1,splitCur=null;   // gesto de división (vértice origen y cursor)
-let roadFrom=-1,roadCur=null;     // gesto de camino (provincia origen y cursor)
-let dragWas=null,dragIns=false;   // posición original del vértice arrastrado / si fue insertado
 // sesión de edición: nada se persiste hasta «Guardar cambios»
 let editUndoStack=[],editBackup=null,editDirty=false;
 
 function enterEditor(){
-  editMode=true;shapeSel=-1;shapePoly=[];dragVi=-1;
-  editTool="shape";mergeFrom=-1;splitFrom=-1;roadFrom=-1;
+  S.editMode=true;S.shapeSel=-1;S.shapePoly=[];S.dragVi=-1;
+  S.editTool="shape";S.mergeFrom=-1;S.splitFrom=-1;S.roadFrom=-1;
   editBackup=buildSnapshot();editUndoStack=[];editDirty=false;
   document.getElementById("buildbar").style.display="none";
   document.getElementById("buildtabs").style.display="none";
@@ -1069,8 +1061,8 @@ function exitEditor(){
       editUndoStack=[];editDirty=false;
     }else return;
   }
-  editMode=false;shapeSel=-1;shapePoly=[];dragVi=-1;
-  editTool="shape";mergeFrom=-1;splitFrom=-1;roadFrom=-1;
+  S.editMode=false;S.shapeSel=-1;S.shapePoly=[];S.dragVi=-1;
+  S.editTool="shape";S.mergeFrom=-1;S.splitFrom=-1;S.roadFrom=-1;
   document.getElementById("side").style.display="none";
   if(!S.started)showNationPicker();
 }
@@ -1083,14 +1075,14 @@ function restoreWorldFromSnap(snap){
   S.provs=[];S.armies=[];S.wars=new Set();S.truces=new Map();S.armyIdSeq=1;
   S.player=-1;S.hour=0;acc=0;S.started=false;S.gameOver=false;
   S.selProv=-1;S.selArmy=null;S.battleFlash={};selOutline=null;selOutlineProv=-1;
-  shapeSel=-1;shapePoly=[];dragVi=-1;mergeFrom=-1;splitFrom=-1;roadFrom=-1;
+  S.shapeSel=-1;S.shapePoly=[];S.dragVi=-1;S.mergeFrom=-1;S.splitFrom=-1;S.roadFrom=-1;
   document.getElementById("nationChip").innerHTML="";
   loadProvMap(snap);
   setupNations();
   if(!S.customRoads)generateRoads();
   paintAll();
   drawRoads();
-  if(editMode)refreshEditorPanel();
+  if(S.editMode)refreshEditorPanel();
 }
 window.saveChanges=function(){
   saveProvMap();
@@ -1112,7 +1104,7 @@ window.discardChanges=function(){
   refreshEditorPanel();
 };
 window.setTool=function(t){
-  editTool=t;mergeFrom=-1;splitFrom=-1;roadFrom=-1;dragVi=-1;
+  S.editTool=t;S.mergeFrom=-1;S.splitFrom=-1;S.roadFrom=-1;S.dragVi=-1;
   refreshEditorPanel();
 };
 function toggleRoadEdit(a,b){
@@ -1311,7 +1303,7 @@ function mergeProvinces(a,b){
   paintAll();
   drawRoads();
   selOutline=null;selOutlineProv=-1;
-  shapeSel=target;shapePoly=traceProvince(target);
+  S.shapeSel=target;S.shapePoly=traceProvince(target);
   refreshEditorPanel();
   log(A.name+" fusionada con "+bName+".");
 }
@@ -1392,7 +1384,7 @@ function splitProvince(pid,poly,vi,vj,forcedName){
   paintAll();
   drawRoads();
   selOutline=null;selOutlineProv=-1;
-  shapeSel=np.id;shapePoly=traceProvince(np.id);
+  S.shapeSel=np.id;S.shapePoly=traceProvince(np.id);
   refreshEditorPanel();
   log(src.name+" dividida: nace "+nm+".");
 }
@@ -1461,11 +1453,11 @@ function regenerateWorld(){
     S.provs=[];S.armies=[];S.wars=new Set();S.truces=new Map();S.armyIdSeq=1;
     S.player=-1;S.hour=0;acc=0;S.started=false;S.gameOver=false;
     S.selProv=-1;S.selArmy=null;S.battleFlash={};selOutline=null;selOutlineProv=-1;
-    shapeSel=-1;shapePoly=[];dragVi=-1;
+    S.shapeSel=-1;S.shapePoly=[];S.dragVi=-1;
     document.getElementById("nationChip").innerHTML="";
     initWorld();setupNations();if(!S.customRoads)generateRoads();paintAll();drawRoads();
     document.getElementById("loadMsg").style.display="none";
-    if(editMode){
+    if(S.editMode){
       editBackup=buildSnapshot();editUndoStack=[];editDirty=false;
       refreshEditorPanel();
     }else showNationPicker();
@@ -1476,27 +1468,27 @@ function regenerateWorld(){
 function refreshEditorPanel(){
   const el=document.getElementById("side");
   let h="<h2>Editor de provincias</h2>";
-  const tb=(t,lab)=>"<button class='bbtn' style='flex:1"+(editTool===t?";outline:2px solid #9fb878":"")+"' onclick='setTool(\""+t+"\")'>"+lab+"</button>";
+  const tb=(t,lab)=>"<button class='bbtn' style='flex:1"+(S.editTool===t?";outline:2px solid #9fb878":"")+"' onclick='setTool(\""+t+"\")'>"+lab+"</button>";
   h+="<div class='row'>"+tb("shape","Formas")+tb("merge","Fusionar")+tb("split","Dividir")+tb("roads","Caminos")+"</div>";
-  if(editTool==="shape"){
+  if(S.editTool==="shape"){
     h+="<p style='font-size:11px;color:#9aa3ad;line-height:1.5'>Clic: seleccionar provincia · arrastra un vértice para remodelar · clic sobre un borde: nuevo vértice · clic derecho en un vértice: borrarlo · Esc: deseleccionar. Los cambios se aplican al soltar, pero no se guardan hasta que pulses <b>Guardar cambios</b>.</p>";
-  }else if(editTool==="merge"){
+  }else if(S.editTool==="merge"){
     h+="<p style='font-size:11px;color:#9aa3ad;line-height:1.5'>Arrastra desde una provincia hasta otra: la primera se <b>disuelve dentro</b> de la segunda (que conserva su nombre).</p>";
-  }else if(editTool==="roads"){
+  }else if(S.editTool==="roads"){
     h+="<p style='font-size:11px;color:#9aa3ad;line-height:1.5'>Arrastra entre dos provincias <b>adyacentes</b>: crea el camino si no existe y lo quita si ya existe. Los caminos se resaltan mientras esta herramienta está activa.</p>";
     h+="<div class='row sm'><span>Caminos en el mapa</span><b>"+S.roads.size+"</b></div>";
   }else{
-    h+="<p style='font-size:11px;color:#9aa3ad;line-height:1.5'>"+(shapeSel>=0?
+    h+="<p style='font-size:11px;color:#9aa3ad;line-height:1.5'>"+(S.shapeSel>=0?
       "Arrastra desde un vértice hasta otro <b>no contiguo</b>: la provincia se corta por esa línea y el lado del arrastre se convierte en una provincia nueva.":
       "Primero haz clic en una provincia para seleccionarla; después arrastra de un vértice a otro para cortarla.")+"</p>";
   }
-  if(shapeSel>=0&&S.provs[shapeSel]){
-    const p=S.provs[shapeSel];
+  if(S.shapeSel>=0&&S.provs[S.shapeSel]){
+    const p=S.provs[S.shapeSel];
     h+="<h3>"+(p.capital?"★ ":"")+"Provincia seleccionada</h3>";
     h+="<input id='provName' style='width:100%;background:#1c2127;border:1px solid #4a525b;color:#e8e4d8;padding:4px 6px;border-radius:4px' value='"+p.name.replace(/'/g,"&#39;").replace(/"/g,"&quot;")+"' onkeydown=\"if(event.key==='Enter')renameProvince()\">";
     h+="<div class='row' style='margin-top:6px'><button class='bbtn' onclick='renameProvince()'>Renombrar</button><button class='bbtn' onclick='deselectShape()'>Deseleccionar</button></div>";
     h+="<div class='row sm'><span>Nación</span><span>"+NATIONS[p.owner].name+"</span></div>";
-    h+="<div class='row sm'><span>Vértices / píxeles</span><span>"+shapePoly.length+" / "+S.pixOfProv[shapeSel].length+"</span></div>";
+    h+="<div class='row sm'><span>Vértices / píxeles</span><span>"+S.shapePoly.length+" / "+S.pixOfProv[S.shapeSel].length+"</span></div>";
     h+="<h3>Terreno <span style='font-weight:normal;color:#9aa3ad;font-size:11px'>("+terrainFx(p.terrain)+")</span></h3>";
     h+="<div style='display:flex;flex-wrap:wrap;gap:4px;margin:4px 0'>";
     for(const t of TERRAIN_KEYS){
@@ -1515,7 +1507,7 @@ function refreshEditorPanel(){
   if(editUndoStack.length)h+="<div class='row'><button class='bbtn' style='width:100%' onclick='undoEdit()'>Deshacer última edición (Ctrl+Z)</button></div>";
   if(editDirty)h+="<div class='row'><button class='bbtn red' style='width:100%' onclick='discardChanges()'>Descartar y volver al último guardado</button></div>";
   h+="<h3>Mapa</h3>";
-  h+="<div class='row'><button class='bbtn' style='width:100%' onclick='toggleTerrainView()'>Vista: "+(terrainView?"Terreno":"Política")+" (cambiar)</button></div>";
+  h+="<div class='row'><button class='bbtn' style='width:100%' onclick='toggleTerrainView()'>Vista: "+(S.terrainView?"Terreno":"Política")+" (cambiar)</button></div>";
   if(loadProvMapSnapshot())h+="<p style='font-size:11px;color:#9fb878'>Jugando sobre un mapa editado (guardado en el navegador).</p>";
   h+="<div class='row'><button class='bbtn' style='width:100%' onclick='downloadMap()'>Descargar mapa editado (JSON)</button></div>";
   h+="<div class='row'><label class='bbtn' style='width:100%;text-align:center'>Importar mapa (JSON)<input type='file' accept='.json,application/json' style='display:none' onchange='importMapFile(this)'></label></div>";
@@ -1524,37 +1516,37 @@ function refreshEditorPanel(){
   el.innerHTML=h;el.style.display="block";
 }
 window.renameProvince=function(){
-  if(shapeSel<0)return;
+  if(S.shapeSel<0)return;
   const v=document.getElementById("provName").value.trim();
-  if(!v||v===S.provs[shapeSel].name)return;
-  if(S.provs.some(p=>p.id!==shapeSel&&p.name===v)){alert("Ya existe una provincia con ese nombre.");return}
+  if(!v||v===S.provs[S.shapeSel].name)return;
+  if(S.provs.some(p=>p.id!==S.shapeSel&&p.name===v)){alert("Ya existe una provincia con ese nombre.");return}
   pushUndo();
-  S.provs[shapeSel].name=v;S.provs[shapeSel].named=true;
+  S.provs[S.shapeSel].name=v;S.provs[S.shapeSel].named=true;
   refreshEditorPanel();
 };
-window.deselectShape=function(){shapeSel=-1;shapePoly=[];dragVi=-1;refreshEditorPanel()};
+window.deselectShape=function(){S.shapeSel=-1;S.shapePoly=[];S.dragVi=-1;refreshEditorPanel()};
 window.setTerrain=function(t){
-  if(shapeSel<0||!TERRAINS[t]||S.provs[shapeSel].terrain===t)return;
+  if(S.shapeSel<0||!TERRAINS[t]||S.provs[S.shapeSel].terrain===t)return;
   pushUndo();
-  S.provs[shapeSel].terrain=t;
-  if(terrainView)repaintProvince(shapeSel);
+  S.provs[S.shapeSel].terrain=t;
+  if(S.terrainView)repaintProvince(S.shapeSel);
   refreshEditorPanel();
 };
 window.toggleWasteland=function(){
-  if(shapeSel<0)return;
+  if(S.shapeSel<0)return;
   pushUndo();
-  const p=S.provs[shapeSel];
+  const p=S.provs[S.shapeSel];
   p.wasteland=!p.wasteland;
   if(p.wasteland){p.owner=NEUTRAL;p.owner0=NEUTRAL;p.capital=false;p.urban=false}
-  repaintProvince(shapeSel);
+  repaintProvince(S.shapeSel);
   refreshEditorPanel();
 };
 window.toggleTerrainView=function(){
-  terrainView=!terrainView;
+  S.terrainView=!S.terrainView;
   paintAll();
-  document.getElementById("terrBtn").textContent=terrainView?"Político":"Terreno";
-  document.getElementById("terrLegend").style.display=terrainView?"block":"none";
-  if(editMode)refreshEditorPanel();
+  document.getElementById("terrBtn").textContent=S.terrainView?"Político":"Terreno";
+  document.getElementById("terrLegend").style.display=S.terrainView?"block":"none";
+  if(S.editMode)refreshEditorPanel();
 };
 window.downloadMap=function(){
   const s=JSON.stringify(buildSnapshot());
@@ -1590,10 +1582,10 @@ window.exitEditorBtn=exitEditor;
 
 // --- pruebas de impacto sobre el polígono ---
 function vertexAt(wx,wy){
-  const r=8/zoom;
+  const r=8/S.zoom;
   let best=-1,bd=r*r;
-  for(let i=0;i<shapePoly.length;i++){
-    const d=(shapePoly[i][0]-wx)**2+(shapePoly[i][1]-wy)**2;
+  for(let i=0;i<S.shapePoly.length;i++){
+    const d=(S.shapePoly[i][0]-wx)**2+(S.shapePoly[i][1]-wy)**2;
     if(d<bd){bd=d;best=i}
   }
   return best;
@@ -1613,8 +1605,8 @@ function nearestSegment(poly,wx,wy){
 }
 function drawArrow(x0,y0,x1,y1){
   ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(x1,y1);
-  ctx.strokeStyle="rgba(255,210,74,.95)";ctx.lineWidth=2.2/zoom;ctx.stroke();
-  const ang=Math.atan2(y1-y0,x1-x0),s=9/zoom;
+  ctx.strokeStyle="rgba(255,210,74,.95)";ctx.lineWidth=2.2/S.zoom;ctx.stroke();
+  const ang=Math.atan2(y1-y0,x1-x0),s=9/S.zoom;
   ctx.beginPath();
   ctx.moveTo(x1,y1);
   ctx.lineTo(x1-Math.cos(ang-0.45)*s,y1-Math.sin(ang-0.45)*s);
@@ -1623,61 +1615,61 @@ function drawArrow(x0,y0,x1,y1){
   ctx.fillStyle="rgba(255,210,74,.95)";ctx.fill();
 }
 function drawEditorOverlay(){
-  if(shapeSel>=0&&shapePoly.length){
+  if(S.shapeSel>=0&&S.shapePoly.length){
     ctx.beginPath();
-    ctx.moveTo(shapePoly[0][0],shapePoly[0][1]);
-    for(let i=1;i<shapePoly.length;i++)ctx.lineTo(shapePoly[i][0],shapePoly[i][1]);
+    ctx.moveTo(S.shapePoly[0][0],S.shapePoly[0][1]);
+    for(let i=1;i<S.shapePoly.length;i++)ctx.lineTo(S.shapePoly[i][0],S.shapePoly[i][1]);
     ctx.closePath();
-    ctx.strokeStyle="rgba(255,255,255,.95)";ctx.lineWidth=1.6/zoom;ctx.stroke();
-    const r=3.6/Math.sqrt(zoom);
-    for(let i=0;i<shapePoly.length;i++){
-      const q=shapePoly[i];
-      ctx.fillStyle=i===dragVi?"#ff9c3a":(i===splitFrom?"#ff5c5c":"#ffd24a");
+    ctx.strokeStyle="rgba(255,255,255,.95)";ctx.lineWidth=1.6/S.zoom;ctx.stroke();
+    const r=3.6/Math.sqrt(S.zoom);
+    for(let i=0;i<S.shapePoly.length;i++){
+      const q=S.shapePoly[i];
+      ctx.fillStyle=i===S.dragVi?"#ff9c3a":(i===S.splitFrom?"#ff5c5c":"#ffd24a");
       ctx.fillRect(q[0]-r,q[1]-r,2*r,2*r);
-      ctx.strokeStyle="#15181c";ctx.lineWidth=1/zoom;
+      ctx.strokeStyle="#15181c";ctx.lineWidth=1/S.zoom;
       ctx.strokeRect(q[0]-r,q[1]-r,2*r,2*r);
     }
-    if(splitFrom>=0&&splitCur){
+    if(S.splitFrom>=0&&S.splitCur){
       ctx.beginPath();
-      ctx.moveTo(shapePoly[splitFrom][0],shapePoly[splitFrom][1]);
-      ctx.lineTo(splitCur[0],splitCur[1]);
-      ctx.strokeStyle="rgba(255,92,92,.95)";ctx.lineWidth=2/zoom;
-      ctx.setLineDash([5/zoom,4/zoom]);ctx.stroke();ctx.setLineDash([]);
+      ctx.moveTo(S.shapePoly[S.splitFrom][0],S.shapePoly[S.splitFrom][1]);
+      ctx.lineTo(S.splitCur[0],S.splitCur[1]);
+      ctx.strokeStyle="rgba(255,92,92,.95)";ctx.lineWidth=2/S.zoom;
+      ctx.setLineDash([5/S.zoom,4/S.zoom]);ctx.stroke();ctx.setLineDash([]);
     }
   }
-  if(mergeFrom>=0&&mergeCur){
-    const p=S.provs[mergeFrom];
-    drawArrow(p.x,p.y,mergeCur[0],mergeCur[1]);
+  if(S.mergeFrom>=0&&S.mergeCur){
+    const p=S.provs[S.mergeFrom];
+    drawArrow(p.x,p.y,S.mergeCur[0],S.mergeCur[1]);
   }
-  if(editTool==="roads"){
+  if(S.editTool==="roads"){
     // resaltar la red mientras se edita
-    ctx.lineWidth=1.6/zoom;
+    ctx.lineWidth=1.6/S.zoom;
     ctx.strokeStyle="rgba(255,214,110,.75)";
     for(const k of S.roads){
       const[x,y]=k.split("|").map(Number);
       if(!S.provs[x]||!S.provs[y])continue;
       ctx.beginPath();ctx.moveTo(S.provs[x].x,S.provs[x].y);ctx.lineTo(S.provs[y].x,S.provs[y].y);ctx.stroke();
     }
-    if(roadFrom>=0&&roadCur){
-      const p=S.provs[roadFrom];
-      ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(roadCur[0],roadCur[1]);
-      ctx.strokeStyle="rgba(130,220,130,.9)";ctx.lineWidth=2.2/zoom;
-      ctx.setLineDash([6/zoom,5/zoom]);ctx.stroke();ctx.setLineDash([]);
+    if(S.roadFrom>=0&&S.roadCur){
+      const p=S.provs[S.roadFrom];
+      ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(S.roadCur[0],S.roadCur[1]);
+      ctx.strokeStyle="rgba(130,220,130,.9)";ctx.lineWidth=2.2/S.zoom;
+      ctx.setLineDash([6/S.zoom,5/S.zoom]);ctx.stroke();ctx.setLineDash([]);
     }
   }
 }
-document.getElementById("editBtn").addEventListener("click",()=>{editMode?exitEditor():enterEditor()});
+document.getElementById("editBtn").addEventListener("click",()=>{S.editMode?exitEditor():enterEditor()});
 document.getElementById("editFromPicker").addEventListener("click",enterEditor);
 window.addEventListener("keydown",e=>{
-  if(!editMode)return;
+  if(!S.editMode)return;
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="z"){
     e.preventDefault();
     window.undoEdit();
     return;
   }
   if(e.key==="Escape"){
-    if(mergeFrom>=0||splitFrom>=0||roadFrom>=0){mergeFrom=-1;mergeCur=null;splitFrom=-1;splitCur=null;roadFrom=-1;roadCur=null;return}
-    if(shapeSel>=0){shapeSel=-1;shapePoly=[];dragVi=-1;refreshEditorPanel()}
+    if(S.mergeFrom>=0||S.splitFrom>=0||S.roadFrom>=0){S.mergeFrom=-1;S.mergeCur=null;S.splitFrom=-1;S.splitCur=null;S.roadFrom=-1;S.roadCur=null;return}
+    if(S.shapeSel>=0){S.shapeSel=-1;S.shapePoly=[];S.dragVi=-1;refreshEditorPanel()}
   }
 });
 
@@ -1685,7 +1677,7 @@ window.addEventListener("keydown",e=>{
 let dragging=false,dragMoved=false,lastMx=0,lastMy=0;
 function evWorld(e){
   const r=canvas.getBoundingClientRect();
-  return[(e.clientX-r.left-panX)/zoom,(e.clientY-r.top-panY)/zoom];
+  return[(e.clientX-r.left-S.panX)/S.zoom,(e.clientY-r.top-S.panY)/S.zoom];
 }
 function provAtWorld(wx,wy){
   const ix=wx|0,iy=wy|0;
@@ -1693,25 +1685,25 @@ function provAtWorld(wx,wy){
 }
 canvas.addEventListener("mousedown",e=>{
   if(e.button===0){
-    if(editMode){
+    if(S.editMode){
       const[wx,wy]=evWorld(e);
-      if(editTool==="merge"){
+      if(S.editTool==="merge"){
         const pid=provAtWorld(wx,wy);
-        if(pid>=0){mergeFrom=pid;mergeCur=[wx,wy];return}
-      }else if(editTool==="roads"){
+        if(pid>=0){S.mergeFrom=pid;S.mergeCur=[wx,wy];return}
+      }else if(S.editTool==="roads"){
         const pid=provAtWorld(wx,wy);
-        if(pid>=0&&!S.provs[pid].wasteland){roadFrom=pid;roadCur=[wx,wy];return}
-      }else if(editTool==="split"&&shapeSel>=0&&shapePoly.length){
+        if(pid>=0&&!S.provs[pid].wasteland){S.roadFrom=pid;S.roadCur=[wx,wy];return}
+      }else if(S.editTool==="split"&&S.shapeSel>=0&&S.shapePoly.length){
         const vi=vertexAt(wx,wy);
-        if(vi>=0){splitFrom=vi;splitCur=[wx,wy];return}
-      }else if(editTool==="shape"&&shapeSel>=0&&shapePoly.length){
+        if(vi>=0){S.splitFrom=vi;S.splitCur=[wx,wy];return}
+      }else if(S.editTool==="shape"&&S.shapeSel>=0&&S.shapePoly.length){
         const vi=vertexAt(wx,wy);
-        if(vi>=0){dragVi=vi;dragWas=[shapePoly[vi][0],shapePoly[vi][1]];dragIns=false;return}
-        const seg=nearestSegment(shapePoly,wx,wy);
-        if(seg.i>=0&&seg.d<6/zoom){
-          shapePoly.splice(seg.i+1,0,[seg.x,seg.y]);
-          dragVi=seg.i+1;
-          dragWas=[seg.x,seg.y];dragIns=true;
+        if(vi>=0){S.dragVi=vi;S.dragWas=[S.shapePoly[vi][0],S.shapePoly[vi][1]];S.dragIns=false;return}
+        const seg=nearestSegment(S.shapePoly,wx,wy);
+        if(seg.i>=0&&seg.d<6/S.zoom){
+          S.shapePoly.splice(seg.i+1,0,[seg.x,seg.y]);
+          S.dragVi=seg.i+1;
+          S.dragWas=[seg.x,seg.y];S.dragIns=true;
           refreshEditorPanel();
           return;
         }
@@ -1721,81 +1713,81 @@ canvas.addEventListener("mousedown",e=>{
   }
 });
 window.addEventListener("mousemove",e=>{
-  if(dragVi>=0&&shapeSel>=0){
+  if(S.dragVi>=0&&S.shapeSel>=0){
     const[wx,wy]=evWorld(e);
-    shapePoly[dragVi][0]=Math.max(0.5,Math.min(MW-0.5,wx));
-    shapePoly[dragVi][1]=Math.max(0.5,Math.min(MH-0.5,wy));
+    S.shapePoly[S.dragVi][0]=Math.max(0.5,Math.min(MW-0.5,wx));
+    S.shapePoly[S.dragVi][1]=Math.max(0.5,Math.min(MH-0.5,wy));
     return;
   }
-  if(mergeFrom>=0){mergeCur=evWorld(e);return}
-  if(roadFrom>=0){roadCur=evWorld(e);return}
-  if(splitFrom>=0){splitCur=evWorld(e);return}
+  if(S.mergeFrom>=0){S.mergeCur=evWorld(e);return}
+  if(S.roadFrom>=0){S.roadCur=evWorld(e);return}
+  if(S.splitFrom>=0){S.splitCur=evWorld(e);return}
   if(!dragging)return;
   const dx=e.clientX-lastMx,dy=e.clientY-lastMy;
   if(Math.abs(dx)+Math.abs(dy)>3)dragMoved=true;
-  if(dragMoved){panX+=dx;panY+=dy;clampPan()}
+  if(dragMoved){S.panX+=dx;S.panY+=dy;clampPan()}
   lastMx=e.clientX;lastMy=e.clientY;
 });
 window.addEventListener("mouseup",e=>{
   if(e.button!==0)return;
-  if(dragVi>=0){
-    const vi=dragVi;dragVi=-1;
-    const moved=!dragWas||shapePoly[vi][0]!==dragWas[0]||shapePoly[vi][1]!==dragWas[1];
+  if(S.dragVi>=0){
+    const vi=S.dragVi;S.dragVi=-1;
+    const moved=!S.dragWas||S.shapePoly[vi][0]!==S.dragWas[0]||S.shapePoly[vi][1]!==S.dragWas[1];
     if(!moved){
-      if(dragIns)shapePoly.splice(vi,1); // clic sin arrastre sobre un borde: no insertar
-      dragWas=null;dragIns=false;
+      if(S.dragIns)S.shapePoly.splice(vi,1); // clic sin arrastre sobre un borde: no insertar
+      S.dragWas=null;S.dragIns=false;
       refreshEditorPanel();
       return;
     }
-    dragWas=null;dragIns=false;
-    applyShape(shapeSel,shapePoly);
-    shapePoly=traceProvince(shapeSel);
+    S.dragWas=null;S.dragIns=false;
+    applyShape(S.shapeSel,S.shapePoly);
+    S.shapePoly=traceProvince(S.shapeSel);
     refreshEditorPanel();
     return;
   }
-  if(mergeFrom>=0){
-    const from=mergeFrom;
-    mergeFrom=-1;mergeCur=null;
+  if(S.mergeFrom>=0){
+    const from=S.mergeFrom;
+    S.mergeFrom=-1;S.mergeCur=null;
     const[wx,wy]=evWorld(e);
     const pid=provAtWorld(wx,wy);
     if(pid>=0&&pid!==from)mergeProvinces(from,pid);
     return;
   }
-  if(roadFrom>=0){
-    const from=roadFrom;
-    roadFrom=-1;roadCur=null;
+  if(S.roadFrom>=0){
+    const from=S.roadFrom;
+    S.roadFrom=-1;S.roadCur=null;
     const[wx,wy]=evWorld(e);
     const pid=provAtWorld(wx,wy);
     if(pid>=0&&pid!==from&&!S.provs[pid].wasteland)toggleRoadEdit(from,pid);
     return;
   }
-  if(splitFrom>=0){
-    const from=splitFrom;
-    splitFrom=-1;splitCur=null;
+  if(S.splitFrom>=0){
+    const from=S.splitFrom;
+    S.splitFrom=-1;S.splitCur=null;
     const[wx,wy]=evWorld(e);
     const vi=vertexAt(wx,wy);
-    if(vi>=0&&vi!==from&&shapeSel>=0){
-      const n=shapePoly.length;
+    if(vi>=0&&vi!==from&&S.shapeSel>=0){
+      const n=S.shapePoly.length;
       const ringDist=Math.min((vi-from+n)%n,(from-vi+n)%n);
-      if(ringDist>=2)splitProvince(shapeSel,shapePoly,from,vi);
+      if(ringDist>=2)splitProvince(S.shapeSel,S.shapePoly,from,vi);
       else alert("Elige dos vértices no contiguos.");
     }
     return;
   }
   const wasDrag=dragMoved;dragging=false;
-  if(editMode){
+  if(S.editMode){
     if(wasDrag||e.target!==canvas)return;
     const[ewx,ewy]=evWorld(e);
     const pid=provAtWorld(ewx,ewy);
-    if(pid>=0){shapeSel=pid;shapePoly=traceProvince(pid)}
-    else{shapeSel=-1;shapePoly=[]}
+    if(pid>=0){S.shapeSel=pid;S.shapePoly=traceProvince(pid)}
+    else{S.shapeSel=-1;S.shapePoly=[]}
     refreshEditorPanel();
     return;
   }
   if(wasDrag||!S.started)return;
   const r=canvas.getBoundingClientRect();
   if(e.target!==canvas)return;
-  const wx=(e.clientX-r.left-panX)/zoom, wy=(e.clientY-r.top-panY)/zoom;
+  const wx=(e.clientX-r.left-S.panX)/S.zoom, wy=(e.clientY-r.top-S.panY)/S.zoom;
   // ejército propio cerca
   let hit=null,hd=28*28;
   for(const a of S.armies){
@@ -1812,15 +1804,15 @@ window.addEventListener("mouseup",e=>{
 });
 canvas.addEventListener("contextmenu",e=>{
   e.preventDefault();
-  if(editMode){
-    if(shapeSel>=0&&shapePoly.length>3){
+  if(S.editMode){
+    if(S.shapeSel>=0&&S.shapePoly.length>3){
       const r=canvas.getBoundingClientRect();
-      const wx=(e.clientX-r.left-panX)/zoom, wy=(e.clientY-r.top-panY)/zoom;
+      const wx=(e.clientX-r.left-S.panX)/S.zoom, wy=(e.clientY-r.top-S.panY)/S.zoom;
       const vi=vertexAt(wx,wy);
       if(vi>=0){
-        shapePoly.splice(vi,1);
-        applyShape(shapeSel,shapePoly);
-        shapePoly=traceProvince(shapeSel);
+        S.shapePoly.splice(vi,1);
+        applyShape(S.shapeSel,S.shapePoly);
+        S.shapePoly=traceProvince(S.shapeSel);
         refreshEditorPanel();
       }
     }
@@ -1828,7 +1820,7 @@ canvas.addEventListener("contextmenu",e=>{
   }
   if(!S.started||!S.selArmy||S.selArmy.nation!==S.player)return;
   const r=canvas.getBoundingClientRect();
-  const wx=(e.clientX-r.left-panX)/zoom, wy=(e.clientY-r.top-panY)/zoom;
+  const wx=(e.clientX-r.left-S.panX)/S.zoom, wy=(e.clientY-r.top-S.panY)/S.zoom;
   const ix=wx|0,iy=wy|0;
   if(ix<0||iy<0||ix>=MW||iy>=MH)return;
   const t=S.provIdx[iy*MW+ix];
@@ -1844,10 +1836,10 @@ canvas.addEventListener("wheel",e=>{
   e.preventDefault();
   const r=canvas.getBoundingClientRect();
   const mx=e.clientX-r.left,my=e.clientY-r.top;
-  const old=zoom;
-  zoom=Math.max(0.35,Math.min(5,zoom*(e.deltaY<0?1.15:0.87)));
-  panX=mx-(mx-panX)*zoom/old;
-  panY=my-(my-panY)*zoom/old;
+  const old=S.zoom;
+  S.zoom=Math.max(0.35,Math.min(5,S.zoom*(e.deltaY<0?1.15:0.87)));
+  S.panX=mx-(mx-S.panX)*S.zoom/old;
+  S.panY=my-(my-S.panY)*S.zoom/old;
   clampPan();
 },{passive:false});
 
@@ -1887,8 +1879,8 @@ let selOutline=null,selOutlineProv=-1;
 function draw(){
   ctx.setTransform(1,0,0,1,0,0);
   ctx.fillStyle="#27384a";ctx.fillRect(0,0,canvas.width,canvas.height);
-  ctx.setTransform(zoom,0,0,zoom,panX,panY);
-  ctx.imageSmoothingEnabled=zoom<1.5;
+  ctx.setTransform(S.zoom,0,0,S.zoom,S.panX,S.panY);
+  ctx.imageSmoothingEnabled=S.zoom<1.5;
   ctx.drawImage(baseC,0,0);
   ctx.drawImage(roadsC,0,0);
   ctx.drawImage(borderC,0,0);
@@ -1904,7 +1896,7 @@ function draw(){
     }
     ctx.drawImage(selOutline,0,0);
   }
-  if(editMode){
+  if(S.editMode){
     drawEditorOverlay();
     requestAnimationFrame(draw);
     return;
@@ -1914,15 +1906,15 @@ function draw(){
     if(!p.capital)continue;
     ctx.beginPath();ctx.arc(p.x,p.y-24,8,0,7);
     ctx.fillStyle="#f0e6c8";ctx.fill();
-    ctx.strokeStyle="#222";ctx.lineWidth=1.5/zoom;ctx.stroke();
+    ctx.strokeStyle="#222";ctx.lineWidth=1.5/S.zoom;ctx.stroke();
   }
   // flecha de orden del ejército seleccionado
   if(S.selArmy&&S.selArmy.path.length){
     const pos=armyPos(S.selArmy);
     ctx.beginPath();ctx.moveTo(pos.x,pos.y);
     for(const pid of S.selArmy.path)ctx.lineTo(S.provs[pid].x,S.provs[pid].y);
-    ctx.strokeStyle="rgba(255,255,255,.65)";ctx.lineWidth=2/zoom;
-    ctx.setLineDash([6/zoom,4/zoom]);ctx.stroke();ctx.setLineDash([]);
+    ctx.strokeStyle="rgba(255,255,255,.65)";ctx.lineWidth=2/S.zoom;
+    ctx.setLineDash([6/S.zoom,4/S.zoom]);ctx.stroke();ctx.setLineDash([]);
   }
   // combates
   for(const pid in S.battleFlash){
@@ -1930,7 +1922,7 @@ function draw(){
     const p=S.provs[pid];
     const r=16+6*Math.sin(performance.now()/150);
     ctx.beginPath();ctx.arc(p.x,p.y,r,0,7);
-    ctx.strokeStyle="rgba(255,80,50,.9)";ctx.lineWidth=2.5/zoom;ctx.stroke();
+    ctx.strokeStyle="rgba(255,80,50,.9)";ctx.lineWidth=2.5/S.zoom;ctx.stroke();
   }
   // ejércitos
   ctx.textAlign="center";ctx.textBaseline="middle";
@@ -1939,7 +1931,7 @@ function draw(){
     const w=40,hh=26;
     ctx.fillStyle=NATIONS[a.nation].color;
     ctx.fillRect(pos.x-w/2,pos.y-hh/2,w,hh);
-    ctx.lineWidth=(a===S.selArmy?4.8:2)/Math.max(1,zoom*0.7);
+    ctx.lineWidth=(a===S.selArmy?4.8:2)/Math.max(1,S.zoom*0.7);
     ctx.strokeStyle=a===S.selArmy?"#fff":(a.nation===S.player?"#ffe9a0":"#15181c");
     ctx.strokeRect(pos.x-w/2,pos.y-hh/2,w,hh);
     ctx.fillStyle="#fff";ctx.font="bold 18px Arial";
@@ -2003,7 +1995,7 @@ function continueGame(){
     "<span class='chip' style='background:"+NATIONS[S.player].color+"'></span>"+NATIONS[S.player].name;
   paintAll();drawRoads();
   const cap=S.provs[S.nations[S.player].capital];
-  if(cap){panX=canvas.width/2-cap.x*zoom;panY=canvas.height/2-cap.y*zoom;clampPan()}
+  if(cap){S.panX=canvas.width/2-cap.x*S.zoom;S.panY=canvas.height/2-cap.y*S.zoom;clampPan()}
   refreshTop();
   // puesta al día: el mundo siguió su curso mientras no estabas
   const missed=Math.min(8760,Math.floor((Date.now()-s.t)/1000*GH_PER_SEC));
@@ -2062,7 +2054,7 @@ function showNationPicker(){
       "<span class='chip' style='background:"+NATIONS[S.player].color+"'></span>"+NATIONS[S.player].name;
     S.started=true;
     const cap=S.provs[S.nations[S.player].capital];
-    panX=canvas.width/2-cap.x*zoom;panY=canvas.height/2-cap.y*zoom;clampPan();
+    S.panX=canvas.width/2-cap.x*S.zoom;S.panY=canvas.height/2-cap.y*S.zoom;clampPan();
     S.selProv=cap.id;refreshSide();refreshTop();
     log("Has tomado el mando de "+NATIONS[S.player].name+". Capital: "+cap.name+".");
   }));
@@ -2076,8 +2068,8 @@ function init(){
     if(!S.customRoads)generateRoads();
     paintAll();
     drawRoads();
-    zoom=Math.max(0.35,Math.min(canvas.width/MW,canvas.height/MH));
-    panX=(canvas.width-MW*zoom)/2;panY=(canvas.height-MH*zoom)/2;
+    S.zoom=Math.max(0.35,Math.min(canvas.width/MW,canvas.height/MH));
+    S.panX=(canvas.width-MW*S.zoom)/2;S.panY=(canvas.height-MH*S.zoom)/2;
     document.getElementById("loadMsg").style.display="none";
     showNationPicker();
     refreshTop();
