@@ -64,9 +64,9 @@
   <span class="res"><span class="reslab">MO</span><b id="r_mano">0</b></span>
   <span id="dateBox"></span>
   <button class="spdBtn" data-s="0">II</button>
-  <button class="spdBtn active" data-s="1">1x</button>
-  <button class="spdBtn" data-s="4">4x</button>
-  <button class="spdBtn" data-s="16">16x</button>
+  <button class="spdBtn active" data-s="1" title="Tiempo real: 1 hora = 1 mes de juego">1x</button>
+  <button class="spdBtn" data-s="60" title="1 mes de juego por minuto">60x</button>
+  <button class="spdBtn" data-s="720" title="1 año de juego por minuto">720x</button>
   <button class="uiBtn" id="dipBtn">Diplomacia</button>
   <button class="uiBtn" id="terrBtn">Terreno</button>
   <button class="uiBtn" id="helpBtn">Ayuda</button>
@@ -83,7 +83,8 @@
     <h1>EUROPA 1444</h1>
     <p>11 de noviembre de 1444: la cristiandad tiembla tras la cruzada de Varna. De Castilla a los Timúridas,
        60 naciones con fronteras históricas. Elige la tuya, desarrolla tus provincias, recluta ejércitos y
-       conquista el <b>33% del mapa</b> (o casi el doble de tu territorio inicial) para ganar.
+       conquista el <b>33% del mapa</b> (o casi el doble de tu territorio inicial) para ganar antes de 1544.
+       La partida corre en <b>tiempo real</b>: 1 hora = 1 mes de juego.
        Clic izquierdo: seleccionar. Clic derecho: mover ejército (las tropas cruzan el mar embarcadas, lento).
        Rueda: zoom.</p>
     <div id="nationGrid"></div>
@@ -99,10 +100,15 @@
        Las <b>ciudades</b> (provincias con nombre histórico) producen Ducados. Todas generan Mano de obra (MO)
        y algo de oro. La <b>moral</b> de la provincia multiplica su producción. Las tropas consumen ducados
        y grano cada hora.</p>
+    <h2>El paso del tiempo</h2>
+    <p>La partida transcurre en <b>tiempo real</b>: 1 hora real = 1 mes de juego (12 horas = 1 año). La era dura
+       100 años, de 1444 a 1544: al final, gana quien domine más provincias. Los tiempos son
+       históricos: los ejércitos marchan a su ritmo real en km/día, un castillo tarda años y reclutar piqueros,
+       meses. Usa 60x y 720x para probar.</p>
     <h2>Construcciones</h2>
-    <p><b>Caminos</b>: +25% producción y +20% movimiento por nivel. <b>Cuartel de levas</b>: desbloquea piqueros
-       y acelera el reclutamiento. <b>Herrería</b>: +15% producción, necesaria para caballería pesada y bombardas.
-       <b>Castillo</b>: +30% defensa por nivel.</p>
+    <p><b>Cuartel de levas</b> (4 meses): desbloquea piqueros y acelera el reclutamiento. <b>Herrería</b>
+       (9 meses): +15% producción, necesaria para caballería pesada y bombardas. <b>Castillo</b> (2 años por
+       nivel): +30% defensa.</p>
     <h2>Terreno</h2>
     <p>Cada provincia tiene un tipo de terreno con efectos propios. <b>Montañas</b> y <b>colinas</b>: gran bonus
        defensivo pero movimiento lento y menor producción. <b>Bosques</b> y <b>pantanos</b>: defensivos y lentos.
@@ -157,20 +163,21 @@ const NPLAY=MAPDATA.nations.length;
 const NEUTRAL=NPLAY;
 const RES_KEYS=["dinero","materiales","comida","metal","petroleo","raros"];
 const RES_LABEL={dinero:"Ducados",materiales:"Madera",comida:"Grano",metal:"Hierro",petroleo:"Caballos",raros:"Especias"};
+// Tiempos en horas de juego (1 h real = 1 mes de juego a velocidad 1x).
+// spd de unidad = kilómetros por día de marcha (ritmos medievales reales).
 const BUILDINGS={
-  infra:{label:"Caminos",max:3,time:12,cost:{dinero:1200,materiales:1500}},
-  cuartel:{label:"Cuartel de levas",max:3,time:10,cost:{dinero:900,materiales:1200}},
-  fabrica:{label:"Herrería",max:4,time:24,cost:{dinero:2500,materiales:2200,metal:1000}},
-  fortaleza:{label:"Castillo",max:5,time:18,cost:{dinero:1500,materiales:2500,metal:600}}
+  cuartel:{label:"Cuartel de levas",max:3,time:2880,cost:{dinero:900,materiales:1200}},      // 4 meses
+  fabrica:{label:"Herrería",max:4,time:6480,cost:{dinero:2500,materiales:2200,metal:1000}},  // 9 meses
+  fortaleza:{label:"Castillo",max:5,time:17520,cost:{dinero:1500,materiales:2500,metal:600}} // 2 años por nivel
 };
 const UNITS={
-  miliciano:{label:"Levas",atk:1.2,def:2.5,hp:12,spd:5,time:5,cost:{dinero:300,comida:200},mano:200,req:{}},
-  infanteria:{label:"Piqueros",atk:2.5,def:4,hp:18,spd:6,time:9,cost:{dinero:600,comida:400,materiales:200},mano:400,req:{cuartel:1}},
-  motorizada:{label:"Caballería ligera",atk:4,def:5,hp:20,spd:11,time:14,cost:{dinero:900,comida:500,petroleo:300,materiales:300},mano:500,req:{cuartel:2}},
-  antitanque:{label:"Alabarderos",atk:3,def:7,hp:16,spd:6,time:16,cost:{dinero:900,metal:600,materiales:300},mano:300,req:{cuartel:1,fabrica:1}},
-  artilleria:{label:"Bombardas",atk:7,def:2,hp:14,spd:6,time:24,cost:{dinero:1500,metal:900,materiales:400},mano:300,req:{fabrica:2}},
-  blindadoLigero:{label:"Caballería",atk:6,def:4,hp:22,spd:10,time:20,cost:{dinero:1400,metal:800,petroleo:500},mano:300,req:{fabrica:1}},
-  blindadoMedio:{label:"Caballeros",atk:9,def:6,hp:30,spd:8,time:32,cost:{dinero:2400,metal:1500,petroleo:800,raros:300},mano:400,req:{fabrica:3}}
+  miliciano:{label:"Levas",atk:1.2,def:2.5,hp:12,spd:16,time:504,cost:{dinero:300,comida:200},mano:200,req:{}},                                  // 3 semanas
+  infanteria:{label:"Piqueros",atk:2.5,def:4,hp:18,spd:18,time:1440,cost:{dinero:600,comida:400,materiales:200},mano:400,req:{cuartel:1}},      // 2 meses
+  motorizada:{label:"Caballería ligera",atk:4,def:5,hp:20,spd:40,time:2160,cost:{dinero:900,comida:500,petroleo:300,materiales:300},mano:500,req:{cuartel:2}}, // 3 meses
+  antitanque:{label:"Alabarderos",atk:3,def:7,hp:16,spd:16,time:1800,cost:{dinero:900,metal:600,materiales:300},mano:300,req:{cuartel:1,fabrica:1}},
+  artilleria:{label:"Bombardas",atk:7,def:2,hp:14,spd:10,time:4320,cost:{dinero:1500,metal:900,materiales:400},mano:300,req:{fabrica:2}},        // 6 meses
+  blindadoLigero:{label:"Caballería",atk:6,def:4,hp:22,spd:35,time:2400,cost:{dinero:1400,metal:800,petroleo:500},mano:300,req:{fabrica:1}},
+  blindadoMedio:{label:"Caballeros",atk:9,def:6,hp:30,spd:28,time:4320,cost:{dinero:2400,metal:1500,petroleo:800,raros:300},mano:400,req:{fabrica:3}} // 6 meses
 };
 // Tipos de terreno: def multiplica la defensa en combate, mov la velocidad de
 // movimiento terrestre, prod la producción de la provincia.
@@ -455,7 +462,7 @@ function generateMap(){
     provs.push({id:provs.length,name:an||genName(used),x:seeds[i].x,y:seeds[i].y,country:seeds[i].c,
       owner:own,owner0:own,named:!!an,coastal:false,
       morale:60,urban:rand()<0.06,resType:null,shade:0.85+rand()*0.3,capital:false,
-      buildings:{infra:0,cuartel:0,fabrica:0,fortaleza:0},buildQueue:[],recruitQueue:[]});
+      buildings:{cuartel:0,fabrica:0,fortaleza:0},buildQueue:[],recruitQueue:[]});
   }
   for(let i=0;i<provIdx.length;i++){
     const s=provIdx[i];
@@ -631,7 +638,7 @@ function setupNations(){
     if(cap<0){nations[n].alive=false;continue}
     nations[n].startProvs=nationProvCount(n);
     const c=provs[cap];
-    c.buildings.cuartel=1;c.buildings.infra=1;c.morale=85;
+    c.buildings.cuartel=1;c.morale=85;
     const start={infanteria:2,miliciano:2};
     if(nations[n].startProvs>=12)start.blindadoLigero=2; // las grandes potencias empiezan con caballería
     spawnArmy(n,cap,start);
@@ -680,6 +687,7 @@ function spawnArmy(nation,prov,units){
   armies.push(a);
   return a;
 }
+
 
 /* ============================= Render del mapa base ============================= */
 const baseC=document.createElement("canvas");baseC.width=MW;baseC.height=MH;
@@ -801,7 +809,7 @@ function declareWar(a,b){
 }
 function makePeace(a,b){
   wars.delete(a<b?a+"|"+b:b+"|"+a);
-  truces.set(a<b?a+"|"+b:b+"|"+a,hour+360); // tregua de 15 días para la IA
+  truces.set(a<b?a+"|"+b:b+"|"+a,hour+17520); // tregua de 2 años para la IA
   // detener las marchas contra el ex-enemigo (si no, la llegada re-declara la guerra)
   for(const ar of armies){
     if(ar.nation!==a&&ar.nation!==b)continue;
@@ -823,7 +831,13 @@ function armyCount(a){let t=0;for(const k in a.units)t+=a.units[k];return t}
 function armyAtk(a){let t=0;for(const k in a.units)t+=a.units[k]*UNITS[k].atk;return t}
 function armyDef(a){let t=0;for(const k in a.units)t+=a.units[k]*UNITS[k].def;return t}
 function armyHp(a){let t=0;for(const k in a.units)t+=a.units[k]*UNITS[k].hp;return t}
-function armySpd(a){let s=99;for(const k in a.units)if(a.units[k]>0.05)s=Math.min(s,UNITS[k].spd);return s===99?6:s}
+function armySpd(a){let s=999;for(const k in a.units)if(a.units[k]>0.05)s=Math.min(s,UNITS[k].spd);return s===999?18:s} // km/día
+function kmBetween(a,b){
+  const[lo1,la1]=pxToLonLat(a.x,a.y),[lo2,la2]=pxToLonLat(b.x,b.y);
+  const R=6371,dla=(la2-la1)*Math.PI/180,dlo=(lo2-lo1)*Math.PI/180;
+  const h=Math.sin(dla/2)**2+Math.cos(la1*Math.PI/180)*Math.cos(la2*Math.PI/180)*Math.sin(dlo/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));
+}
 function nationStrength(n){let t=0;for(const a of armies)if(a.nation===n)t+=armyAtk(a)+armyDef(a);return t}
 function nationProvCount(n){let t=0;for(const p of provs)if(p.owner===n)t++;return t}
 function armiesIn(pid){return armies.filter(a=>a.prov===pid&&a.path.length===0)}
@@ -851,14 +865,13 @@ function bfsPath(from,to,passable){
 function startLeg(a){
   if(!a.path.length){a.legDone=0;a.legTotal=0;return}
   const from=provs[a.prov],to=provs[a.path[0]];
-  const dist=Math.hypot(to.x-from.x,to.y-from.y);
+  const km=kmBetween(from,to);
   if(!adj[a.prov].has(a.path[0])){
-    // travesía marítima en convoy: lenta, sin bonus de infraestructura
-    a.legTotal=Math.max(2,dist/7);
+    // travesía marítima embarcada: ~90 km/día de cabotaje, mínimo 1 día de embarque
+    a.legTotal=Math.max(24,km/90*24);
   }else{
-    const infra=(from.buildings.infra+to.buildings.infra)/2;
     const terr=(TERRAINS[from.terrain].mov+TERRAINS[to.terrain].mov)/2;
-    a.legTotal=Math.max(1,dist/(armySpd(a)*2*(1+0.2*infra)*terr));
+    a.legTotal=Math.max(6,km/(armySpd(a)*terr)*24);
   }
   a.legDone=0;
 }
@@ -897,17 +910,17 @@ function hourTick(){
     for(const p of provs){
       if(p.owner!==n)continue;
       const m=p.morale/100;
-      const mult=(1+0.25*p.buildings.infra+0.15*p.buildings.fabrica)*m*TERRAINS[p.terrain].prod;
-      if(p.resType==="dinero")R.dinero+=55*mult;
-      else R[p.resType]+=26*mult;
-      R.dinero+=8*m;
-      nations[n].mano=Math.min(99999,nations[n].mano+(p.urban?14:6)*m);
+      const mult=(1+0.15*p.buildings.fabrica)*m*TERRAINS[p.terrain].prod;
+      if(p.resType==="dinero")R.dinero+=2.8*mult;
+      else R[p.resType]+=1.3*mult;
+      R.dinero+=0.4*m;
+      nations[n].mano=Math.min(99999,nations[n].mano+(p.urban?0.5:0.2)*m);
     }
-    // mantenimiento
+    // mantenimiento: sostener el ejército es lo caro, como en la época
     let troops=0;
     for(const a of armies)if(a.nation===n)troops+=armyCount(a);
-    R.dinero=Math.max(0,R.dinero-5*troops);
-    R.comida=Math.max(0,R.comida-4*troops);
+    R.dinero=Math.max(0,R.dinero-0.6*troops);
+    R.comida=Math.max(0,R.comida-0.5*troops);
   }
   // 2. construcción
   for(const p of provs){
@@ -988,11 +1001,12 @@ function resolveBattles(){
     const D=def.reduce((s,a)=>s+armyDef(a),0)*(1+0.3*p.buildings.fortaleza)*terr;
     const hpA=atk.reduce((s,a)=>s+armyHp(a),0);
     const hpD=def.reduce((s,a)=>s+armyHp(a),0);
-    const dmgToDef=A*0.5/((1+0.25*p.buildings.fortaleza)*terr);
-    const dmgToAtk=D*0.5;
+    // batallas y asedios se resuelven en días de juego, no en horas
+    const dmgToDef=A*0.04/((1+0.25*p.buildings.fortaleza)*terr);
+    const dmgToAtk=D*0.04;
     applyDamage(def,dmgToDef,hpD);
     applyDamage(atk,dmgToAtk,hpA);
-    p.morale=Math.max(5,p.morale-1);
+    p.morale=Math.max(5,p.morale-0.05);
   }
   // limpiar ejércitos vacíos
   for(let i=armies.length-1;i>=0;i--){
@@ -1035,8 +1049,7 @@ function aiTurn(n){
     const p=owned[(rand()*owned.length)|0];
     if(p.buildQueue.length)continue;
     let b=null;
-    if(p.buildings.infra<2)b="infra";
-    else if(p.buildings.cuartel<2)b="cuartel";
+    if(p.buildings.cuartel<2)b="cuartel";
     else if(p.buildings.fabrica<2)b="fabrica";
     else if(p.capital&&p.buildings.fortaleza<3)b="fortaleza";
     if(b&&canAfford(n,BUILDINGS[b].cost)){
@@ -1065,7 +1078,7 @@ function aiTurn(n){
   const enemies=[];
   for(let m=0;m<NPLAY;m++)if(m!==n&&nations[m].alive&&atWar(n,m))enemies.push(m);
   const day=hour/24;
-  if(!enemies.length&&day>3&&rand()<0.22){
+  if(!enemies.length&&day>90&&rand()<0.001){ // las guerras surgen cada pocos años, no cada semana
     const capP=provs[nations[n].capital];
     const contact=new Map(); // nación -> {c: frontera compartida, d: distancia mínima a mi capital}
     const register=(a,w)=>{
@@ -1110,7 +1123,7 @@ function aiTurn(n){
   // paz si va muy mal
   for(const m of enemies){
     if(m===player)continue;
-    if(nationStrength(n)<nationStrength(m)*0.4&&rand()<0.3)makePeace(n,m);
+    if(nationStrength(n)<nationStrength(m)*0.4&&rand()<0.015)makePeace(n,m);
   }
 }
 function findTarget(from,n,enemies,wantNeutral,myPower,garrison){
@@ -1178,6 +1191,16 @@ function tryRecruit(pid,u){
 }
 function checkVictory(){
   if(gameOver||player<0)return;
+  if(hour>=876000){ // año 1544: fin de la era, gana quien más domina
+    gameOver=true;
+    let best=-1,bc=-1;
+    for(let n=0;n<NPLAY;n++){const c=nationProvCount(n);if(c>bc){bc=c;best=n}}
+    document.getElementById("endTitle").textContent=best===player?"¡VICTORIA!":"FIN DE LA ERA";
+    document.getElementById("endText").textContent="Corre el año 1544. "+NATIONS[best].name+" domina Europa con "+bc+
+      " provincias"+(best===player?". Tu dinastía pasa a la historia.":"; tu nación termina con "+nationProvCount(player)+".");
+    document.getElementById("endOverlay").style.display="flex";
+    return;
+  }
   const total=provs.filter(p=>!p.wasteland).length;
   const mine=nationProvCount(player);
   const myArmies=armies.some(a=>a.nation===player);
@@ -1205,6 +1228,12 @@ function log(msg){
   setTimeout(()=>{if(d.parentNode)d.parentNode.removeChild(d)},25000);
 }
 function fmt(v){return v>=10000?(v/1000).toFixed(1)+"k":Math.floor(v)}
+function fmtDur(h){ // horas de juego -> texto legible
+  if(h>=8760)return (h/8760).toFixed(1).replace(".0","")+" años";
+  if(h>=720)return Math.round(h/730)+" meses";
+  if(h>=48)return Math.round(h/24)+" días";
+  return Math.round(h)+" h";
+}
 function refreshTop(){
   if(player<0)return;
   const R=nations[player].res;
@@ -1229,7 +1258,7 @@ function refreshSide(){
     h+="<div class='row'><span>Posición</span><b>"+provs[a.prov].name+"</b></div>";
     h+="<h3>Composición</h3>";
     for(const k in a.units)h+="<div class='row'><span>"+UNITS[k].label+"</span><b>"+Math.round(a.units[k])+"</b></div>";
-    h+="<div class='row sm'><span>Ataque "+armyAtk(a).toFixed(1)+" · Defensa "+armyDef(a).toFixed(1)+"</span><span>Vel "+armySpd(a)+"</span></div>";
+    h+="<div class='row sm'><span>Ataque "+armyAtk(a).toFixed(1)+" · Defensa "+armyDef(a).toFixed(1)+"</span><span>"+armySpd(a)+" km/día</span></div>";
     if(a.path.length)h+="<div class='row'><span class='sm'>En marcha hacia "+provs[a.path[a.path.length-1]].name+"</span>"+
       (a.nation===player?"<button class='bbtn red' onclick='haltArmy()'>Detener</button>":"")+"</div>";
     else h+="<p class='sm' style='margin-top:6px;color:#9aa3ad'>Clic derecho en una provincia para mover.</p>";
@@ -1256,11 +1285,11 @@ function refreshSide(){
     h+="<div class='row'><span>"+B.label+" <b>"+lvl+"</b>/"+B.max+"</span>";
     if(own){
       const dis=p.buildQueue.length||lvl>=B.max||!canAfford(player,B.cost);
-      h+="<button class='bbtn' "+(dis?"disabled":"")+" title='"+costStr(B.cost)+" — "+B.time+"h' onclick='tryBuild("+p.id+",\""+b+"\")'>Mejorar</button>";
+      h+="<button class='bbtn' "+(dis?"disabled":"")+" title='"+costStr(B.cost)+" — "+fmtDur(B.time)+"' onclick='tryBuild("+p.id+",\""+b+"\")'>Mejorar</button>";
     }
     h+="</div>";
   }
-  if(p.buildQueue.length)h+="<div class='row sm'><span>En obra: "+BUILDINGS[p.buildQueue[0].b].label+"</span><span>"+p.buildQueue[0].hoursLeft+"h</span></div>";
+  if(p.buildQueue.length)h+="<div class='row sm'><span>En obra: "+BUILDINGS[p.buildQueue[0].b].label+"</span><span>"+fmtDur(p.buildQueue[0].hoursLeft)+"</span></div>";
   if(own){
     h+="<h3>Reclutamiento</h3>";
     for(const u in UNITS){
@@ -1269,11 +1298,11 @@ function refreshSide(){
       for(const r in U.req)if(p.buildings[r]<U.req[r])okReq=false;
       if(!okReq)continue;
       const dis=!canAfford(player,U.cost)||nations[player].mano<U.mano;
-      h+="<div class='row'><span>"+U.label+" <span class='sm'>("+recruitTime(p,u)+"h)</span></span>"+
+      h+="<div class='row'><span>"+U.label+" <span class='sm'>("+fmtDur(recruitTime(p,u))+")</span></span>"+
         "<button class='bbtn' "+(dis?"disabled":"")+" title='"+costStr(U.cost,U.mano)+"' onclick='tryRecruit("+p.id+",\""+u+"\")'>Reclutar</button></div>";
     }
     if(p.recruitQueue.length){
-      h+="<div class='row sm'><span>En cola: "+p.recruitQueue.map(q=>UNITS[q.u].label).join(", ")+"</span><span>"+p.recruitQueue[0].hoursLeft+"h</span></div>";
+      h+="<div class='row sm'><span>En cola: "+p.recruitQueue.map(q=>UNITS[q.u].label).join(", ")+"</span><span>"+fmtDur(p.recruitQueue[0].hoursLeft)+"</span></div>";
     }
   }
   const here=armiesIn(p.id);
@@ -1633,7 +1662,7 @@ function splitProvince(pid,poly,vi,vj,forcedName){
   const np={id:provs.length,name:nm,x:0,y:0,country:src.country,owner:src.owner,owner0:src.owner0,
     named:true,coastal:false,morale:60,urban:false,resType:src.resType,shade:0.85+rand()*0.3,capital:false,
     terrain:src.terrain,wasteland:src.wasteland,
-    buildings:{infra:0,cuartel:0,fabrica:0,fortaleza:0},buildQueue:[],recruitQueue:[]};
+    buildings:{cuartel:0,fabrica:0,fortaleza:0},buildQueue:[],recruitQueue:[]};
   provs.push(np);
   for(const i of part)provIdx[i]=np.id;
   // cada parte conserva solo su fragmento conexo mayor (el resto pasa a la otra)
@@ -1688,7 +1717,7 @@ function loadProvMap(snap){
     named:!!a[4],coastal:false,morale:60,urban:!!a[5],resType:null,shade:0.85+rand()*0.3,capital:!!a[6],
     terrain:(a[7]!=null&&TERRAIN_KEYS[a[7]])||null,
     wasteland:a[8]!=null?!!a[8]:null,
-    buildings:{infra:0,cuartel:0,fabrica:0,fortaleza:0},buildQueue:[],recruitQueue:[]}));
+    buildings:{cuartel:0,fabrica:0,fortaleza:0},buildQueue:[],recruitQueue:[]}));
   rebuildProvinceData();
   const pool=["comida","comida","comida","materiales","materiales","metal","metal","petroleo","raros"];
   for(const p of provs)p.resType=p.urban?"dinero":pool[(rand()*pool.length)|0];
@@ -2166,11 +2195,14 @@ function draw(){
 }
 
 /* ============================= Bucle de simulación ============================= */
+// Ritmo real: a 1x, 1 hora real = 1 mes de juego (12 h reales = 1 año; la partida
+// completa, 1444-1544, dura ~50 días reales). 60x y 720x son velocidades de prueba.
+const GH_PER_SEC=730.5/3600; // horas de juego por segundo real a 1x
 setInterval(()=>{
   if(!started||gameOver)return;
-  acc+=speed/4;
+  acc+=speed*GH_PER_SEC/4;
   let steps=0;
-  while(acc>=1&&steps<40){acc-=1;hourTick();steps++}
+  while(acc>=1&&steps<60){acc-=1;hourTick();steps++}
   if(steps){refreshTop();refreshSide()}
 },250);
 
