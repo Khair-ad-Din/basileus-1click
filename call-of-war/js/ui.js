@@ -1,7 +1,7 @@
 // ui.js
 import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, RES_DESC, RES_ICON, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, WAR_LOCK_HOURS, terrainFx } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyDef, armySpd, buildBlock, buildingYield, buildJobs, buildMax, buildSlots, canAfford, costFor, employedIn, foodBalance, foodCap, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationEconomy, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots } from "./economy.js";
+import { armyAtk, armyCount, armyDef, armySpd, buildBlock, buildingYield, buildJobs, buildMax, buildSlots, canAfford, costFor, employedIn, foodBalance, foodCap, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationEconomy, nationLedger, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
 import { canvas, clampPan } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
@@ -78,7 +78,17 @@ function buildResBar(){
   bar.innerHTML=h;bar.dataset.built="1";
 }
 function refreshTop(){
-  if(S.player<0)return;
+  // la fecha avanza siempre (también en modo observador, sin jugador)
+  const d0=new Date(START_DATE+S.hour*3600e3);
+  document.getElementById("dateBox").textContent=
+    "Día "+(1+(S.hour/24|0))+" · "+d0.getUTCDate()+" "+MESES[d0.getUTCMonth()]+" "+d0.getUTCFullYear()+
+    ", "+String(d0.getUTCHours()).padStart(2,"0")+":00";
+  if(S.player<0){
+    const bar=document.getElementById("resbar");
+    bar.dataset.built="";  // fuerza reconstruir los chips al tomar el mando
+    bar.innerHTML="<span style='color:#9aa3ad;font-style:italic;padding:0 10px;font-size:13px'>👁 Modo observador — toma el mando de una nación desde el <b>Registro</b></span>";
+    return;
+  }
   buildResBar();
   const R=S.nations[S.player].res;
   const inc=nationEconomy(S.player).res;
@@ -99,10 +109,6 @@ function refreshTop(){
   }
   let realmSold=0;for(const p of S.provs)if(p.owner===S.player&&!p.wasteland&&!isOccupied(p))realmSold+=soldAvail(p);
   document.getElementById("r_mano").textContent=fmt(realmSold);
-  const d=new Date(START_DATE+S.hour*3600e3);
-  document.getElementById("dateBox").textContent=
-    "Día "+(1+(S.hour/24|0))+" · "+d.getUTCDate()+" "+MESES[d.getUTCMonth()]+" "+d.getUTCFullYear()+
-    ", "+String(d.getUTCHours()).padStart(2,"0")+":00";
 }
 function costStr(cost,mano){
   const parts=[];
@@ -140,6 +146,7 @@ function benefitHTML(p,b){
   const B=BUILDINGS[b],fx=B.fx,lines=[];
   for(const y of buildingYield(p,b))
     lines.push("<div class='bl' data-tip=\""+ta(yieldTip(y))+"\">±"+n1(y.amt)+" "+resImg(y.res)+(y.mul?" <span class='mul'>+"+y.mul+"%</span>":"")+"</div>");
+  if(fx.prodMul)lines.push("<div class='bl'>+"+Math.round(fx.prodMul*100)+"% a la producción</div>");
   if(fx.mano)lines.push("<div class='bl'>+"+Math.round(fx.mano*100)+"% soldadesca</div>");
   if(fx.store)lines.push("<div class='bl'>+"+Math.round(fx.store*100)+"% despensa</div>");
   if(fx.def)lines.push("<div class='bl'>+"+Math.round(fx.def*100)+"% defensa</div>");
@@ -318,7 +325,7 @@ function buildTilesHTML(p){
       const jobsHtml=jb>0?"<div class='jobs2'>"+uiIcon('poblacion')+" "+fmtPop(jb)+" empleos/niv</div>":"";
       const onclick=(!inQ&&!maxed&&!block)?" onclick='tryBuild("+p.id+",\""+b+"\")'":"";
       tiles+="<div class='"+cls+"'"+onclick+" data-tip=\""+ta(B.desc)+"\">"+
-        "<img class='bic' src='assets/buildings/"+b+".png' alt='"+B.label+"' title='"+B.label+"'>"+
+        "<img class='bic' src='assets/buildings/"+b+".png' alt='"+B.label+"' title='"+B.label+"' onerror=\"this.replaceWith(bemoji('"+B.icon+"'))\">"+
         "<div class='th'><span class='nm'>"+B.label+"</span>"+lvBadge+"</div>"+
         "<div class='ben'>"+benefitHTML(p,b)+jobsHtml+"</div>"+
         "<div class='foot2'>"+upStr+foot+"</div></div>";
@@ -416,6 +423,102 @@ function refreshProvWin(){
 // compatibilidad: los llamadores antiguos refrescan la ficha completa (detalle + botones + ventana)
 function refreshBuildBar(){refreshProvPanel();refreshProvTabs();refreshProvWin();}
 // menú del reino (arriba-izquierda, estilo EU4): escudo + botonera de ajustes del reino
+/* ============================= Tesorería (libro mayor navegable) =============================
+ * Panel con dos pestañas: TESORO (balance de Ducados por categoría) e INVENTARIO (el resto de
+ * recursos, cada uno en modo balance). Cada categoría es clicable y abre su detalle (desglosado
+ * por sub-categorías) con el total abajo, que verifica la suma. Datos: nationLedger(). */
+function tsyAgg(list,field){ // agrega los ítems por un campo (group o sub o res) → [{key,amt}]
+  const m=new Map();
+  for(const x of list)m.set(x[field],(m.get(x[field])||0)+x.amt);
+  return [...m].map(([key,amt])=>({key,amt})).filter(r=>Math.abs(r.amt)>0.005);
+}
+function tsySum(list){let s=0;for(const x of list)s+=x.amt;return s}
+function tsyRow(label,amt,res,drillKey){ // fila de categoría; drillKey!=null → clicable a su detalle
+  const drill=drillKey!=null;
+  const attrs=drill?" class='trow click' onclick=\"treasuryDrill('"+drillKey+"')\"":" class='trow'";
+  return "<div"+attrs+"><span>"+label+(drill?" <span class='tarrow'>›</span>":"")+"</span>"+
+    "<b class='"+(amt<0?"neg":"pos")+"'>"+(amt>=0?"+":"")+n1(amt)+" "+resImg(res)+"</b></div>";
+}
+function tsyTotal(label,amt,res){ // fila de TOTAL (verifica la suma de las filas de arriba)
+  return "<div class='ttotal'><span>"+label+"</span><b class='"+(amt<0?"neg":"pos")+"'>"+(amt>=0?"+":"")+n1(amt)+" "+resImg(res)+"</b></div>";
+}
+function tsyCrumb(path){ // migas de pan de navegación (volver a niveles superiores)
+  let h="<span class='tcrumbi' onclick='treasuryBack(0)'>"+(S.treasuryTab==="tesoro"?"🪙 Tesoro":"📦 Inventario")+"</span>";
+  for(let i=0;i<path.length;i++){
+    const label=(S.treasuryTab==="inv"&&i===0)?RES_LABEL[path[i]]:path[i];
+    h+=" › "+(i===path.length-1?"<b class='tcrumbc'>"+label+"</b>":"<span class='tcrumbi' onclick='treasuryBack("+(i+1)+")'>"+label+"</span>");
+  }
+  return "<div class='tcrumb'>"+h+"</div>";
+}
+function tsyTesoro(items){ // pestaña TESORO: balance de Ducados
+  const dm=items.filter(x=>x.res==="dinero"),path=S.treasuryPath;
+  let h="";
+  if(path.length===0){
+    const g=tsyAgg(dm,"group");
+    const inc=g.filter(x=>x.amt>0).sort((a,b)=>b.amt-a.amt);
+    const exp=g.filter(x=>x.amt<0).sort((a,b)=>a.amt-b.amt);
+    h+="<div class='tsec'>Ingresos</div>";
+    h+=inc.length?inc.map(x=>tsyRow(x.key,x.amt,"dinero",x.key)).join(""):"<div class='trow tdim'>Sin ingresos</div>";
+    h+="<div class='tsec'>Gastos</div>";
+    h+=exp.length?exp.map(x=>tsyRow(x.key,x.amt,"dinero",x.key)).join(""):"<div class='trow tdim'>Sin gastos</div>";
+    h+=tsyTotal("Balance neto",tsySum(dm),"dinero");
+  }else{
+    const group=path[0],sel=dm.filter(x=>x.group===group);
+    const subs=tsyAgg(sel,"sub").sort((a,b)=>Math.abs(b.amt)-Math.abs(a.amt));
+    h+=tsyCrumb([group]);
+    h+=subs.map(x=>tsyRow(x.key,x.amt,"dinero",null)).join("");
+    h+=tsyTotal("Total · "+group,tsySum(sel),"dinero");
+  }
+  return h;
+}
+function tsyInv(items){ // pestaña INVENTARIO: el resto de recursos, en balance
+  const inv=items.filter(x=>x.res!=="dinero"),path=S.treasuryPath,R=S.nations[S.player].res;
+  let h="";
+  if(path.length===0){
+    const byRes=tsyAgg(inv,"res");
+    h+="<div class='trow thead'><span>Recurso</span><span>Stock · balance/mes</span></div>";
+    let any=false;
+    for(const k of RES_KEYS){
+      if(k==="dinero")continue;
+      const net=(byRes.find(r=>r.key===k)||{amt:0}).amt,stock=R[k]||0;
+      if(Math.abs(net)<0.005&&stock<0.5)continue;
+      any=true;
+      h+="<div class='trow click' onclick=\"treasuryDrill('"+k+"')\"><span>"+resImg(k)+" "+RES_LABEL[k]+" <span class='tarrow'>›</span></span>"+
+        "<b><span class='tstock'>"+fmt(stock)+"</span> <span class='"+(net<0?"neg":"pos")+"'>"+(net>=0?"+":"")+n1(net)+"</span></b></div>";
+    }
+    if(!any)h+="<div class='trow tdim'>Sin recursos ni movimientos.</div>";
+  }else if(path.length===1){
+    const res=path[0],sel=inv.filter(x=>x.res===res);
+    const g=tsyAgg(sel,"group");
+    const inc=g.filter(x=>x.amt>0).sort((a,b)=>b.amt-a.amt);
+    const exp=g.filter(x=>x.amt<0).sort((a,b)=>a.amt-b.amt);
+    h+=tsyCrumb([res]);
+    h+="<div class='tsec'>Producción</div>";
+    h+=inc.length?inc.map(x=>tsyRow(x.key,x.amt,res,x.key)).join(""):"<div class='trow tdim'>—</div>";
+    h+="<div class='tsec'>Consumo</div>";
+    h+=exp.length?exp.map(x=>tsyRow(x.key,x.amt,res,x.key)).join(""):"<div class='trow tdim'>—</div>";
+    h+=tsyTotal("Balance neto · "+RES_LABEL[res],tsySum(sel),res);
+  }else{
+    const res=path[0],group=path[1],sel=inv.filter(x=>x.res===res&&x.group===group);
+    const subs=tsyAgg(sel,"sub").sort((a,b)=>Math.abs(b.amt)-Math.abs(a.amt));
+    h+=tsyCrumb([res,group]);
+    h+=subs.map(x=>tsyRow(x.key,x.amt,res,null)).join("");
+    h+=tsyTotal("Total · "+group,tsySum(sel),res);
+  }
+  return h;
+}
+function refreshTreasury(){
+  const ov=document.getElementById("treasuryOverlay");
+  if(!ov||ov.style.display!=="flex")return;
+  const body=document.getElementById("treasuryBody");
+  if(S.player<0){body.innerHTML="<p style='text-align:center;color:#9aa3ad'>Estás en modo observador. Toma el mando de una nación (desde el <b>Registro</b>) para ver su tesorería.</p>";return}
+  const N=NATIONS[S.player],items=nationLedger(S.player);
+  const tab=(k,lab)=>"<span class='ttab"+(S.treasuryTab===k?" on":"")+"' onclick=\"setTreasuryTab('"+k+"')\">"+lab+"</span>";
+  let h="<div class='tsyhead'><span class='chip' style='background:"+N.color+"'></span> "+N.name+"</div>";
+  h+="<div class='ttabs'>"+tab("tesoro","🪙 Tesoro")+tab("inv","📦 Inventario")+"</div>";
+  h+="<div class='tbook'>"+(S.treasuryTab==="tesoro"?tsyTesoro(items):tsyInv(items))+"</div>";
+  body.innerHTML=h;
+}
 function buildRealmMenu(){
   if(S.player<0)return;
   const el=document.getElementById("realmMenu");
@@ -423,7 +526,7 @@ function buildRealmMenu(){
   const btns=[
     {img:"btn_ejercito",on:"openArmyPanel()"},
     {img:"btn_corte",dis:1},
-    {img:"btn_tesoreria",dis:1},
+    {img:"btn_tesoreria",on:"openTreasury()"},
     {img:"btn_leyes",dis:1},
     {img:"btn_estamentos",dis:1}
   ];
@@ -577,14 +680,18 @@ function refreshLedger(){
     (ledgerSort===key?" class='on'":"")+">"+lab+(ledgerSort===key?" ▾":"")+"</th>";
   let h="<table class='dip led'><tr><th>#</th>"+th("name","Nación")+th("provs","Prov.")+
     th("pop","Población")+th("troops","Tropas")+th("str","Fuerza")+th("income","Ducados/mes")+
-    th("pc","Duc/100k hab")+"</tr>";
+    th("pc","Duc/100k hab")+"<th>Mando</th></tr>";
   rows.forEach((r,i)=>{
     const me=r.n===S.player;
     h+="<tr"+(me?" style='background:rgba(159,184,120,.18)'":"")+"><td>"+(i+1)+"</td>";
     h+="<td><span class='chip' style='background:"+r.color+"'></span> "+r.name+(me?" <b style='color:#9fb878'>(tú)</b>":"")+"</td>";
     h+="<td>"+r.provs+"</td><td>"+fmtPop(r.pop)+"</td><td>"+r.troops+"</td><td>"+r.str+"</td>";
     h+="<td class='"+(r.income<0?"neg":"pos")+"'>"+(r.income>=0?"+":"")+n1(r.income)+"</td>";
-    h+="<td class='"+(r.pc<0?"neg":"")+"'>"+(r.pc>=0?"+":"")+n1(r.pc)+"</td></tr>";
+    h+="<td class='"+(r.pc<0?"neg":"")+"'>"+(r.pc>=0?"+":"")+n1(r.pc)+"</td>";
+    // tomar/soltar el mando de esta nación (modo observador / cambio de país)
+    h+="<td>"+(me
+      ? "<button class='bbtn' onclick='releaseControl()'>Soltar</button>"
+      : "<button class='bbtn' onclick='takeControl("+r.n+")'>Tomar mando</button>")+"</td></tr>";
   });
   h+="</table>";
   document.getElementById("ledgerBody").innerHTML=h;
@@ -674,6 +781,8 @@ function showNationPicker(){
     h+="<div class='ncard' id='continueCard' style='grid-column:1/-1;border-color:#9fb878'>"+
       "<b>▶ Continuar partida</b><span>"+NATIONS[sv.player].name+" · "+d.getUTCDate()+" "+MESES[d.getUTCMonth()]+" "+d.getUTCFullYear()+"</span></div>";
   }
+  h+="<div class='ncard' id='observerCard' style='grid-column:1/-1;border-color:#7f9bbf'>"+
+    "<b>👁 Modo observador</b><span>Mira evolucionar la partida sin atarte a ningún país: los 60 reinos actúan por IA. Toma el mando de cualquiera desde el Registro cuando quieras revisar sus estadísticas, y suéltalo al terminar.</span></div>";
   for(let n=0;n<NPLAY;n++){
     h+="<div class='ncard' data-n='"+n+"'><span class='chip' style='background:"+NATIONS[n].color+"'></span>"+
       "<b>"+NATIONS[n].name+"</b><span>"+nationProvCount(n)+" provincias</span></div>";
@@ -683,6 +792,14 @@ function showNationPicker(){
     if(c.id==="continueCard"){
       document.getElementById("startOverlay").style.display="none";
       continueGame();
+      return;
+    }
+    if(c.id==="observerCard"){
+      // Espectador: nadie es el jugador (S.player=-1); todas las naciones siguen con IA.
+      document.getElementById("startOverlay").style.display="none";
+      S.player=-1;S.started=true;S.selProv=-1;
+      refreshTop();refreshSide();
+      log("Modo observador: las 60 naciones actúan por IA. Abre el Registro para tomar el mando de una y revisar sus estadísticas.");
       return;
     }
     if(sv&&!confirm("Empezar una partida nueva descartará la guardada. ¿Continuar?"))return;
@@ -702,5 +819,5 @@ function showNationPicker(){
 }
 
 export {
-  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, buildRealmMenu, refreshMetricsLog, refreshArmyPanel
+  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, buildRealmMenu, refreshMetricsLog, refreshArmyPanel, refreshTreasury
 };

@@ -20,6 +20,8 @@ export const S = {
   buildFilter: "eco",
   // panel de reino / ejército (arriba-izquierda estilo EU4)
   recruitProv: -1, armyPanelOpen: false,
+  // tesorería (libro mayor): pestaña activa y ruta de navegación por categorías
+  treasuryTab: "tesoro", treasuryPath: [],
   // negociación de paz (pantalla estilo EU4): con quién, ducados en la mesa, oro exigido/ofrecido,
   // modo ("out"=propones tú / "in"=oferta de la IA) y la oferta pendiente de la IA
   peaceWith: -1, peaceSel: new Set(), peaceGold: 0, peaceGive: 0, peaceMode: "out", incomingPeace: null,

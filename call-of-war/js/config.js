@@ -68,17 +68,36 @@ const BUILDINGS={
   // Minas de metal precioso: SOLO en provincias con el yacimiento (resReq). Rinden DUCADOS
   // (no un recurso de stock). La plata es común y modesta; el oro, raro y muy rentable.
   minaPlata:{label:"Mina de plata",cat:"eco",icon:"🥈",max:3,time:4320,resReq:"plata",
-    cost:{materiales:700,piedra:500,dinero:600},fx:{prodAdd:{dinero:2.2}},up:{dinero:3,materiales:2},
-    desc:"Explota el filón de plata: más Ducados cada mes (fuente secundaria y de prestigio)."},
+    cost:{materiales:700,piedra:500,dinero:600},fx:{prodAdd:{dinero:4}},up:{dinero:3,materiales:2},
+    desc:"Explota el filón de plata: única fuente de Ducados de una provincia de plata (fuente secundaria y de prestigio)."},
   minaOro:{label:"Mina de oro",cat:"eco",icon:"🥇",max:2,time:7200,resReq:"oro",
-    cost:{materiales:1000,piedra:800,dinero:1500},fx:{prodAdd:{dinero:6}},up:{dinero:6,materiales:3},
+    cost:{materiales:1000,piedra:800,dinero:1500},fx:{prodAdd:{dinero:11}},up:{dinero:6,materiales:3},
     desc:"Explota el raro filón de oro: gran renta en Ducados y prestigio para el reino."},
   mercado:{label:"Mercado",cat:"eco",icon:"🏪",max:3,time:2880,
     cost:{materiales:700,piedra:400,dinero:800},fx:{goldAdd:2},up:{dinero:3},
     desc:"Comercio local: renta FIJA de Ducados por nivel (de momento no depende de la población; se reworkeará con el sistema de comercio). Uno de los pocos grifos de tesoro que quedan."},
   gremio:{label:"Gremio de artesanos",cat:"eco",icon:"🧵",max:3,time:4320,
     cost:{materiales:900,metal:500,dinero:1200},fx:{prodMul:0.12,goldAdd:0.5},up:{dinero:5,materiales:3},
-    desc:"Los artesanos elevan la producción: +12% al bien propio de la provincia por nivel (según la dotación) y algo de Ducados. Se apila con otros multiplicadores."},
+    desc:"Los artesanos elevan la producción: +12% a TODA la producción de la provincia por nivel (según la dotación) y algo de Ducados. Se apila con otros multiplicadores."},
+  // ---- Producción de bienes de confort y lujo (buildables en cualquier sitio; rinden MÁS con afinidad) ----
+  vinedo:{label:"Viñedo",cat:"eco",icon:"🍇",max:3,time:2880,
+    cost:{materiales:500,dinero:300},fx:{prodAdd:{vino:0.6}},up:{dinero:3},
+    desc:"Cultiva la vid: produce Vino según sus trabajadores. Rinde MÁS en provincias con afinidad al vino. El vino es una necesidad de confort de la población."},
+  salina:{label:"Salina",cat:"eco",icon:"🧂",max:3,time:2880,
+    cost:{materiales:400,piedra:300,dinero:300},fx:{prodAdd:{sal:0.6}},up:{dinero:3},
+    desc:"Extrae Sal (por evaporación o mina): rinde MÁS donde hay afinidad salina. La sal es una necesidad de confort crítica y el cuello de botella histórico."},
+  telar:{label:"Telar",cat:"eco",icon:"🧶",max:3,time:3600,
+    cost:{materiales:500,dinero:500},fx:{prodAdd:{pano:0.6}},up:{dinero:4},
+    desc:"Manufactura textil: produce Paño según sus trabajadores. Rinde MÁS en comarcas laneras (afinidad). El paño es una necesidad de confort."},
+  sederia:{label:"Sedería",cat:"eco",icon:"🎗",max:2,time:4320,
+    cost:{materiales:600,dinero:900},fx:{prodAdd:{seda:0.4}},up:{dinero:5},
+    desc:"Hila y teje seda: lujo caro. Rinde MÁS donde llega la ruta de la seda (afinidad). Imprescindible para las obras únicas (catedral, universidad)."},
+  especiar:{label:"Especiería",cat:"eco",icon:"🌶",max:2,time:3600,
+    cost:{materiales:500,dinero:700},fx:{prodAdd:{raros:0.4}},up:{dinero:4},
+    desc:"Cultiva y comercia especias: lujo muy demandado. Rinde MÁS en zonas con afinidad. Usado en obras y unidades caras."},
+  yeguada:{label:"Yeguada",cat:"eco",icon:"🐎",max:3,time:2880,
+    cost:{materiales:500,comida:400},fx:{prodAdd:{petroleo:0.6}},up:{dinero:3,comida:2},
+    desc:"Cría caballos para la caballería y el transporte: rinde MÁS en estepas y praderas (afinidad)."},
   templo:{label:"Templo",cat:"eco",icon:"⛪",max:3,time:3600,
     cost:{piedra:900,materiales:400,dinero:600},fx:{moral:1.2},up:{dinero:4},
     desc:"Gana el corazón de la provincia: crecimiento mensual de moral (súbelo apilando templos)."},
@@ -123,10 +142,16 @@ const BUILDINGS={
 // Sin entrada aquí => JOBS_PER_LEVEL por defecto (economy.js).
 const BUILD_JOBS={
   granja:700,aserradero:550,cantera:550,mina:600,minaPlata:600,minaOro:600,
+  vinedo:550,salina:550,telar:550,sederia:450,especiar:450,yeguada:500,
   fabrica:500,mercado:350,gremio:450,lonja:300,puerto:350,
   templo:150,catedral:250,universidad:250,cuartel:250,campo:200,almacen:120,
   fortaleza:0,ciudadela:0
 };
+// Edificio PRODUCTOR de cada bien (para sembrar una fábrica del tipo del resType en cada
+// provincia al iniciar la partida, y evitar el déficit general del arranque building-driven).
+const RES_BUILDING={comida:"granja",materiales:"aserradero",piedra:"cantera",metal:"mina",
+  petroleo:"yeguada",raros:"especiar",pano:"telar",vino:"vinedo",sal:"salina",seda:"sederia",
+  plata:"minaPlata",oro:"minaOro",dinero:"mercado"};
 const BUILD_CATS=[["eco","Economía"],["mil","Militar"],["inf","Infraestructura"],["uni","Obras únicas"]];
 function newBuildings(){const o={};for(const b in BUILDINGS)o[b]=0;return o}
 // up = MANTENIMIENTO por unidad y MES (dinero/comida/recurso). Las levas son baratísimas de sostener
@@ -188,5 +213,5 @@ const GARR_CITADEL=3;          // guarnición extra de la Ciudadela
 export {
   GH_PER_SEC, START_DATE, MESES, WAR_LOCK_HOURS, LOOT_FRAC, GOLD_PER_WS, WS_DUCHY_BASE, WS_DUCHY_PER, WS_BATTLE,
   LEVY_RAISE_HOURS, SIEGE_BASE_H, GARR_MIN, GARR_FORT, GARR_CITADEL,
-  MW, MH, NATIONS, NPLAY, NEUTRAL, RES_KEYS, RES_STRAT, RES_TRADE, RES_LABEL, RES_SHORT, RES_ICON, RES_DESC, START_STOCK, BUILDINGS, BUILD_JOBS, BUILD_CATS, newBuildings, UNITS, TERRAINS, TERRAIN_KEYS, terrainFx
+  MW, MH, NATIONS, NPLAY, NEUTRAL, RES_KEYS, RES_STRAT, RES_TRADE, RES_LABEL, RES_SHORT, RES_ICON, RES_DESC, START_STOCK, BUILDINGS, BUILD_JOBS, BUILD_CATS, RES_BUILDING, newBuildings, UNITS, TERRAINS, TERRAIN_KEYS, terrainFx
 };

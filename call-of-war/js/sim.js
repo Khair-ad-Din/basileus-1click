@@ -1,5 +1,5 @@
 // sim.js
-import { BUILDINGS, GARR_CITADEL, GARR_FORT, GARR_MIN, GOLD_PER_WS, LEVY_RAISE_HOURS, NATIONS, NEUTRAL, NPLAY, RES_KEYS, SIEGE_BASE_H, START_STOCK, TERRAINS, UNITS, WAR_LOCK_HOURS, WS_BATTLE, WS_DUCHY_BASE, WS_DUCHY_PER } from "./config.js";
+import { BUILDINGS, GARR_CITADEL, GARR_FORT, GARR_MIN, GOLD_PER_WS, LEVY_RAISE_HOURS, NATIONS, NEUTRAL, NPLAY, RES_BUILDING, RES_KEYS, SIEGE_BASE_H, START_STOCK, TERRAINS, UNITS, WAR_LOCK_HOURS, WS_BATTLE, WS_DUCHY_BASE, WS_DUCHY_PER } from "./config.js";
 import { S } from "./state.js";
 import { armyAtk, armyCount, armyDef, armyHp, armySpd, buildBlock, buildJobs, buildMax, canAfford, costFor, economyTick, foodCap, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor } from "./economy.js";
 import { buildDuchies, hasRoad, isDuchyCap, kmBetween, roadKey } from "./mapgen.js";
@@ -13,8 +13,13 @@ import { log, refreshBuildBar, refreshSide, refreshTop } from "./ui.js";
 function setupNations(){
   S.nations=NATIONS.map((n,i)=>({idx:i,res:Object.fromEntries(RES_KEYS.map(k=>[k,START_STOCK[k]||0])),
     ai:true,capital:-1,alive:!n.neutral,lastAI:0,startProvs:0}));
-  // sembrar la soldadesca (cupo movilizable) y la despensa (almacén de comida) iniciales
-  for(const p of S.provs)if(!p.wasteland){if(p.owner<NPLAY)p.sold=soldCap(p);p.food=foodCap(p)*0.6}
+  // sembrar la soldadesca (cupo movilizable) y la despensa (almacén de comida) iniciales, y
+  // una FÁBRICA del bien de la provincia (su resType) para que la economía building-driven no
+  // arranque en déficit general: cada provincia produce de serie su propio recurso.
+  for(const p of S.provs)if(!p.wasteland){
+    if(p.owner<NPLAY){p.sold=soldCap(p);const b=RES_BUILDING[p.resType];if(b)p.buildings[b]=1;}
+    p.food=foodCap(p)*0.6;
+  }
   // capitales históricas (marcadas por las ciudades del mapa) y tropas iniciales
   for(let n=0;n<NPLAY;n++){
     let cap=-1;

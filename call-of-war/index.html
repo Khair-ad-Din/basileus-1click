@@ -52,7 +52,9 @@
     background:rgba(33,38,44,.96);border:1px solid #3a4047;border-radius:6px;padding:10px;color:#d8d4c8}
   #log div{background:rgba(20,24,28,.78);padding:3px 8px;border-radius:4px;margin-top:3px;color:#cfc9ba}
   .overlay{position:fixed;inset:0;background:rgba(12,15,18,.88);z-index:50;display:flex;align-items:center;justify-content:center}
-  .panel{background:#262b31;border:1px solid #4a525b;border-radius:8px;padding:26px;max-width:680px;max-height:86vh;overflow-y:auto;color:var(--txt);font-size:var(--fs)}
+  .panel{background:#262b31;border:1px solid #4a525b;border-radius:8px;padding:26px;max-width:680px;max-height:86vh;overflow-y:auto;color:var(--txt);font-size:var(--fs);position:relative}
+  .panelX{position:sticky;top:0;float:right;margin:-10px -8px 0 8px;background:none;border:none;color:#9aa3ad;font-size:20px;line-height:1;cursor:pointer;padding:3px 8px;border-radius:5px;z-index:3}
+  .panelX:hover{color:#fff;background:#3a424a}
   .panel h1{color:#e8e0c8;font-size:24px;margin-bottom:4px}
   .panel h2{color:var(--title);font-size:var(--fs-t);margin:14px 0 8px}
   .panel p{font-size:var(--fs);color:var(--muted);line-height:1.5;margin:6px 0}
@@ -68,6 +70,34 @@
   table.led th:hover{color:#fff}
   table.led th.on{color:#cfe0a8}
   table.led td:nth-child(n+3),table.led th:nth-child(n+3){text-align:right}
+  /* ---- Tesorería (libro mayor navegable) ---- */
+  .tsyhead{display:flex;align-items:center;gap:8px;justify-content:center;font-size:var(--fs-t);color:#fff;margin-bottom:10px}
+  .tsyhead .chip{width:22px;height:14px;border-radius:2px}
+  .ttabs{display:flex;gap:6px;margin-bottom:10px}
+  .ttab{flex:1;text-align:center;padding:7px 10px;background:#31373e;border:1px solid #4a525b;border-radius:5px;
+    cursor:pointer;color:#c9c2ae;font-size:13px;user-select:none}
+  .ttab:hover{background:#3a424a}
+  .ttab.on{background:#3f4b39;border-color:#9fb878;color:#e8e0c8;font-weight:bold}
+  .tbook{border:1px solid #3a4047;border-radius:6px;overflow:hidden}
+  .trow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 11px;
+    border-bottom:1px solid #2f353c;font-size:var(--fs)}
+  .trow:last-child{border-bottom:none}
+  .trow b{white-space:nowrap;font-variant-numeric:tabular-nums}
+  .trow.click{cursor:pointer}
+  .trow.click:hover{background:#31373e}
+  .trow.thead{color:var(--muted);font-size:var(--fs-s);text-transform:uppercase;letter-spacing:.4px;background:#20252b}
+  .trow.tdim{color:var(--muted);font-style:italic;justify-content:center}
+  .tarrow{color:#7a828b;font-weight:bold}
+  .tstock{color:#c9c2ae;margin-right:8px;font-weight:normal}
+  .tsec{padding:6px 11px 4px;font-size:var(--fs-s);text-transform:uppercase;letter-spacing:.5px;
+    color:var(--title);font-weight:bold;background:#242a30;border-bottom:1px solid #2f353c}
+  .ttotal{display:flex;justify-content:space-between;gap:10px;padding:9px 11px;background:#2b3138;
+    border-top:2px solid #4a525b;font-weight:bold;color:#fff;font-size:13px}
+  .ttotal b{font-variant-numeric:tabular-nums}
+  .tcrumb{padding:7px 11px;background:#242a30;border-bottom:1px solid #2f353c;font-size:var(--fs);color:var(--muted)}
+  .tcrumbi{cursor:pointer;color:#9fb878}
+  .tcrumbi:hover{text-decoration:underline}
+  .tcrumbc{color:#e8e0c8}
   #loadMsg{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:60;
     background:#1c2127;color:#c9c2ae;font-size:18px}
   /* barra de recursos (topbar) — SIEMPRE una sola fila; los botones nunca se encogen ni se ocultan,
@@ -161,6 +191,7 @@
   .btile{width:192px;height:246px;flex:0 0 auto;background:#31373e;border:1px solid #454d56;border-radius:7px;padding:9px 10px;
     display:flex;flex-direction:column;cursor:pointer;position:relative;transition:border-color .1s;overflow:hidden}
   .btile .bic{width:100%;height:72px;object-fit:contain;margin:0 0 3px;image-rendering:auto;flex:0 0 auto}
+  .btile .bic.bemoji{display:flex;align-items:center;justify-content:center;font-size:46px;line-height:1}  /* icono de respaldo si falta el sprite */
   .btile .ben{flex:0 0 auto;margin-top:2px}                                    /* beneficios: NO se encoge (no corta el texto) */
   .btile .bl{font-size:var(--fs);line-height:1.5;color:var(--pos);font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .btile .bl[data-tip]{cursor:help}
@@ -356,10 +387,19 @@
 
 <div class="overlay" id="ledgerOverlay" style="display:none">
   <div class="panel" style="min-width:660px;max-height:86vh;overflow:auto">
+    <button class="panelX" title="Cerrar" onclick="document.getElementById('ledgerOverlay').style.display='none'">✕</button>
     <h1>Registro de naciones</h1>
     <p style="text-align:center;color:#9aa3ad;font-size:12px;margin:-6px 0 12px">Clic en una columna para ordenar.</p>
     <div id="ledgerBody"></div>
-    <p style="text-align:center;margin-top:16px"><button class="uiBtn" onclick="document.getElementById('ledgerOverlay').style.display='none'">Cerrar</button></p>
+  </div>
+</div>
+
+<div class="overlay" id="treasuryOverlay" style="display:none">
+  <div class="panel" style="min-width:460px;max-width:560px;max-height:86vh;overflow:auto">
+    <button class="panelX" title="Cerrar" onclick="document.getElementById('treasuryOverlay').style.display='none'">✕</button>
+    <h1 style="text-align:center;margin-bottom:2px">Tesorería del reino</h1>
+    <p style="text-align:center;color:#9aa3ad;font-size:12px;margin:0 0 12px">Clic en una categoría para ver su detalle. El total de abajo verifica la suma.</p>
+    <div id="treasuryBody"></div>
   </div>
 </div>
 

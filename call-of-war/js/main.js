@@ -5,7 +5,7 @@ import {
   enterEditor, exitEditor, pushUndo, restoreWorldFromSnap, toggleRoadEdit, setProvinceOwner, dpSimplify, simplifyRing, traceProvince, applyShape, mergeProvinces, rasterPoly, keepLargestFragment, splitProvince, refreshEditorPanel, vertexAt, nearestSegment
 } from "./editor.js";
 import {
-  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, refreshArmyPanel
+  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, refreshArmyPanel, buildRealmMenu, refreshTreasury
 } from "./ui.js";
 import {
   atWar, declareWar, makePeace, underTruce, spawnArmy, setupNations, tryRoad, nbrs, bfsPath, startLeg, orderMove, takeTile, updateDuchy, isKeyTile, hourTick, resolveBattles, applyDamage, mergeIdle, aiTurn, findTarget, tryBuild, tryRecruit, disbandUnit, raiseLevies, checkVictory, armiesIn,
@@ -123,8 +123,20 @@ window.raiseLevies=function(id,n){const a=S.armies.find(x=>x.id===id);if(a){rais
 window.disbandUnit=function(id,type,n){const a=S.armies.find(x=>x.id===id);if(a){disbandUnit(a,type,n);refreshSide();refreshTop()}};
 
 // panel de Ejército (botón ⚔ del menú de reino): ejércitos + reclutamiento global
+// respaldo del icono de un edificio si su sprite (assets/buildings/<clave>.png) no existe: emoji centrado
+window.bemoji=function(e){const s=document.createElement("span");s.className="bic bemoji";s.textContent=e;return s};
 window.openArmyPanel=function(){S.armyPanelOpen=true;refreshArmyPanel();document.getElementById("armyPanel").style.display="block"};
 window.closeArmyPanel=function(){S.armyPanelOpen=false;document.getElementById("armyPanel").style.display="none"};
+// --- Tesorería (libro mayor navegable): abrir, cambiar de pestaña, entrar en una categoría y volver ---
+window.openTreasury=function(){
+  if(S.player<0)return;
+  S.treasuryTab="tesoro";S.treasuryPath=[];
+  document.getElementById("treasuryOverlay").style.display="flex";
+  refreshTreasury();
+};
+window.setTreasuryTab=function(t){S.treasuryTab=t;S.treasuryPath=[];refreshTreasury()};
+window.treasuryDrill=function(key){S.treasuryPath.push(key);refreshTreasury()};
+window.treasuryBack=function(len){S.treasuryPath=S.treasuryPath.slice(0,len);refreshTreasury()};
 window.setRecruitProv=function(id){S.recruitProv=+id;refreshArmyPanel()};
 
 // ---- Pantalla de gestión de paz (estilo EU4) ----
@@ -187,6 +199,38 @@ window.rejectIncomingPeace=function(){
   S.peaceMode="out";S.peaceWith=-1;
 };
 window.playerDeclare=function(n){declareWar(S.player,n);refreshDiplomacy()};
+
+/* ============================= Observador / tomar-soltar el mando ============================= */
+// Modo espectador: la partida corre con TODAS las naciones bajo IA (S.player=-1). Desde el
+// Registro puedes TOMAR el mando de cualquier reino para revisar sus estadísticas y actuar, y
+// SOLTARLO de vuelta a la IA cuando acabes, para observar a otro o a ninguno en concreto.
+window.takeControl=function(n){
+  if(n==null||n<0||n>=NPLAY||!S.nations[n].alive)return;
+  if(S.player===n)return;
+  if(S.player>=0)S.nations[S.player].ai=true;   // el reino que soltabas vuelve a la IA
+  S.player=n;
+  S.nations[n].ai=false;
+  S.started=true;
+  S.recruitProv=S.nations[n].capital;
+  buildRealmMenu();
+  const cap=S.provs[S.nations[n].capital];
+  if(cap){S.panX=canvas.width/2-cap.x*S.zoom;S.panY=canvas.height/2-cap.y*S.zoom;clampPan();S.selProv=cap.id}
+  document.getElementById("ledgerOverlay").style.display="none";
+  refreshTop();refreshSide();refreshLedger();
+  log("Tomas el mando de "+NATIONS[n].name+". Actúa a tu antojo; suéltalo cuando quieras desde el Registro.");
+};
+window.releaseControl=function(){
+  if(S.player<0)return;
+  const n=S.player;
+  S.nations[n].ai=true;   // vuelve a manos de la IA
+  S.player=-1;
+  document.getElementById("realmMenu").className="";
+  document.getElementById("side").style.display="none";
+  document.getElementById("armyPanel").style.display="none";
+  S.selArmy=null;S.armyPanelOpen=false;
+  refreshTop();refreshSide();refreshLedger();
+  log("Sueltas el mando de "+NATIONS[n].name+": vuelve a actuar por IA. Sigues observando la partida.");
+};
 
 /* ============================= Editor de formas de provincia ============================= */
 // Al seleccionar una provincia se vectoriza su contorno (trazado de borde + simplificación).
@@ -681,7 +725,7 @@ setInterval(()=>{
   S.acc+=S.speed*GH_PER_SEC/4;
   let steps=0;
   while(S.acc>=1&&steps<60){S.acc-=1;hourTick();steps++}
-  if(steps){refreshTop();refreshSide()}
+  if(steps){refreshTop();refreshSide();refreshTreasury()} // refreshTreasury solo actúa si su overlay está abierto
   // oferta de paz de la IA: abrir la pantalla si no hay ya un overlay visible
   if(S.incomingPeace&&document.getElementById("peaceOverlay").style.display!=="flex")window.openIncomingPeace();
 },250);
