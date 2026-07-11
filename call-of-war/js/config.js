@@ -120,7 +120,7 @@ const BUILDINGS={
     desc:"Comercio marítimo: Ducados y cupo de soldadesca extra, y habilita la marcha por mar de los ejércitos. Solo en provincias costeras."},
   almacen:{label:"Almacén",cat:"inf",icon:"🏚",max:3,time:2880,
     cost:{materiales:800,piedra:300},fx:{store:0.8},up:{dinero:2},
-    desc:"Amplía la despensa: guarda más Grano para resistir las malas cosechas y las hambrunas."},
+    desc:"Amplía las reservas LOCALES de la provincia de cada bien básico (grano, madera, piedra, hierro): más colchón para resistir malas cosechas y hambrunas."},
   // ---- Obras únicas (caras, con modificadores especiales; no todos podrán costearlas) ----
   catedral:{label:"Catedral",cat:"uni",icon:"⛪",unique:true,time:26280,urban:true,req:{templo:1},
     cost:{piedra:6000,dinero:8000,materiales:2000,seda:400},fx:{moral:3,realmMoral:2},up:{dinero:20},

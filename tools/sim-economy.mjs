@@ -59,7 +59,7 @@ for(let n=0;n<NPLAY;n++){
   S.armies.push({id:n+1,nation:n,prov:cap.id,units,src:{[cap.id]:w},path:[],legDone:0,legTotal:0});
 }
 if(BUILD>0)for(const p of S.provs)if(!p.wasteland&&p.owner<NPLAY)for(const b of ECO)p.buildings[b]=Math.min(cfg.BUILDINGS[b].unique?1:cfg.BUILDINGS[b].max,BUILD);
-for(const p of S.provs)if(!p.wasteland){if(p.owner<NPLAY)p.sold=ec.soldCap(p);p.food=ec.foodCap(p)*0.6}
+for(const p of S.provs)if(!p.wasteland){if(p.owner<NPLAY)p.sold=ec.soldCap(p);p.store={};for(const k of ec.SUBS_BASICS)p.store[k]=ec.storeCap(p,k)*0.6}
 
 // ---- telemetría ----
 const names=NATIONS.map(n=>n.name);
@@ -74,7 +74,7 @@ function initTel(){
 function sample(){
   for(let n=0;n<NPLAY;n++){const t=tel[n];if(!t)continue;
     const lp=livingProvs(n);let pop=0,fam=0,fill=0,staff=0,sc=0;
-    for(const p of lp){pop+=p.pop;if(p.famine)fam++;const fc=ec.foodCap(p);fill+=fc>0?p.food/fc:0;
+    for(const p of lp){pop+=p.pop;if(p.famine)fam++;fill+=ec.foodFill(p);
       if(ec.buildJobs(p)>0){staff+=ec.staffing(p);sc++}}
     t.samples++;t.famSum+=lp.length?fam/lp.length:0;t.fillSum+=lp.length?fill/lp.length:0;t.staffSum+=sc?staff/sc:1;t.popEnd=pop;
   }

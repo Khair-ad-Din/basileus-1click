@@ -10,7 +10,7 @@ import { NATIONS, NPLAY } from "./config.js";
 import { hourTick } from "./sim.js";
 import {
   nationEconomy, nationProvCount, nationStrength, armyCount,
-  soldCap, soldAvail, foodCap, foodBalance, foodCons, staffing, buildJobs, freeLabor, specialistCap, structPPF
+  soldCap, soldAvail, foodCap, foodBalance, foodCons, foodFill, harvestMul, staffing, buildJobs, freeLabor, specialistCap, structPPF
 } from "./economy.js";
 
 const fmt=n=>Math.round(n||0).toLocaleString("es-ES");
@@ -51,12 +51,13 @@ const dbg={
     const p=S.provs.find(q=>q.name&&q.name.toLowerCase()===String(name).toLowerCase());
     if(!p){console.warn("No encuentro la provincia:",name);return}
     if(p.wasteland){console.log(`${p.name}: impracticable.`);return}
-    const fc=foodCap(p),fill=fc>0?p.food/fc:0,jobs=buildJobs(p);
+    const fc=foodCap(p),fill=foodFill(p),jobs=buildJobs(p),c$=(p.store&&p.store.comida!=null)?p.store.comida:fc*0.6;
     console.log(`%c${p.name}${p.capital?" ★":""}  (${NATIONS[p.owner]?NATIONS[p.owner].name:"—"})`,"font-weight:bold");
     console.table({
       Población:fmt(p.pop), Terreno:p.terrain, Moral:Math.round(p.morale)+"%",
+      "Cosecha del año":(harvestMul(p)>=1?"+":"")+Math.round((harvestMul(p)-1)*100)+"%",
       "Comida balance/año":(foodBalance(p)*8760>=0?"+":"")+fmt(foodBalance(p)*8760),
-      "Despensa":`${pct(fill)} (${fmt(p.food)}/${fmt(fc)})`, Hambruna:p.famine?"SÍ ⚠":"no",
+      "Despensa":`${pct(fill)} (${fmt(c$)}/${fmt(fc)})`, Hambruna:p.famine?"SÍ ⚠":"no",
       "Soldadesca":`${fmt(soldAvail(p))}/${fmt(soldCap(p))}`,
       "Especialistas (cap)":fmt(specialistCap(p)), "structPPF":structPPF(p).toFixed(2),
       "Dotación":jobs>0?`${pct(staffing(p))} (${fmt(freeLabor(p))} libres / ${fmt(jobs)} puestos)`:"sin edificios",

@@ -1,7 +1,7 @@
 // ui.js
 import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, RES_DESC, RES_ICON, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, WAR_LOCK_HOURS, terrainFx } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyDef, armySpd, buildBlock, buildingYield, buildJobs, buildMax, buildSlots, canAfford, costFor, employedIn, foodBalance, foodCap, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationEconomy, nationLedger, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots } from "./economy.js";
+import { armyAtk, armyCount, armyDef, armySpd, buildBlock, buildingYield, buildJobs, buildMax, buildSlots, canAfford, costFor, employedIn, foodBalance, foodCap, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationEconomy, nationLedger, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
 import { canvas, clampPan } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
@@ -17,12 +17,25 @@ function log(msg){
 }
 function fmt(v){return v>=10000?(v/1000).toFixed(1)+"k":Math.floor(v)}
 function fmtPop(n){return Math.round(n||0).toLocaleString("es-ES")}
-function foodLine(p){ // estado de la despensa (almacén de comida) y balance anual
+function foodLine(p){ // estado de la despensa de comida (reserva local), balance anual y COSECHA del año (desastre)
   if(p.wasteland)return "";
-  const cap=foodCap(p),fill=cap>0?(p.food||0)/cap:0,balYr=foodBalance(p)*8760;
-  if(p.famine)return "<div class='tl'><b class='neg'>"+uiIcon('despensa')+" ⚠ HAMBRUNA</b> · despensa vacía</div>";
+  const fill=foodFill(p),balYr=foodBalance(p)*8760;
+  const hv=Math.round((harvestMul(p)-1)*100);
+  const hvTxt=hv>=5?" · <span class='pos'>🌾 cosecha +"+hv+"%</span>":hv<=-5?" · <span class='neg'>🌾 mala cosecha "+hv+"%</span>":" · <span style='color:#9aa3ad'>🌾 cosecha normal</span>";
+  if(p.famine)return "<div class='tl'><b class='neg'>"+uiIcon('despensa')+" ⚠ HAMBRUNA</b> · despensa de comida vacía"+hvTxt+"</div>";
   const bal="<span class='"+(balYr<-0.5?"neg":"pos")+"'>"+(balYr>=0?"+":"")+fmtPop(balYr)+"/año</span>";
-  return "<div class='tl'>"+uiIcon('despensa')+" Despensa "+Math.round(fill*100)+"% · "+bal+"</div>";
+  return "<div class='tl'>"+uiIcon('despensa')+" Despensa "+Math.round(fill*100)+"% · "+bal+hvTxt+"</div>";
+}
+function reservesLine(p){ // reservas locales de los demás bienes básicos de subsistencia (madera/piedra/hierro)
+  if(p.wasteland)return "";
+  const parts=[];
+  for(const k of SUBS_BASICS){
+    if(k==="comida")continue; // la comida ya va en foodLine
+    const cap=storeCap(p,k);if(cap<=0)continue;
+    parts.push(resImg(k)+" "+Math.round(storeOf(p,k)/cap*100)+"%");
+  }
+  if(!parts.length)return "";
+  return "<div class='tl' style='color:#9aa3ad'>🏚 Reservas locales · "+parts.join(" · ")+"</div>";
 }
 function siegeLine(p){ // guarnición del fuerte y progreso de asedio en curso
   if(p.wasteland)return "";
@@ -123,7 +136,7 @@ function fxText(B){
   if(fx.prodMul)t.push("+"+Math.round(fx.prodMul*100)+"% prod");
   if(fx.goldAdd)t.push("+"+n1(fx.goldAdd)+" Duc");
   if(fx.mano)t.push("+"+Math.round(fx.mano*100)+"% soldadesca");
-  if(fx.store)t.push("+"+Math.round(fx.store*100)+"% despensa");
+  if(fx.store)t.push("+"+Math.round(fx.store*100)+"% reservas");
   if(fx.def)t.push("+"+Math.round(fx.def*100)+"% defensa");
   if(fx.moral)t.push("+"+n1(fx.moral)+" moral/mes");
   if(fx.realmMoral)t.push("+"+n1(fx.realmMoral)+" moral/mes al reino");
@@ -161,7 +174,7 @@ function benefitHTML(p,b){
 function fxOtherText(B){
   const fx=B.fx,t=[];
   if(fx.mano)t.push("+"+Math.round(fx.mano*100)+"% soldadesca");
-  if(fx.store)t.push("+"+Math.round(fx.store*100)+"% despensa");
+  if(fx.store)t.push("+"+Math.round(fx.store*100)+"% reservas");
   if(fx.def)t.push("+"+Math.round(fx.def*100)+"% defensa");
   if(fx.moral)t.push("+"+n1(fx.moral)+" moral/mes");
   if(fx.realmMoral)t.push("+"+n1(fx.realmMoral)+" al reino");
@@ -270,7 +283,7 @@ function refreshProvPanel(){
     s+="<div class='prow'><span>"+uiIcon('edificios')+" Edificios"+iInfo("Huecos de construcción de la provincia: crecen con su población. Cuanta más gente, más edificios puede sostener.")+"</span>"+
        statv(usedSlots(p)+"/"+buildSlots(p),slotBreak(p))+"</div>";
   }
-  s+=foodLine(p)+siegeLine(p);
+  s+=foodLine(p)+reservesLine(p)+siegeLine(p);
   if(own){
     const bd=provBreakdown(p);
     s+="<div class='bsec'>Balance <span class='u'>/mes</span>"+iInfo("Ingresos menos mantenimiento de la provincia, por recurso. Pasa el ratón por un valor para ver de dónde sale.")+"</div>";

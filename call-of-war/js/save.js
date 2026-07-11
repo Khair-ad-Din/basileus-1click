@@ -59,13 +59,16 @@ function loadProvMap(snap){
   if(snap.roads){S.roads=new Set(snap.roads);S.roadQueue=[];S.customRoads=true}
   else S.customRoads=false;
 }
+function roundStore(store){ // reservas locales por bien (redondeadas), o null
+  if(!store)return null;const o={};for(const k in store)o[k]=Math.round(store[k]);return o;
+}
 function saveGame(){
   if(!S.started||S.gameOver||S.player<0)return;
   try{
-    const s={v:3,t:Date.now(),hour:S.hour,player:S.player,armyIdSeq:S.armyIdSeq,
+    const s={v:4,t:Date.now(),hour:S.hour,player:S.player,armyIdSeq:S.armyIdSeq,
       wars:[...S.wars],truces:[...S.truces],roads:[...S.roads],roadQueue:S.roadQueue,reports:S.reports,
       nations:S.nations.map(x=>({res:x.res,ai:x.ai,capital:x.capital,alive:x.alive,startProvs:x.startProvs})),
-      provs:S.provs.map(p=>[p.owner,Math.round(p.morale*10)/10,p.buildings,p.buildQueue,p.recruitQueue,Math.round(p.pop||0),Math.round(p.sold||0),Math.round(p.food||0),p.occupier==null?-1:p.occupier,p.siege||null]),
+      provs:S.provs.map(p=>[p.owner,Math.round(p.morale*10)/10,p.buildings,p.buildQueue,p.recruitQueue,Math.round(p.pop||0),Math.round(p.sold||0),roundStore(p.store),p.occupier==null?-1:p.occupier,p.siege||null]),
       armies:S.armies.map(a=>({id:a.id,nation:a.nation,prov:a.prov,units:a.units,src:a.src,path:a.path,legDone:a.legDone,legTotal:a.legTotal})),
       mapCheck:S.provs.length+"|"+S.provs[0].name};
     localStorage.setItem("basileus_save",JSON.stringify(s));
@@ -74,7 +77,7 @@ function saveGame(){
 function loadSaveMeta(){
   try{
     const s=JSON.parse(localStorage.getItem("basileus_save"));
-    if(!s||s.v!==3||s.mapCheck!==S.provs.length+"|"+S.provs[0].name)return null;
+    if(!s||s.v!==4||s.mapCheck!==S.provs.length+"|"+S.provs[0].name)return null;
     return s;
   }catch(e){return null}
 }
@@ -94,7 +97,7 @@ function continueGame(){
     p.buildQueue=d[3]||[];p.recruitQueue=d[4]||[];
     if(d[5]!=null)p.pop=d[5];   // población viva (creció/decreció durante la partida)
     if(d[6]!=null)p.sold=d[6];  // soldadesca acumulada
-    if(d[7]!=null)p.food=d[7];  // despensa (almacén de comida)
+    if(d[7]!=null)p.store=(typeof d[7]==="object")?d[7]:{comida:d[7]};  // reservas locales por bien (v3: era un escalar de comida)
     p.occupier=d[8]!=null?d[8]:-1; // control militar (ocupación EU4)
     p.siege=d[9]||null;            // asedio en curso {by,need,prog}
   });

@@ -1,7 +1,7 @@
 // sim.js
 import { BUILDINGS, GARR_CITADEL, GARR_FORT, GARR_MIN, GOLD_PER_WS, LEVY_RAISE_HOURS, NATIONS, NEUTRAL, NPLAY, RES_BUILDING, RES_KEYS, SIEGE_BASE_H, START_STOCK, TERRAINS, UNITS, WAR_LOCK_HOURS, WS_BATTLE, WS_DUCHY_BASE, WS_DUCHY_PER } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyDef, armyHp, armySpd, buildBlock, buildJobs, buildMax, canAfford, costFor, economyTick, foodCap, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor } from "./economy.js";
+import { armyAtk, armyCount, armyDef, armyHp, armySpd, buildBlock, buildJobs, buildMax, canAfford, costFor, economyTick, foodFill, storeCap, SUBS_BASICS, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor } from "./economy.js";
 import { buildDuchies, hasRoad, isDuchyCap, kmBetween, roadKey } from "./mapgen.js";
 import { drawRoads, paintBorders, repaintProvince } from "./render.js";
 import { saveGame } from "./save.js";
@@ -18,7 +18,7 @@ function setupNations(){
   // arranque en déficit general: cada provincia produce de serie su propio recurso.
   for(const p of S.provs)if(!p.wasteland){
     if(p.owner<NPLAY){p.sold=soldCap(p);const b=RES_BUILDING[p.resType];if(b)p.buildings[b]=1;}
-    p.food=foodCap(p)*0.6;
+    p.store={};for(const k of SUBS_BASICS)p.store[k]=storeCap(p,k)*0.6; // reservas locales iniciales por bien básico
   }
   // capitales históricas (marcadas por las ciudades del mapa) y tropas iniciales
   for(let n=0;n<NPLAY;n++){
@@ -315,7 +315,7 @@ function fortGarrison(p){ // milicianos-equivalentes que defienden un tile clave
 function siegeNeed(p,atk){ // ticks (horas de juego) para tomar el fuerte
   const fort=p.buildings.fortaleza||0,cit=p.buildings.ciudadela||0;
   const fortMul=1+0.7*fort+(cit?1.0:0);
-  const foodFull=foodCap(p)>0?Math.min(1,(p.food||0)/foodCap(p)):0.5;
+  const foodFull=foodFill(p); // reservas de comida de la plaza: una despensa llena aguanta más el asedio
   const supplyMul=(0.6+0.4*(p.morale/100))*(0.7+0.5*foodFull);
   const garr=fortGarrison(p);
   const assaultMul=Math.max(0.6,Math.min(2.2,atk/(garr*3+8))); // más asaltantes vs guarnición → más rápido
