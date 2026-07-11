@@ -175,6 +175,7 @@
   <button class="uiBtn" id="ledgerBtn">Registro</button>
   <button class="uiBtn" id="terrBtn">Terreno</button>
   <button class="uiBtn" id="popBtn">Población</button>
+  <button class="uiBtn" id="graphBtn" title="Malla de conexiones y posición real de las unidades">Conexiones</button>
   <button class="uiBtn" id="helpBtn">Ayuda</button>
   <button class="uiBtn" id="editBtn">Editor</button>
 </div>
@@ -275,6 +276,14 @@
     <p style="text-align:center;color:#9aa3ad;font-size:12px;margin:-6px 0 12px">Clic en una columna para ordenar.</p>
     <div id="ledgerBody"></div>
     <p style="text-align:center;margin-top:16px"><button class="uiBtn" onclick="document.getElementById('ledgerOverlay').style.display='none'">Cerrar</button></p>
+  </div>
+</div>
+
+<div class="overlay" id="peaceOverlay" style="display:none">
+  <div class="panel" style="min-width:620px;max-width:760px;max-height:88vh;overflow:auto">
+    <h1 id="peaceTitle">Negociación de paz</h1>
+    <div id="peaceBody"></div>
+    <p style="text-align:center;margin-top:16px"><button class="uiBtn" onclick="closePeace()">Cerrar</button></p>
   </div>
 </div>
 

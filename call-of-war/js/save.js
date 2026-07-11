@@ -3,7 +3,7 @@ import { GH_PER_SEC, MH, MW, NATIONS, NEUTRAL, TERRAIN_KEYS, newBuildings } from
 import { S } from "./state.js";
 import { assignPopulation, assignResources, assignTerrain, isolateWastePockets, mulberry32, rebuildProvinceData } from "./mapgen.js";
 import { canvas, clampPan, drawRoads, paintAll } from "./render.js";
-import { hourTick } from "./sim.js";
+import { hourTick, syncDuchyOcc } from "./sim.js";
 import { buildRealmMenu, fmtDur, log, refreshSide, refreshTop } from "./ui.js";
 
 function buildSnapshot(){
@@ -62,10 +62,10 @@ function loadProvMap(snap){
 function saveGame(){
   if(!S.started||S.gameOver||S.player<0)return;
   try{
-    const s={v:2,t:Date.now(),hour:S.hour,player:S.player,armyIdSeq:S.armyIdSeq,
+    const s={v:3,t:Date.now(),hour:S.hour,player:S.player,armyIdSeq:S.armyIdSeq,
       wars:[...S.wars],truces:[...S.truces],roads:[...S.roads],roadQueue:S.roadQueue,
       nations:S.nations.map(x=>({res:x.res,ai:x.ai,capital:x.capital,alive:x.alive,startProvs:x.startProvs})),
-      provs:S.provs.map(p=>[p.owner,Math.round(p.morale*10)/10,p.buildings,p.buildQueue,p.recruitQueue,Math.round(p.pop||0),Math.round(p.sold||0),Math.round(p.food||0)]),
+      provs:S.provs.map(p=>[p.owner,Math.round(p.morale*10)/10,p.buildings,p.buildQueue,p.recruitQueue,Math.round(p.pop||0),Math.round(p.sold||0),Math.round(p.food||0),p.occupier==null?-1:p.occupier,p.siege||null]),
       armies:S.armies.map(a=>({id:a.id,nation:a.nation,prov:a.prov,units:a.units,src:a.src,path:a.path,legDone:a.legDone,legTotal:a.legTotal})),
       mapCheck:S.provs.length+"|"+S.provs[0].name};
     localStorage.setItem("basileus_save",JSON.stringify(s));
@@ -74,7 +74,7 @@ function saveGame(){
 function loadSaveMeta(){
   try{
     const s=JSON.parse(localStorage.getItem("basileus_save"));
-    if(!s||s.v!==2||s.mapCheck!==S.provs.length+"|"+S.provs[0].name)return null;
+    if(!s||s.v!==3||s.mapCheck!==S.provs.length+"|"+S.provs[0].name)return null;
     return s;
   }catch(e){return null}
 }
@@ -82,8 +82,9 @@ function continueGame(){
   const s=loadSaveMeta();
   if(!s)return;
   S.hour=s.hour;S.player=s.player;S.armyIdSeq=s.armyIdSeq;
-  S.wars=new Set(s.wars);S.truces=new Map(s.truces);
+  S.wars=new Map(s.wars);S.truces=new Map(s.truces);
   S.roads=new Set(s.roads);S.roadQueue=s.roadQueue||[];
+  S.peaceWith=-1;S.peaceSel=new Set();S.peaceGold=0;S.incomingPeace=null;
   s.nations.forEach((x,i)=>Object.assign(S.nations[i],x));
   s.provs.forEach((d,i)=>{
     const p=S.provs[i];
@@ -93,7 +94,10 @@ function continueGame(){
     if(d[5]!=null)p.pop=d[5];   // población viva (creció/decreció durante la partida)
     if(d[6]!=null)p.sold=d[6];  // soldadesca acumulada
     if(d[7]!=null)p.food=d[7];  // despensa (almacén de comida)
+    p.occupier=d[8]!=null?d[8]:-1; // control militar (ocupación EU4)
+    p.siege=d[9]||null;            // asedio en curso {by,need,prog}
   });
+  syncDuchyOcc(); // recomputar occBy de cada ducado a partir de la ocupación cargada
   S.armies=s.armies;
   for(const a of S.armies)a.src=a.src||{}; // partidas antiguas sin origen: sin baja de pop
   S.nations[S.player].ai=false;

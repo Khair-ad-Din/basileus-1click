@@ -12,6 +12,12 @@ function hex2rgb(h){return[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),p
 const NCOL=NATIONS.map(n=>hex2rgb(n.color));
 const TCOL=Object.fromEntries(TERRAIN_KEYS.map(k=>[k,hex2rgb(TERRAINS[k].color)]));
 const WASTECOL=hex2rgb("#847c6a");
+// Jerarquía de fronteras (estilo EU4): nación = gruesa y opaca, ducado = media, provincia = fina.
+// [r,g,b,a]. La nacional se engrosa 1px hacia dentro en paintBorders.
+const B_NATION=[6,8,11,255];
+const B_DUCHY=[12,15,19,205];
+const B_PROV=[26,30,34,72];
+const B_WASTE=[8,10,12,190];
 // ---- Sprites de ejército por nación (estética 2D en lugar del recuadro con número) ----
 // La hoja de cada reino es el "mockup" tal cual: fondo gris sólido, con títulos arriba y
 // una columna de etiquetas/escudos a la izquierda. Al cargar se PROCESA en el navegador:
@@ -111,7 +117,10 @@ function paintAll(){
       const v=hashN(x>>3,y>>3)*14;
       d[o]=50+v;d[o+1]=72+v;d[o+2]=100+v;d[o+3]=255;
     }else{
-      const c=provColor(p),s=S.provs[p].shade;
+      const P=S.provs[p];let c=provColor(p);
+      // ocupación (solo en vista política): franjas diagonales del color del ocupante
+      if(!S.terrainView&&!S.popView&&!P.wasteland&&P.occupier>=0&&P.occupier!==P.owner&&((x+y)>>2&1))c=NCOL[P.occupier];
+      const s=P.shade;
       d[o]=c[0]*s;d[o+1]=c[1]*s;d[o+2]=c[2]*s;d[o+3]=255;
     }
   }
@@ -131,16 +140,29 @@ function borderIsOuter(i){
   q=S.provIdx[i+MW];if(q<0||(q!==p&&S.provs[q].owner!==own))return true;
   return false;
 }
+function putPx(o,c){const d=borderData.data;d[o]=c[0];d[o+1]=c[1];d[o+2]=c[2];d[o+3]=c[3]}
 function setBorderPx(i){
-  const o=i*4,d=borderData.data;
+  const o=i*4;
   if(S.provs[S.provIdx[i]].wasteland){
     // el páramo no tiene divisiones internas; solo contorno con tierras habitadas o mar
-    if(borderIsWasteEdge(i)){d[o]=8;d[o+1]=10;d[o+2]=12;d[o+3]=190}
-    else{d[o+3]=0}
+    if(borderIsWasteEdge(i))putPx(o,B_WASTE);else borderData.data[o+3]=0;
     return;
   }
-  if(borderIsOuter(i)){d[o]=8;d[o+1]=10;d[o+2]=12;d[o+3]=235}
-  else{d[o]=15;d[o+1]=18;d[o+2]=20;d[o+3]=60}
+  if(borderIsOuter(i))putPx(o,B_NATION);
+  else if(borderIsDuchyEdge(i))putPx(o,B_DUCHY);   // división de ducado: intermedia
+  else putPx(o,B_PROV);                             // división de provincia: fina
+}
+// borde interno entre provincias del MISMO dueño pero de DUCADOS distintos (subdivisión de iure)
+function borderIsDuchyEdge(i){
+  const p=S.provIdx[i],x=i%MW;
+  const P=S.provs[p],du=P.duchy;
+  if(du<0)return false;
+  const chk=q=>q>=0&&q!==p&&S.provs[q].owner===P.owner&&!S.provs[q].wasteland&&S.provs[q].duchy!==du;
+  if(x>0&&chk(S.provIdx[i-1]))return true;
+  if(x<MW-1&&chk(S.provIdx[i+1]))return true;
+  if(i>=MW&&chk(S.provIdx[i-MW]))return true;
+  if(i<MW*MH-MW&&chk(S.provIdx[i+MW]))return true;
+  return false;
 }
 function borderIsWasteEdge(i){
   const x=i%MW;
@@ -155,7 +177,20 @@ function borderIsWasteEdge(i){
 function paintBorders(){
   borderData=borderCtx.createImageData(MW,MH);
   for(let p=0;p<S.provs.length;p++)for(const i of S.borderPxOfProv[p])setBorderPx(i);
+  // engrosar la frontera NACIONAL 1px hacia dentro (queda ~2px: país > ducado > provincia)
+  for(let p=0;p<S.provs.length;p++){
+    if(S.provs[p].wasteland)continue;
+    for(const i of S.borderPxOfProv[p]){
+      if(!borderIsOuter(i))continue;
+      const x=i%MW;
+      if(x>0&&S.provIdx[i-1]===p)putPx((i-1)*4,B_NATION);
+      if(x<MW-1&&S.provIdx[i+1]===p)putPx((i+1)*4,B_NATION);
+      if(i>=MW&&S.provIdx[i-MW]===p)putPx((i-MW)*4,B_NATION);
+      if(i<MW*MH-MW&&S.provIdx[i+MW]===p)putPx((i+MW)*4,B_NATION);
+    }
+  }
   borderCtx.putImageData(borderData,0,0);
+  drawGraph(); // la malla de conexiones/nodos se rehace cuando cambia el mapa
 }
 function updateBordersAround(pid){
   if(!borderData)return;
@@ -173,12 +208,46 @@ function updateBordersAround(pid){
   borderCtx.putImageData(borderData,0,0,x0,y0,x1-x0+1,y1-y0+1);
 }
 function repaintProvince(pid){
-  const c=provColor(pid),s=S.provs[pid].shade,d=baseData.data;
+  const P=S.provs[pid],base=provColor(pid),s=P.shade,d=baseData.data;
+  const occ=(!S.terrainView&&!S.popView&&!P.wasteland&&P.occupier>=0&&P.occupier!==P.owner)?NCOL[P.occupier]:null;
   for(const i of S.pixOfProv[pid]){
-    const o=i*4;d[o]=c[0]*s;d[o+1]=c[1]*s;d[o+2]=c[2]*s;
+    const o=i*4;let c=base;
+    if(occ){const x=i%MW,y=(i/MW)|0;if((x+y)>>2&1)c=occ}
+    d[o]=c[0]*s;d[o+1]=c[1]*s;d[o+2]=c[2]*s;
   }
   baseCtx.putImageData(baseData,0,0);
-  updateBordersAround(pid); // la frontera nacional se mueve con la conquista
+  updateBordersAround(pid); // la frontera se mueve con la conquista/ocupación
+}
+// Malla de conexiones (grafo de movimiento): líneas finas entre centros de provincias adyacentes
+// (tierra sólida, mar punteado) y un nodo ROJO en el centro REAL de cada provincia. Aclara dónde
+// está de verdad una unidad, ya que el sprite del ejército flota por encima y engaña. Se hornea
+// una vez (la adyacencia es estable) y se dibuja como imagen; el toggle es S.showGraph.
+const graphC=Object.assign(document.createElement("canvas"),{width:MW,height:MH});
+function drawGraph(){
+  const c=graphC.getContext("2d");
+  c.clearRect(0,0,MW,MH);
+  if(!S.adj||!S.adj.length)return;
+  c.lineWidth=0.7;
+  // conexiones terrestres
+  c.strokeStyle="rgba(240,240,255,0.16)";c.beginPath();
+  for(let p=0;p<S.provs.length;p++){
+    const P=S.provs[p];if(P.wasteland)continue;
+    for(const a of S.adj[p]){if(a<p||S.provs[a].wasteland)continue;c.moveTo(P.x,P.y);c.lineTo(S.provs[a].x,S.provs[a].y)}
+  }
+  c.stroke();
+  // conexiones marítimas (punteadas, más tenues)
+  c.strokeStyle="rgba(120,200,255,0.20)";c.setLineDash([2,3]);c.beginPath();
+  for(let p=0;p<S.provs.length;p++){
+    const P=S.provs[p];if(P.wasteland)continue;
+    for(const a of S.seaAdj[p]){if(a<p||S.provs[a].wasteland)continue;c.moveTo(P.x,P.y);c.lineTo(S.provs[a].x,S.provs[a].y)}
+  }
+  c.stroke();c.setLineDash([]);
+  // nodos: punto rojo en el centro real de cada provincia
+  c.fillStyle="rgba(224,54,44,0.92)";
+  for(let p=0;p<S.provs.length;p++){
+    const P=S.provs[p];if(P.wasteland)continue;
+    c.beginPath();c.arc(P.x,P.y,1.5,0,7);c.fill();
+  }
 }
 const roadsC=Object.assign(document.createElement("canvas"),{width:MW,height:MH});
 function roadCurve(c,a,b){
@@ -327,6 +396,26 @@ function draw(){
   ctx.drawImage(baseC,0,0);
   ctx.drawImage(roadsC,0,0);
   ctx.drawImage(borderC,0,0);
+  // marcadores de capital como DIBUJO DE FONDO: centrados en la provincia, pequeños y translúcidos.
+  // Se pintan BAJO la malla, así el nodo rojo del centro queda visible encima. No bloquean clics
+  // (el clic se resuelve por píxel de provincia, no por la geometría del marcador).
+  if(!S.editMode&&S.started){
+    for(const d of S.duchies){                       // capital de ducado = rombo pequeño
+      const p=S.provs[d.cap];
+      if(!p||p.capital)continue;
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(Math.PI/4);
+      ctx.fillStyle="rgba(216,203,160,0.45)";ctx.fillRect(-2.5,-2.5,5,5);
+      ctx.strokeStyle="rgba(42,36,24,0.45)";ctx.lineWidth=0.7/S.zoom;ctx.strokeRect(-2.5,-2.5,5,5);
+      ctx.restore();
+    }
+    for(const p of S.provs){                          // capital nacional = disco pequeño
+      if(!p.capital)continue;
+      ctx.beginPath();ctx.arc(p.x,p.y,4,0,7);
+      ctx.fillStyle="rgba(240,230,200,0.5)";ctx.fill();
+      ctx.strokeStyle="rgba(34,34,34,0.45)";ctx.lineWidth=0.9/S.zoom;ctx.stroke();
+    }
+  }
+  if(S.showGraph)ctx.drawImage(graphC,0,0); // malla de conexiones + nodos reales (encima de los marcadores)
   // contorno de provincia seleccionada
   if(S.selProv>=0){
     if(selOutlineProv!==S.selProv){
@@ -344,13 +433,7 @@ function draw(){
     requestAnimationFrame(draw);
     return;
   }
-  // capitales
-  for(const p of S.provs){
-    if(!p.capital)continue;
-    ctx.beginPath();ctx.arc(p.x,p.y-24,8,0,7);
-    ctx.fillStyle="#f0e6c8";ctx.fill();
-    ctx.strokeStyle="#222";ctx.lineWidth=1.5/S.zoom;ctx.stroke();
-  }
+  // (los marcadores de capital se dibujan como fondo, más arriba, bajo la malla de conexiones)
   // flecha de orden del ejército seleccionado
   if(S.selArmy&&S.selArmy.path.length){
     const pos=armyPos(S.selArmy);
@@ -358,6 +441,15 @@ function draw(){
     for(const pid of S.selArmy.path)ctx.lineTo(S.provs[pid].x,S.provs[pid].y);
     ctx.strokeStyle="rgba(255,255,255,.65)";ctx.lineWidth=2/S.zoom;
     ctx.setLineDash([6/S.zoom,4/S.zoom]);ctx.stroke();ctx.setLineDash([]);
+  }
+  // asedios en curso: anillo de progreso (grís de fondo + arco ámbar según prog/need)
+  for(const p of S.provs){
+    if(!p.siege)continue;
+    const frac=Math.min(1,p.siege.prog/p.siege.need);
+    ctx.beginPath();ctx.arc(p.x,p.y-14,7,0,7);
+    ctx.strokeStyle="rgba(15,15,15,.6)";ctx.lineWidth=3/S.zoom;ctx.stroke();
+    ctx.beginPath();ctx.arc(p.x,p.y-14,7,-Math.PI/2,-Math.PI/2+frac*Math.PI*2);
+    ctx.strokeStyle="rgba(232,162,60,.95)";ctx.lineWidth=3/S.zoom;ctx.stroke();
   }
   // combates
   for(const pid in S.battleFlash){
@@ -372,6 +464,12 @@ function draw(){
   const smoothWas=ctx.imageSmoothingEnabled;
   for(const a of S.armies){
     const pos=armyPos(a);
+    // punto rojo en la posición REAL de la unidad (el sprite flota por encima y engaña)
+    if(S.showGraph){
+      ctx.beginPath();ctx.arc(pos.x,pos.y,3/S.zoom,0,7);
+      ctx.fillStyle="rgba(230,40,30,0.95)";ctx.fill();
+      ctx.lineWidth=1/S.zoom;ctx.strokeStyle="rgba(255,255,255,0.85)";ctx.stroke();
+    }
     const cnt=Math.round(armyCount(a));
     const sheet=armySheet(a.nation);
     const du=sheet?dominantUnit(a):null;
@@ -417,5 +515,5 @@ function draw(){
 }
 
 export {
-  hex2rgb, provColor, paintAll, borderIsOuter, setBorderPx, borderIsWasteEdge, paintBorders, updateBordersAround, repaintProvince, roadCurve, drawRoads, fitCanvas, clampPan, armyPos, draw, drawArrow, drawEditorOverlay, NCOL, TCOL, WASTECOL, baseC, baseCtx, borderC, borderCtx, roadsC, canvas, baseData, borderData, selOutline, clearSelOutline
+  hex2rgb, provColor, paintAll, borderIsOuter, setBorderPx, borderIsWasteEdge, paintBorders, updateBordersAround, repaintProvince, drawGraph, roadCurve, drawRoads, fitCanvas, clampPan, armyPos, draw, drawArrow, drawEditorOverlay, NCOL, TCOL, WASTECOL, baseC, baseCtx, borderC, borderCtx, roadsC, canvas, baseData, borderData, selOutline, clearSelOutline
 };

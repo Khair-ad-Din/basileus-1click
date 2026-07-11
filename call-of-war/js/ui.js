@@ -1,11 +1,11 @@
 // ui.js
-import { START_DATE, MESES, BUILDINGS, BUILD_CATS, NATIONS, NPLAY, RES_ICON, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, terrainFx } from "./config.js";
+import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, RES_ICON, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, WAR_LOCK_HOURS, terrainFx } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyDef, armySpd, buildBlock, buildJobs, buildMax, canAfford, costFor, foodBalance, foodCap, freeLabor, lvlOf, nationEconomy, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitTime, soldAvail, soldCap, staffing, timeFor } from "./economy.js";
+import { armyAtk, armyCount, armyDef, armySpd, buildBlock, buildJobs, buildMax, canAfford, costFor, foodBalance, foodCap, freeLabor, isOccupied, lvlOf, nationEconomy, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitTime, soldAvail, soldCap, staffing, timeFor } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
 import { canvas, clampPan } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
-import { armiesIn, atWar, tryBuild, tryRecruit, tryRoad } from "./sim.js";
+import { armiesIn, atWar, duchyValue, fortGarrison, occupiedDuchiesBy, tryBuild, tryRecruit, tryRoad, warscore } from "./sim.js";
 
 function log(msg){
   const el=document.getElementById("log");
@@ -23,6 +23,18 @@ function foodLine(p){ // estado de la despensa (almacén de comida) y balance an
   if(p.famine)return "<div class='tl'><b style='color:#e79070'>🥖 ⚠ HAMBRUNA</b> · despensa vacía</div>";
   const bal="<span style='color:"+(balYr<-0.5?"#e0a17a":"#8fbf78")+"'>"+(balYr>=0?"+":"")+fmtPop(balYr)+"/año</span>";
   return "<div class='tl'>🥖 Despensa "+Math.round(fill*100)+"% · "+bal+"</div>";
+}
+function siegeLine(p){ // guarnición del fuerte y progreso de asedio en curso
+  if(p.wasteland)return "";
+  let s="";
+  const g=fortGarrison(p);
+  if(g>0)s+="<div class='tl'>🏰 Guarnición <b>"+g+"</b> levas"+(p.buildings.fortaleza?" · Castillo "+p.buildings.fortaleza:" · capital de ducado")+"</div>";
+  if(p.siege){
+    const pct=Math.round(100*Math.min(1,p.siege.prog/p.siege.need));
+    const meses=Math.max(0,Math.round((p.siege.need-p.siege.prog)/730));
+    s+="<div class='tl'><b style='color:#e0a17a'>⚔ ASEDIADA</b> por "+NATIONS[p.siege.by].name+" · "+pct+"% ("+meses+" meses)</div>";
+  }
+  return s;
 }
 function laborLine(p){ // dotación de los edificios: puestos exigidos vs mano de obra libre
   if(p.wasteland)return "";
@@ -62,7 +74,7 @@ function refreshTop(){
     el.title=RES_LABEL[k]+": "+(g>=0?"+":"")+(Math.round(g*10)/10)+"/mes";
     el.style.color=g<-0.05?"#e08a7a":"#fff";
   }
-  let realmSold=0;for(const p of S.provs)if(p.owner===S.player&&!p.wasteland)realmSold+=soldAvail(p);
+  let realmSold=0;for(const p of S.provs)if(p.owner===S.player&&!p.wasteland&&!isOccupied(p))realmSold+=soldAvail(p);
   document.getElementById("r_mano").textContent=fmt(realmSold);
   const d=new Date(START_DATE+S.hour*3600e3);
   document.getElementById("dateBox").textContent=
@@ -112,9 +124,12 @@ function readonlyProvCard(p){
     return s+"</div>";
   }
   s+="<div class='tl'>"+(p.urban?"Ciudad":RES_LABEL[p.resType])+" · "+TERRAINS[p.terrain].label+" · moral "+Math.round(p.morale)+"%</div>";
+  if(p.duchy>=0&&S.duchies[p.duchy])s+="<div class='tl' style='color:#c9c2ae'>🏛 "+S.duchies[p.duchy].name+(S.provs[S.duchies[p.duchy].cap]===p?" (capital)":"")+"</div>";
   s+="<div class='prow'><span>👥 Población</span><b>"+fmtPop(p.pop)+"</b></div>";
   s+=foodLine(p);
   s+="<div class='prow'><span>Nación</span><b><span class='chip' style='background:"+NATIONS[p.owner].color+"'></span> "+NATIONS[p.owner].name+"</b></div>";
+  if(isOccupied(p))s+="<div class='prow'><span style='color:#e0a17a'>⚔ Ocupada por</span><b><span class='chip' style='background:"+NATIONS[p.occupier].color+"'></span> "+NATIONS[p.occupier].name+"</b></div>";
+  s+=siegeLine(p);
   s+="<div class='prow'><span class='dim'>"+terrainFx(p.terrain)+"</span></div>";
   const blist=Object.keys(BUILDINGS).filter(b=>lvlOf(p,b)>0);
   if(blist.length){
@@ -134,7 +149,7 @@ function refreshBuildBar(){
   const hide=()=>{bar.className="";bar.style.display="none";tabs.className="";tabs.style.display="none"};
   if(S.selArmy||S.selProv<0){hide();return}
   const p=S.provs[S.selProv];
-  if(p.owner!==S.player||p.wasteland){
+  if(p.owner!==S.player||p.wasteland||isOccupied(p)){
     tabs.className="";tabs.style.display="none";
     bar.innerHTML=readonlyProvCard(p);
     bar.className="show";bar.style.display="flex";
@@ -149,7 +164,7 @@ function refreshBuildBar(){
     "<div class='tl'>"+(p.urban?"Ciudad":RES_LABEL[p.resType])+" · "+TERRAINS[p.terrain].label+
     " · moral "+Math.round(p.morale)+"%</div>"+
     "<div class='tl'>👥 "+fmtPop(p.pop)+" hab · ⚔ "+fmtPop(soldAvail(p))+"/"+fmtPop(soldCap(p))+" soldadesca</div>"+
-    foodLine(p)+laborLine(p);
+    foodLine(p)+laborLine(p)+siegeLine(p);
   // Ingresos (por fuente), en /mes
   s+="<div class='bsec'>Ingresos <span class='u'>/mes</span></div>";
   for(const it of bd.income){if(it.amt<0.005)continue;
@@ -278,6 +293,19 @@ function refreshMetricsLog(){
     h+="<div class='kpi'><span>Ataque "+armyAtk(a).toFixed(1)+" · Def "+armyDef(a).toFixed(1)+"</span><span class='v'>"+armySpd(a)+" km/d</span></div>";
     if(a.path.length)h+="<div class='row'><span class='sm'>En marcha → "+S.provs[a.path[a.path.length-1]].name+"</span><button class='bbtn red' onclick='haltArmy()'>Detener</button></div>";
     else h+="<div class='kpi'><span style='color:#7a828b'>Clic derecho en el mapa para mover.</span></div>";
+    // Levantar levas alrededor del ejército (el juego reparte por provincias cercanas y hacen rally)
+    h+="<div class='row' style='margin-top:6px;align-items:center'><span class='sm'>⚔ Levantar levas</span><span>"+
+      "<button class='bbtn' onclick='raiseLevies("+a.id+",5)'>+5</button> "+
+      "<button class='bbtn' onclick='raiseLevies("+a.id+",10)'>+10</button> "+
+      "<button class='bbtn' onclick='raiseLevies("+a.id+",20)'>+20</button></span></div>";
+    // Licenciar por tipo (recupera soldadesca y baja el mantenimiento)
+    h+="<h3 style='font-size:12px;margin:10px 0 3px'>Licenciar</h3>";
+    for(const k in a.units){
+      if(a.units[k]<0.5)continue;
+      h+="<div class='row' style='align-items:center'><span class='sm'>"+Math.round(a.units[k])+"× "+UNITS[k].label+"</span>"+
+        "<span><button class='bbtn' onclick='disbandUnit("+a.id+",\""+k+"\",1)'>−1</button> "+
+        "<button class='bbtn red' onclick='disbandUnit("+a.id+",\""+k+"\",99)'>Todas</button></span></div>";
+    }
   }
   el.innerHTML=h;el.style.display="block";
 }
@@ -333,7 +361,10 @@ function refreshSide(){
   refreshArmyPanel();
 }
 function refreshDiplomacy(){
-  let h="<table class='dip'><tr><th>Nación</th><th>Provincias</th><th>Fuerza</th><th>Estado</th><th></th></tr>";
+  const locked=S.hour<WAR_LOCK_HOURS;
+  let h="";
+  if(locked)h+="<div class='sm' style='color:#c9a86a;margin-bottom:8px'>⚔ Paz obligada: no se puede declarar la guerra hasta dentro de "+fmtDur(WAR_LOCK_HOURS-S.hour)+".</div>";
+  h+="<table class='dip'><tr><th>Nación</th><th>Provincias</th><th>Fuerza</th><th>Estado</th><th></th></tr>";
   for(let n=0;n<NPLAY;n++){
     if(n===S.player)continue;
     const alive=S.nations[n].alive;
@@ -341,9 +372,9 @@ function refreshDiplomacy(){
     h+="<td>"+nationProvCount(n)+"</td><td>"+Math.round(nationStrength(n))+"</td>";
     if(!alive){h+="<td colspan='2'>Eliminada</td></tr>";continue}
     if(atWar(S.player,n)){
-      h+="<td style='color:#d08080'>EN GUERRA</td><td><button class='bbtn' onclick='proposePeace("+n+")'>Proponer paz</button></td>";
+      h+="<td style='color:#d08080'>EN GUERRA</td><td><button class='bbtn' onclick='openPeace("+n+")'>Gestionar paz</button></td>";
     }else{
-      h+="<td style='color:#90b080'>Paz</td><td><button class='bbtn red' onclick='playerDeclare("+n+")'>Declarar guerra</button></td>";
+      h+="<td style='color:#90b080'>Paz</td><td><button class='bbtn red'"+(locked?" disabled title='Bloqueo de guerra inicial'":" onclick='playerDeclare("+n+")'")+">Declarar guerra</button></td>";
     }
     h+="</tr>";
   }
@@ -388,6 +419,63 @@ function refreshLedger(){
   document.getElementById("ledgerBody").innerHTML=h;
 }
 window.sortLedger=function(k){ledgerSort=k;refreshLedger()};
+// ---- Pantalla de gestión de paz (estilo EU4) ----
+function peaceBar(ws){
+  const pct=(ws+100)/2;
+  return "<div class='sm' style='margin-bottom:4px'>Warscore: <b style='color:"+(ws>=0?"#8fce7e":"#e08a7a")+"'>"+(ws>=0?"+":"")+n1(ws)+"</b></div>"+
+    "<div style='height:14px;border-radius:4px;background:#3a2020;position:relative;overflow:hidden'>"+
+    "<div style='position:absolute;left:0;top:0;bottom:0;width:"+pct+"%;background:linear-gradient(90deg,#7a3030,#8fce7e)'></div>"+
+    "<div style='position:absolute;left:50%;top:0;bottom:0;width:1px;background:rgba(255,255,255,.5)'></div></div>";
+}
+function duchyRow(d,on,cost,sign){
+  return "<div class='recrow' style='cursor:pointer' onclick='togglePeaceDuchy("+d.id+")'>"+
+    "<span class='u'>"+(on?"☑":"☐")+" "+d.name+" <span class='sm'>("+d.provs.length+" prov)</span></span>"+
+    "<span class='cst'>"+sign+cost+" pts</span></div>";
+}
+function refreshPeace(){
+  const body=document.getElementById("peaceBody"),title=document.getElementById("peaceTitle");
+  if(!body)return;
+  // modo "oferta entrante de la IA"
+  if(S.peaceMode==="in"&&S.incomingPeace){
+    const o=S.incomingPeace,t=o.terms;
+    title.textContent="Oferta de paz — "+NATIONS[o.enemy].name;
+    let h="<div class='sm' style='margin-bottom:10px'>"+NATIONS[o.enemy].name+" te ofrece la paz a cambio de:</div>";
+    for(const id of (t.duchies||[])){const d=S.duchies[id];if(!d)continue;
+      h+="<div class='recrow'><span class='u'>Cedes "+d.name+"</span><span class='cst'>"+d.provs.length+" prov</span></div>";}
+    if(t.gold>0)h+="<div class='recrow'><span class='u'>Pagas oro</span><span class='cst'>"+fmt(t.gold)+" Ducados</span></div>";
+    if(!(t.duchies&&t.duchies.length)&&!(t.gold>0))h+="<div class='sm'>Paz blanca (sin cesiones).</div>";
+    h+="<div style='text-align:center;margin-top:14px'><button class='bbtn' onclick='acceptIncomingPeace()'>Aceptar</button> "+
+      "<button class='bbtn red' onclick='rejectIncomingPeace()'>Rechazar</button></div>";
+    body.innerHTML=h;return;
+  }
+  const m=S.peaceWith;
+  if(m<0){body.innerHTML="";return}
+  title.textContent="Negociación de paz — "+NATIONS[m].name;
+  const ws=warscore(S.player,m);
+  let h=peaceBar(ws);
+  const dem=occupiedDuchiesBy(S.player,m),con=occupiedDuchiesBy(m,S.player);
+  h+="<h3 style='margin-top:14px'>Exiges a "+NATIONS[m].name+"</h3>";
+  if(!dem.length)h+="<div class='sm' style='color:#9aa3ad'>No ocupas ningún ducado suyo. Toma su capital de ducado (y todos sus fuertes) para poder exigirlo.</div>";
+  for(const d of dem)h+=duchyRow(d,S.peaceSel.has(d.id),duchyValue(d),"");
+  const maxGold=Math.max(0,Math.floor(S.nations[m].res.dinero||0));
+  h+="<div class='recrow'><span class='u'>Exigir oro <span class='sm'>(máx "+fmt(maxGold)+")</span></span>"+
+    "<span class='cst'><input type='number' min='0' max='"+maxGold+"' value='"+S.peaceGold+"' style='width:88px' oninput='setPeaceGold(this.value)'> <span class='sm'>("+n1(S.peaceGold/GOLD_PER_WS)+" pts)</span></span></div>";
+  h+="<h3 style='margin-top:14px'>Cedes a "+NATIONS[m].name+"</h3>";
+  if(!con.length)h+="<div class='sm' style='color:#9aa3ad'>No ocupa ningún ducado tuyo.</div>";
+  for(const d of con)h+=duchyRow(d,S.peaceSel.has(d.id),duchyValue(d),"−");
+  const maxGive=Math.max(0,Math.floor(S.nations[S.player].res.dinero||0));
+  h+="<div class='recrow'><span class='u'>Ofrecer oro <span class='sm'>(máx "+fmt(maxGive)+")</span></span>"+
+    "<span class='cst'><input type='number' min='0' max='"+maxGive+"' value='"+S.peaceGive+"' style='width:88px' oninput='setPeaceGive(this.value)'> <span class='sm'>(−"+n1(S.peaceGive/GOLD_PER_WS)+" pts)</span></span></div>";
+  let demandCost=0,concedeVal=0;
+  for(const id of S.peaceSel){const d=S.duchies[id];if(!d)continue;if(d.occBy===S.player)demandCost+=duchyValue(d);else if(d.occBy===m)concedeVal+=duchyValue(d)}
+  demandCost+=S.peaceGold/GOLD_PER_WS;concedeVal+=S.peaceGive/GOLD_PER_WS;
+  const net=demandCost-concedeVal,ok=net<=ws+0.001;
+  h+="<div style='text-align:center;margin-top:12px;font-size:13px;color:#c9c2ae'>Coste de la propuesta: <b style='color:"+(ok?"#8fce7e":"#e0a17a")+"'>"+n1(net)+" pts</b> <span class='sm'>/ warscore "+n1(ws)+"</span></div>";
+  h+="<div style='text-align:center;margin-top:8px'><button class='bbtn'"+(ok?"":" disabled")+" onclick='proposePeaceDeal()'>Proponer paz</button></div>";
+  if(!ok)h+="<div class='sm' style='color:#e0a17a;text-align:center;margin-top:6px'>El enemigo rechazará: exiges "+n1(net)+" pts pero tu warscore es "+n1(ws)+".</div>";
+  else if(net<=0&&(S.peaceSel.size||S.peaceGold||S.peaceGive))h+="<div class='sm' style='color:#8fce7e;text-align:center;margin-top:6px'>Concesión favorable al enemigo: la aceptará.</div>";
+  body.innerHTML=h;
+}
 function showNationPicker(){
   const grid=document.getElementById("nationGrid");
   let h="";
@@ -425,5 +513,5 @@ function showNationPicker(){
 }
 
 export {
-  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, showNationPicker, buildRealmMenu, refreshMetricsLog, refreshArmyPanel
+  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshPeace, showNationPicker, buildRealmMenu, refreshMetricsLog, refreshArmyPanel
 };

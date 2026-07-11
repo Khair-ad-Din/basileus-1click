@@ -1,6 +1,13 @@
 // economy.js
-import { NPLAY, BUILDINGS, TERRAINS, UNITS, RES_KEYS } from "./config.js";
+import { NPLAY, BUILDINGS, TERRAINS, UNITS, RES_KEYS, LOOT_FRAC } from "./config.js";
 import { S } from "./state.js";
+
+// ---- Ocupación (estilo EU4): la provincia sigue siendo de iure de su dueño (p.owner) pero
+// está controlada militarmente por p.occupier. Su renta se le niega al dueño y el ocupante
+// saquea una fracción. p.occupier===-1 (o indefinido) = la controla su dueño. ----
+function isOccupied(p){return p.occupier>=0&&p.occupier!==p.owner}
+function occupierOf(p){return isOccupied(p)?p.occupier:-1}
+function provLoot(p){const e=provEconomy(p);return Math.max(0,e.res.dinero||0)*LOOT_FRAC} // saqueo de dinero/tick
 
 /* ===================== POPs Fase 1: constantes ======================
  * La población es ahora el motor: paga impuestos, aporta la soldadesca (el cupo
@@ -179,14 +186,20 @@ function provBreakdown(p){
   return{income,upkeep,net,mano};
 }
 function nationEconomy(n){
-  const res={},prov=S.provs.filter(p=>p.owner===n);
+  const res={},prov=S.provs.filter(p=>p.owner===n&&!isOccupied(p)); // las ocupadas no rinden al dueño
   let pop=0;
   for(const p of prov){if(!p.wasteland)pop+=p.pop||0;const e=provEconomy(p);for(const k in e.res)res[k]=(res[k]||0)+e.res[k]}
-  let troops=0;for(const a of S.armies)if(a.nation===n)troops+=armyCount(a);
-  res.dinero=(res.dinero||0)-0.6*troops;
-  res.comida=(res.comida||0)-0.5*troops;
+  // saqueo de las provincias que ESTA nación ocupa a otros
+  for(const p of S.provs)if(isOccupied(p)&&p.occupier===n&&!p.wasteland)res.dinero=(res.dinero||0)+provLoot(p);
+  // mantenimiento del ejército POR TIPO de unidad (las levas casi no cuestan; los profesionales sí)
+  let troops=0;const up={};
+  for(const a of S.armies)if(a.nation===n)for(const k in a.units){
+    troops+=a.units[k];const u=UNITS[k].up||{};
+    for(const r in u)up[r]=(up[r]||0)+u[r]*a.units[k];
+  }
+  for(const r in up)res[r]=(res[r]||0)-up[r];
   for(const k in NEED_PC)res[k]=(res[k]||0)-pop*NEED_PC[k]; // necesidades de confort de la población
-  return{res,provs:prov.length,troops,pop,army:{dinero:0.6*troops,comida:0.5*troops}};
+  return{res,provs:prov.length,troops,pop,army:up};
 }
 function armyCount(a){let t=0;for(const k in a.units)t+=a.units[k];return t}
 function armyAtk(a){let t=0;for(const k in a.units)t+=a.units[k]*UNITS[k].atk;return t}
@@ -211,14 +224,23 @@ function economyTick(dt=1){
   // agregados por nación en pasadas O(provincias), no O(naciones×provincias): moral de obras
   // únicas, tropas, y población (esta última se llena en la pasada A)
   const realmMor=new Float64Array(NPLAY),troops=new Float64Array(NPLAY),nationPop=new Float64Array(NPLAY);
+  const armyUp=Array.from({length:NPLAY},()=>({})); // mantenimiento del ejército por nación y recurso
   for(const p of S.provs){const n=p.owner;if(n>=NPLAY)continue;const bl=p.buildings;
     for(const b in BUILDINGS){const fx=BUILDINGS[b].fx;if(fx.realmMoral){const l=bl[b]||0;if(l)realmMor[n]+=fx.realmMoral*l}}}
-  for(const a of S.armies)if(a.nation<NPLAY)troops[a.nation]+=armyCount(a);
+  for(const a of S.armies){if(a.nation>=NPLAY)continue;
+    for(const k in a.units){troops[a.nation]+=a.units[k];const u=UNITS[k].up||{};
+      for(const r in u)armyUp[a.nation][r]=(armyUp[a.nation][r]||0)+u[r]*a.units[k]}}
   // Pasada A: producción de cada provincia → tesoro de su nación, y recuperación de moral.
   // (Mismo orden que antes: toda la economía ANTES de necesidades y ANTES de la comida.)
   for(const p of S.provs){
     const n=p.owner;
     if(n>=NPLAY||p.wasteland)continue;
+    // provincia ocupada: no rinde a su dueño (ni cuenta para sus necesidades); el ocupante saquea dinero
+    if(isOccupied(p)){
+      const occ=p.occupier;
+      if(occ<NPLAY)S.nations[occ].res.dinero+=provLoot(p)*dt;
+      continue;
+    }
     nationPop[n]+=p.pop||0;
     const R=S.nations[n].res,e=provEconomy(p);
     for(const k in e.res)R[k]+=e.res[k]*dt;
@@ -230,7 +252,7 @@ function economyTick(dt=1){
   for(let n=0;n<NPLAY;n++){
     if(!S.nations[n].alive)continue;
     const R=S.nations[n].res;
-    R.dinero-=0.6*troops[n]*dt;R.comida-=0.5*troops[n]*dt;
+    for(const r in armyUp[n])R[r]-=armyUp[n][r]*dt; // mantenimiento del ejército por tipo
     let unmet=0;
     for(const k in NEED_PC){
       const demand=nationPop[n]*NEED_PC[k]*dt;
@@ -267,5 +289,5 @@ function economyTick(dt=1){
 }
 
 export {
-  canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, armyCount, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, taxOf, SOLD_FRAC, foodProd, foodCons, foodBalance, foodCap, specialistCap, buildJobs, freeLabor, staffing, structPPF, JOBS_PER_LEVEL, NEED_PC, NEED_PRICE, FOOD_PRICE, economyTick
+  canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, isOccupied, occupierOf, provLoot, armyCount, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, taxOf, SOLD_FRAC, foodProd, foodCons, foodBalance, foodCap, specialistCap, buildJobs, freeLabor, staffing, structPPF, JOBS_PER_LEVEL, NEED_PC, NEED_PRICE, FOOD_PRICE, economyTick
 };

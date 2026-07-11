@@ -5,10 +5,11 @@ import {
   enterEditor, exitEditor, pushUndo, restoreWorldFromSnap, toggleRoadEdit, setProvinceOwner, dpSimplify, simplifyRing, traceProvince, applyShape, mergeProvinces, rasterPoly, keepLargestFragment, splitProvince, refreshEditorPanel, vertexAt, nearestSegment
 } from "./editor.js";
 import {
-  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, showNationPicker, refreshArmyPanel
+  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshPeace, showNationPicker, refreshArmyPanel
 } from "./ui.js";
 import {
-  atWar, declareWar, makePeace, underTruce, spawnArmy, setupNations, tryRoad, nbrs, bfsPath, startLeg, orderMove, captureProv, hourTick, resolveBattles, applyDamage, mergeIdle, aiTurn, findTarget, tryBuild, tryRecruit, checkVictory, armiesIn
+  atWar, declareWar, makePeace, underTruce, spawnArmy, setupNations, tryRoad, nbrs, bfsPath, startLeg, orderMove, takeTile, updateDuchy, isKeyTile, hourTick, resolveBattles, applyDamage, mergeIdle, aiTurn, findTarget, tryBuild, tryRecruit, disbandUnit, raiseLevies, checkVictory, armiesIn,
+  getWar, warscore, duchyValue, occupiedDuchiesBy
 } from "./sim.js";
 import {
   hex2rgb, provColor, paintAll, borderIsOuter, setBorderPx, borderIsWasteEdge, paintBorders, updateBordersAround, repaintProvince, roadCurve, drawRoads, fitCanvas, clampPan, armyPos, draw, drawArrow, drawEditorOverlay, NCOL, TCOL, WASTECOL, baseC, baseCtx, borderC, borderCtx, roadsC, canvas, baseData, borderData, clearSelOutline
@@ -26,7 +27,7 @@ import "./debug.js"; // registra window.dbg (herramientas de observación por co
 S.rand=mulberry32(193909);
 
 import {
-  GH_PER_SEC, MW, MH, NATIONS, NPLAY, NEUTRAL, RES_KEYS, RES_STRAT, RES_TRADE, RES_LABEL, RES_SHORT, RES_ICON, START_STOCK, BUILDINGS, BUILD_CATS, newBuildings, UNITS, TERRAINS, TERRAIN_KEYS, terrainFx
+  GH_PER_SEC, MW, MH, NATIONS, NPLAY, NEUTRAL, RES_KEYS, RES_STRAT, RES_TRADE, RES_LABEL, RES_SHORT, RES_ICON, START_STOCK, BUILDINGS, BUILD_CATS, newBuildings, UNITS, TERRAINS, TERRAIN_KEYS, GOLD_PER_WS, terrainFx
 } from "./config.js";
 
 /* ============================= Estado global ============================= */
@@ -118,16 +119,72 @@ window.setBuildCat=function(k){S.buildFilter=k;refreshBuildBar()};
 window.tryBuild=tryBuild;window.tryRecruit=tryRecruit;
 window.haltArmy=function(){if(S.selArmy){S.selArmy.path=[];S.selArmy.legDone=0;S.selArmy.legTotal=0;refreshSide()}};
 window.selectArmyId=function(id){const a=S.armies.find(x=>x.id===id);if(a){S.selArmy=a;S.selProv=-1;refreshSide()}};
+window.raiseLevies=function(id,n){const a=S.armies.find(x=>x.id===id);if(a){raiseLevies(a,n);refreshSide();refreshTop()}};
+window.disbandUnit=function(id,type,n){const a=S.armies.find(x=>x.id===id);if(a){disbandUnit(a,type,n);refreshSide();refreshTop()}};
 
 // panel de Ejército (botón ⚔ del menú de reino): ejércitos + reclutamiento global
 window.openArmyPanel=function(){S.armyPanelOpen=true;refreshArmyPanel();document.getElementById("armyPanel").style.display="block"};
 window.closeArmyPanel=function(){S.armyPanelOpen=false;document.getElementById("armyPanel").style.display="none"};
 window.setRecruitProv=function(id){S.recruitProv=+id;refreshArmyPanel()};
 
-window.proposePeace=function(n){
-  if(nationStrength(n)<nationStrength(S.player)*0.8){makePeace(S.player,n)}
-  else log(NATIONS[n].name+" rechaza tu propuesta de paz.");
-  refreshDiplomacy();
+// ---- Pantalla de gestión de paz (estilo EU4) ----
+window.openPeace=function(n){
+  if(!atWar(S.player,n))return;
+  S.peaceWith=n;S.peaceMode="out";S.peaceSel=new Set();S.peaceGold=0;S.peaceGive=0;
+  refreshPeace();
+  document.getElementById("peaceOverlay").style.display="flex";
+};
+window.openIncomingPeace=function(){
+  if(!S.incomingPeace)return;
+  S.peaceMode="in";
+  refreshPeace();
+  document.getElementById("peaceOverlay").style.display="flex";
+};
+window.closePeace=function(){
+  document.getElementById("peaceOverlay").style.display="none";
+  if(S.peaceMode==="in")S.incomingPeace=null; // cerrar una oferta entrante = rechazarla
+  S.peaceWith=-1;S.peaceMode="out";
+};
+window.togglePeaceDuchy=function(id){
+  if(S.peaceSel.has(id))S.peaceSel.delete(id);else S.peaceSel.add(id);
+  refreshPeace();
+};
+window.setPeaceGold=function(v){
+  const m=S.peaceWith;if(m<0)return;
+  S.peaceGold=Math.max(0,Math.min(Math.floor(S.nations[m].res.dinero||0),Math.round(+v||0)));
+  refreshPeace();
+};
+window.setPeaceGive=function(v){
+  S.peaceGive=Math.max(0,Math.min(Math.floor(S.nations[S.player].res.dinero||0),Math.round(+v||0)));
+  refreshPeace();
+};
+window.proposePeaceDeal=function(){
+  const m=S.peaceWith;if(m<0)return;
+  const ws=warscore(S.player,m);
+  let demandCost=0,concedeVal=0;
+  for(const id of S.peaceSel){const d=S.duchies[id];if(!d)continue;if(d.occBy===S.player)demandCost+=duchyValue(d);else if(d.occBy===m)concedeVal+=duchyValue(d)}
+  demandCost+=S.peaceGold/GOLD_PER_WS;concedeVal+=S.peaceGive/GOLD_PER_WS;
+  if(demandCost-concedeVal>ws+0.001){log(NATIONS[m].name+" rechaza tu propuesta de paz.");return}
+  const netGold=S.peaceGold-S.peaceGive;
+  const terms={duchies:[...S.peaceSel],gold:Math.abs(netGold)};
+  if(netGold>0){terms.goldFrom=m;terms.goldTo=S.player}
+  else if(netGold<0){terms.goldFrom=S.player;terms.goldTo=m}
+  makePeace(S.player,m,terms);
+  window.closePeace();
+  refreshDiplomacy();refreshSide();refreshTop();paintAll();
+};
+window.acceptIncomingPeace=function(){
+  const o=S.incomingPeace;if(!o)return;
+  makePeace(o.enemy,S.player,o.terms);
+  S.incomingPeace=null;
+  document.getElementById("peaceOverlay").style.display="none";
+  S.peaceMode="out";S.peaceWith=-1;
+  refreshDiplomacy();refreshSide();refreshTop();paintAll();
+};
+window.rejectIncomingPeace=function(){
+  S.incomingPeace=null;
+  document.getElementById("peaceOverlay").style.display="none";
+  S.peaceMode="out";S.peaceWith=-1;
 };
 window.playerDeclare=function(n){declareWar(S.player,n);refreshDiplomacy()};
 
@@ -205,7 +262,8 @@ function regenerateWorld(){
   document.getElementById("loadMsg").style.display="flex";
   document.getElementById("endOverlay").style.display="none";
   setTimeout(()=>{
-    S.provs=[];S.armies=[];S.wars=new Set();S.truces=new Map();S.armyIdSeq=1;
+    S.provs=[];S.armies=[];S.wars=new Map();S.truces=new Map();S.armyIdSeq=1;S.duchies=[];
+    S.peaceWith=-1;S.peaceSel=new Set();S.peaceGold=0;S.incomingPeace=null;
     S.player=-1;S.hour=0;S.acc=0;S.started=false;S.gameOver=false;
     S.selProv=-1;S.selArmy=null;S.battleFlash={};clearSelOutline();
     S.shapeSel=-1;S.shapePoly=[];S.dragVi=-1;
@@ -541,6 +599,15 @@ document.getElementById("terrBtn").addEventListener("click",()=>window.toggleTer
   const pb=document.getElementById("popBtn");
   if(pb)pb.addEventListener("click",()=>window.togglePopView());
 }
+window.toggleGraph=function(){
+  S.showGraph=!S.showGraph;
+  const b=document.getElementById("graphBtn");
+  if(b)b.classList.toggle("active",S.showGraph);
+};
+{
+  const gb=document.getElementById("graphBtn");
+  if(gb){gb.classList.toggle("active",S.showGraph);gb.addEventListener("click",()=>window.toggleGraph())}
+}
 {
   let lh="<b style='font-size:12px'>Terrenos</b>";
   for(const k of TERRAIN_KEYS){
@@ -578,6 +645,8 @@ setInterval(()=>{
   let steps=0;
   while(S.acc>=1&&steps<60){S.acc-=1;hourTick();steps++}
   if(steps){refreshTop();refreshSide()}
+  // oferta de paz de la IA: abrir la pantalla si no hay ya un overlay visible
+  if(S.incomingPeace&&document.getElementById("peaceOverlay").style.display!=="flex")window.openIncomingPeace();
 },250);
 
 /* ============================= Partida guardada ============================= */

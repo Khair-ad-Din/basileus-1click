@@ -645,19 +645,36 @@ function rebuildProvinceData(){
     if(r>=0&&r!==p){S.adj[p].add(r);S.adj[r].add(p)}
     if(d>=0&&d!==p){S.adj[p].add(d);S.adj[d].add(p)}
   }
-  // centro de provincia: si el punto de referencia quedó fuera (por una edición), usar el centroide
+  // centro visual de cada provincia = POLO DE INACCESIBILIDAD (el píxel interior más alejado de
+  // cualquier borde). La semilla del Voronoi suele quedar descentrada o pegada a un borde; este
+  // punto, en cambio, siempre cae bien dentro (incluso en formas cóncavas o multilóbulo, elige el
+  // centro del lóbulo mayor). Se calcula por transformada de distancia (BFS desde el borde) dentro
+  // del recuadro de la provincia. Aquí se fija p.x/p.y para marcadores, ejércitos y caminos.
   for(const p of S.provs){
-    if(!S.pixOfProv[p.id].length)continue;
-    if(S.provIdx[p.y*MW+p.x]===p.id)continue;
-    let sx=0,sy=0;
-    for(const i of S.pixOfProv[p.id]){sx+=i%MW;sy+=(i/MW)|0}
-    const cx=sx/S.pixOfProv[p.id].length,cy=sy/S.pixOfProv[p.id].length;
-    let best=-1,bd=1e18;
-    for(const i of S.pixOfProv[p.id]){
-      const d=(i%MW-cx)**2+(((i/MW)|0)-cy)**2;
-      if(d<bd){bd=d;best=i}
+    const px=S.pixOfProv[p.id];
+    if(!px.length)continue;
+    let minx=MW,miny=MH,maxx=0,maxy=0;
+    for(const i of px){const x=i%MW,y=(i/MW)|0;if(x<minx)minx=x;if(x>maxx)maxx=x;if(y<miny)miny=y;if(y>maxy)maxy=y}
+    const bw=maxx-minx+1,bh=maxy-miny+1;
+    const inside=new Uint8Array(bw*bh);
+    for(const i of px)inside[((((i/MW)|0)-miny)*bw)+(i%MW-minx)]=1;
+    const dist=new Int32Array(bw*bh).fill(-1);
+    const q=new Int32Array(px.length);let qn=0;
+    for(const i of px){                              // sembrar BFS en los píxeles de borde (dist 0)
+      const gx=i%MW-minx,gy=((i/MW)|0)-miny,c=gy*bw+gx;
+      if(gx===0||gy===0||gx===bw-1||gy===bh-1||
+         !inside[c-1]||!inside[c+1]||!inside[c-bw]||!inside[c+bw]){dist[c]=0;q[qn++]=c}
     }
-    p.x=best%MW;p.y=(best/MW)|0;
+    let head=0,best=q.length?q[0]:-1,bd=0;
+    while(head<qn){
+      const c=q[head++],cd=dist[c],cx=c%bw,cy=(c/bw)|0;
+      if(cd>bd){bd=cd;best=c}
+      if(cx>0){const j=c-1;if(inside[j]&&dist[j]<0){dist[j]=cd+1;q[qn++]=j}}
+      if(cx<bw-1){const j=c+1;if(inside[j]&&dist[j]<0){dist[j]=cd+1;q[qn++]=j}}
+      if(cy>0){const j=c-bw;if(inside[j]&&dist[j]<0){dist[j]=cd+1;q[qn++]=j}}
+      if(cy<bh-1){const j=c+bw;if(inside[j]&&dist[j]<0){dist[j]=cd+1;q[qn++]=j}}
+    }
+    if(best>=0){p.x=minx+(best%bw);p.y=miny+((best/bw)|0)}
   }
   // rutas marítimas (convoyes) entre provincias costeras cercanas
   const coast=S.provs.filter(p=>p.coastal);
@@ -677,6 +694,90 @@ function rebuildProvinceData(){
     if(ok&&sea>=1){S.seaAdj[a.id].add(b.id);S.seaAdj[b.id].add(a.id)}
   }
 }
+// ============================= Ducados =============================
+// Subdivisión interna de cada reino en ducados (grupos de 3-4 provincias contiguas), la
+// unidad de conquista del juego. Es DETERMINISTA: depende solo de owner0 (dueño de iure) y
+// de la adyacencia terrestre, ambos estables, así que se reconstruye idéntica en cada carga
+// sin necesidad de persistirla. Los `home`=owner0 (NEUTRAL para independientes); la capital
+// del ducado es la capital nacional si cae dentro, si no la provincia más urbana/poblada.
+function buildDuchies(){
+  const TARGET=4,MAXMERGE=5; // 3-4 por ducado; al fusionar fragmentos no pasar de 5
+  for(const p of S.provs){p.duchy=-1;if(p.occupier==null)p.occupier=-1}
+  // provincias agrupadas por dueño de iure (owner0); el páramo queda fuera
+  const byHome=new Map();
+  for(const p of S.provs){
+    if(p.wasteland)continue;
+    if(!byHome.has(p.owner0))byHome.set(p.owner0,[]);
+    byHome.get(p.owner0).push(p.id);
+  }
+  // 1. cúmulos tentativos: cada provincia recibe un id de grupo (group[])
+  const group=new Int32Array(S.provs.length).fill(-1);
+  const members=[]; // gid -> [pids]
+  for(const[home,provs]of byHome){
+    const unassigned=new Set(provs);
+    // orden de siembra determinista: capital nacional, luego ciudades, luego por id
+    const seeds=[...provs].sort((a,b)=>{
+      const A=S.provs[a],B=S.provs[b];
+      const sa=(A.capital?2:0)+(A.urban?1:0),sb=(B.capital?2:0)+(B.urban?1:0);
+      return sa!==sb?sb-sa:a-b;
+    });
+    for(const seed of seeds){
+      if(!unassigned.has(seed))continue;
+      const cluster=[seed];unassigned.delete(seed);
+      // crecer al vecino contiguo del mismo dueño más "compacto" (más lazos con el cúmulo)
+      while(cluster.length<TARGET){
+        let cand=-1,cb=-1;
+        for(const a of unassigned){
+          let ties=0;for(const c of cluster)if(S.adj[c].has(a))ties++;
+          if(ties>cb){cb=ties;cand=a}
+        }
+        if(cand<0||cb<=0)break; // no hay más provincias contiguas del mismo reino
+        cluster.push(cand);unassigned.delete(cand);
+      }
+      const gid=members.length;
+      for(const pid of cluster)group[pid]=gid;
+      members.push(cluster);
+    }
+  }
+  // 2. fusionar fragmentos pequeños (stragglers de la codicia) en un ducado vecino del mismo reino,
+  //    empezando por los más pequeños; nunca por encima de MAXMERGE. Las islas sin vecino terrestre
+  //    del mismo dueño se quedan solas. Determinista (orden por tamaño y luego por id).
+  const order=members.map((m,g)=>g).sort((a,b)=>members[a].length-members[b].length||a-b);
+  for(const g of order){
+    const m=members[g];
+    if(!m.length||m.length>2)continue; // solo fragmentos de 1-2 provincias
+    const home=S.provs[m[0]].owner0;
+    // grupos vecinos del mismo reino (por tierra), con su tamaño
+    const adjG=new Map();
+    for(const pid of m)for(const a of S.adj[pid]){
+      const ag=group[a];
+      if(ag<0||ag===g||S.provs[a].owner0!==home)continue;
+      adjG.set(ag,members[ag].length);
+    }
+    let best=-1,bs=1e9;
+    for(const[ag,sz]of adjG){if(sz+m.length<=MAXMERGE&&(sz<bs||(sz===bs&&ag<best))){bs=sz;best=ag}}
+    if(best<0)continue;
+    for(const pid of m){group[pid]=best;members[best].push(pid)}
+    members[g]=[]; // vaciado
+  }
+  // 3. ducados finales (ids compactados) con capital y nombre
+  S.duchies=[];
+  const remap=new Map();
+  for(let g=0;g<members.length;g++){
+    const m=members[g];if(!m.length)continue;
+    const id=S.duchies.length;remap.set(g,id);
+    for(const pid of m)S.provs[pid].duchy=id;
+    // capital del ducado: la capital nacional si está dentro; si no, la más urbana/poblada
+    let cap=m.find(pid=>S.provs[pid].capital);
+    if(cap==null)cap=m.reduce((best,pid)=>{
+      const P=S.provs[pid],B=S.provs[best];
+      return (P.urban?1e9:0)+(P.pop||0)>(B.urban?1e9:0)+(B.pop||0)?pid:best;
+    },m[0]);
+    S.duchies.push({id,home:S.provs[m[0]].owner0,provs:m.slice(),cap,occBy:-1,name:"Ducado de "+S.provs[cap].name});
+  }
+}
+// ¿es `pid` la capital de su ducado?
+function isDuchyCap(pid){const p=S.provs[pid];return p.duchy>=0&&S.duchies[p.duchy]&&S.duchies[p.duchy].cap===pid}
 function roadKey(a,b){return a<b?a+"|"+b:b+"|"+a}
 function hasRoad(a,b){return S.roads.has(roadKey(a,b))}
 function landPath(from,to,allow){
@@ -732,5 +833,5 @@ function kmBetween(a,b){
 }
 
 export {
-  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, rebuildProvinceData, kmBetween, roadKey, hasRoad, landPath, generateRoads
+  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, rebuildProvinceData, buildDuchies, isDuchyCap, kmBetween, roadKey, hasRoad, landPath, generateRoads
 };
