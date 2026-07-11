@@ -200,7 +200,7 @@ const START_DATE=Date.UTC(1444,10,11,6);
 const MESES=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
 
 // ===== Guerra: bloqueo inicial, ocupación y warscore =====
-const WAR_LOCK_HOURS=0;        // TEMPORAL testeo: bloqueo desactivado (valor normal: 4*8760 = 4 años)
+const WAR_LOCK_HOURS=4*8760;   // 4 años de paz obligada al inicio (bajar a 0 solo para testear guerras)
 const LOOT_FRAC=0.35;          // fracción de la renta de dinero que saquea el ocupante de una provincia
 const GOLD_PER_WS=120;         // ducados por punto de warscore al exigir/ceder oro en la paz
 const WS_DUCHY_BASE=12;        // valor en warscore de un ducado = base + WS_DUCHY_PER·nProvs
