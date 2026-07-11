@@ -421,15 +421,16 @@ function buildRealmMenu(){
   const el=document.getElementById("realmMenu");
   const N=NATIONS[S.player];
   const btns=[
-    {ic:uiIcon('espadas',true),lab:"Ejército",on:"openArmyPanel()"},
-    {ic:uiIcon('estandarte',true),lab:"Corte",dis:1},
-    {ic:uiIcon('leyes',true),lab:"Leyes",dis:1},
-    {ic:"⛪",lab:"Iglesia",dis:1}
+    {img:"btn_ejercito",on:"openArmyPanel()"},
+    {img:"btn_corte",dis:1},
+    {img:"btn_tesoreria",dis:1},
+    {img:"btn_leyes",dis:1},
+    {img:"btn_estamentos",dis:1}
   ];
-  el.innerHTML="<div class='rmRow'><span class='rmShield' style='background:"+N.color+"' title='"+N.name+"'></span>"+
-    btns.map(b=>"<button class='rmBtn'"+
-      (b.dis?" disabled title='Próximamente'":" onclick='"+b.on+"'")+">"+
-      "<span class='ic'>"+b.ic+"</span><span class='lab'>"+b.lab+"</span></button>").join("")+"</div>";
+  el.innerHTML="<div class='rmEscudo' title='"+N.name+"'><span class='rmEscCol' style='background:"+N.color+"'></span>"+
+      "<img src='assets/ui/escudo.png' alt='"+N.name+"'></div>"+
+    btns.map(b=>"<img class='rmBtnImg"+(b.dis?" dis":"")+"' src='assets/ui/"+b.img+".png' alt=''"+
+      (b.dis?" title='Próximamente'":" onclick='"+b.on+"'")+">").join("");
   el.className="show";
 }
 // log de métricas del reino (arriba-derecha, fijo): KPIs de tesorería + ejércitos desplegados
