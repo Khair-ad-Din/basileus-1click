@@ -186,15 +186,17 @@
   /* menú del reino: escudo (con color de nación detrás) + botones-placa (texto horneado) */
   #realmMenu{position:fixed;top:52px;left:10px;z-index:16;display:none}
   #realmMenu.show{display:flex;flex-direction:row;align-items:center;gap:6px}
-  .rmEscudo{position:relative;width:54px;height:45px;flex:0 0 auto}
+  .rmEscudo{position:relative;width:104px;height:86px;flex:0 0 auto}
   .rmEscudo img{position:relative;width:100%;height:100%;object-fit:contain;display:block;z-index:1;
-    filter:drop-shadow(0 2px 3px rgba(0,0,0,.5))}
-  .rmEscudo .rmEscCol{position:absolute;left:34%;top:42%;width:32%;height:47%;z-index:0;opacity:.9;
-    clip-path:polygon(0 0,100% 0,100% 60%,50% 100%,0 60%)}
-  .rmBtnImg{height:46px;width:auto;flex:0 0 auto;cursor:pointer;transition:filter .1s;
-    filter:drop-shadow(0 2px 3px rgba(0,0,0,.45))}
-  .rmBtnImg:hover{filter:brightness(1.13) drop-shadow(0 2px 4px rgba(0,0,0,.5))}
-  .rmBtnImg.dis{opacity:.5;cursor:not-allowed;filter:grayscale(.35) drop-shadow(0 2px 3px rgba(0,0,0,.35))}
+    filter:drop-shadow(0 2px 4px rgba(0,0,0,.55))}
+  /* color de la nación recortado a la FORMA EXACTA del interior del escudo (máscara) */
+  .rmEscudo .rmEscCol{position:absolute;inset:0;z-index:0;opacity:.92;
+    -webkit-mask:url(assets/ui/escudo_fill.png) center/contain no-repeat;
+    mask:url(assets/ui/escudo_fill.png) center/contain no-repeat}
+  .rmBtnImg{height:33px;width:auto;flex:0 0 auto;cursor:pointer;transition:filter .1s;
+    filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))}
+  .rmBtnImg:hover{filter:brightness(1.13) drop-shadow(0 2px 3px rgba(0,0,0,.5))}
+  .rmBtnImg.dis{opacity:.5;cursor:not-allowed;filter:grayscale(.35) drop-shadow(0 1px 2px rgba(0,0,0,.35))}
   /* log de métricas del reino (arriba-derecha) */
   #side .mlog{margin:-2px -2px 8px;padding:6px 8px;background:rgba(20,24,28,.5);border-radius:5px;
     display:flex;align-items:center;gap:8px}
