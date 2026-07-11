@@ -490,10 +490,38 @@ function assignTerrain(){
     p.terrain=t||"llanura";
   }
 }
+// Yacimientos de metal precioso (distribución histórica del s.XV). [latMin,latMax,lonMin,lonMax].
+// La plata es común en la Europa central minera; el oro es raro (Cárpatos).
+const SILVER_ZONES=[
+  [48.5,50.6,12.5,17],   // Bohemia (Kutná Hora, Jáchymov)
+  [46.3,48.2,9.5,13.6],  // Tirol y Alpes orientales
+  [50.4,52,9.3,13.6],    // Sajonia / Harz / Erzgebirge
+  [38.8,41.3,7.8,10],    // Cerdeña (Iglesiente)
+  [41.8,44.6,18.8,22.2], // Serbia / Bosnia (Novo Brdo, Srebrenica)
+  [37.3,41.2,-7.2,-1.8]  // Sierras ibéricas (Sierra Morena, Guadalcanal)
+];
+const GOLD_ZONES=[
+  [47.8,49.6,17.4,20.6], // Eslovaquia / Cárpatos (Kremnica, Banská Štiavnica)
+  [45.4,47.6,22.3,25.7]  // Transilvania (Baia Mare, Roșia Montană)
+];
+function inZones(zones,lon,lat){for(const[la0,la1,lo0,lo1]of zones)if(lat>=la0&&lat<=la1&&lon>=lo0&&lon<=lo1)return true;return false}
 function assignResources(){
   for(const p of S.provs){
-    if(p.urban){p.resType="dinero";continue}
+    // Ciudades: su base ya no es "dinero gratis" (ver economy.js: el motor de ducados son los
+    // impuestos + el comercio de mercado/lonja/puerto). Producen manufacturas y lujos regionales.
+    if(p.urban){
+      const city=["pano","pano","pano","raros","vino","seda","metal"];
+      p.resType=city[(S.rand()*city.length)|0];
+      continue;
+    }
     const t=p.terrain;
+    // Yacimientos de plata/oro: solo en montaña/colinas (y bosque para el Harz) dentro de su zona
+    // histórica. El oro tiene prioridad (más raro) y una probabilidad menor que la plata.
+    if(t==="montana"||t==="colinas"||t==="bosque"){
+      const[lon,lat]=pxToLonLat(p.x,p.y);
+      if(inZones(GOLD_ZONES,lon,lat)&&S.rand()<0.40){p.resType="oro";continue}
+      if(inZones(SILVER_ZONES,lon,lat)&&S.rand()<0.48){p.resType="plata";continue}
+    }
     // bien de lujo regional (~13% del campo), según terreno y costa
     if(S.rand()<0.13){
       const lux=["pano","vino","sal","raros","seda"];

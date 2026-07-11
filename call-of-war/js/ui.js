@@ -1,7 +1,7 @@
 // ui.js
-import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, RES_ICON, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, WAR_LOCK_HOURS, terrainFx } from "./config.js";
+import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, RES_DESC, RES_ICON, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, WAR_LOCK_HOURS, terrainFx } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyDef, armySpd, buildBlock, buildJobs, buildMax, canAfford, costFor, foodBalance, foodCap, freeLabor, isOccupied, lvlOf, nationEconomy, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitTime, soldAvail, soldCap, staffing, timeFor } from "./economy.js";
+import { armyAtk, armyCount, armyDef, armySpd, buildBlock, buildingYield, buildJobs, buildMax, buildSlots, canAfford, costFor, employedIn, foodBalance, foodCap, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationEconomy, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
 import { canvas, clampPan } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
@@ -20,21 +20,27 @@ function fmtPop(n){return Math.round(n||0).toLocaleString("es-ES")}
 function foodLine(p){ // estado de la despensa (almacén de comida) y balance anual
   if(p.wasteland)return "";
   const cap=foodCap(p),fill=cap>0?(p.food||0)/cap:0,balYr=foodBalance(p)*8760;
-  if(p.famine)return "<div class='tl'><b style='color:#e79070'>🥖 ⚠ HAMBRUNA</b> · despensa vacía</div>";
-  const bal="<span style='color:"+(balYr<-0.5?"#e0a17a":"#8fbf78")+"'>"+(balYr>=0?"+":"")+fmtPop(balYr)+"/año</span>";
-  return "<div class='tl'>🥖 Despensa "+Math.round(fill*100)+"% · "+bal+"</div>";
+  if(p.famine)return "<div class='tl'><b class='neg'>"+uiIcon('despensa')+" ⚠ HAMBRUNA</b> · despensa vacía</div>";
+  const bal="<span class='"+(balYr<-0.5?"neg":"pos")+"'>"+(balYr>=0?"+":"")+fmtPop(balYr)+"/año</span>";
+  return "<div class='tl'>"+uiIcon('despensa')+" Despensa "+Math.round(fill*100)+"% · "+bal+"</div>";
 }
 function siegeLine(p){ // guarnición del fuerte y progreso de asedio en curso
   if(p.wasteland)return "";
   let s="";
   const g=fortGarrison(p);
-  if(g>0)s+="<div class='tl'>🏰 Guarnición <b>"+g+"</b> levas"+(p.buildings.fortaleza?" · Castillo "+p.buildings.fortaleza:" · capital de ducado")+"</div>";
+  if(g>0)s+="<div class='tl'>"+uiIcon('defensa')+" Guarnición <b>"+g+"</b> levas"+(p.buildings.fortaleza?" · Castillo "+p.buildings.fortaleza:" · capital de ducado")+"</div>";
   if(p.siege){
     const pct=Math.round(100*Math.min(1,p.siege.prog/p.siege.need));
     const meses=Math.max(0,Math.round((p.siege.need-p.siege.prog)/730));
     s+="<div class='tl'><b style='color:#e0a17a'>⚔ ASEDIADA</b> por "+NATIONS[p.siege.by].name+" · "+pct+"% ("+meses+" meses)</div>";
   }
   return s;
+}
+function slotsLine(p){ // huecos de construcción (crecen con la población, modelo EU5)
+  if(p.wasteland)return "";
+  const used=usedSlots(p),tot=buildSlots(p);
+  const col=used>=tot?"#e0a17a":used>=tot-1?"#d9c07a":"#9aa3ad";
+  return "<div class='tl'>🏗 Edificios <span style='color:"+col+"'>"+used+"/"+tot+"</span> <span style='color:#7a828b'>(el cupo crece con la población)</span></div>";
 }
 function laborLine(p){ // dotación de los edificios: puestos exigidos vs mano de obra libre
   if(p.wasteland)return "";
@@ -51,15 +57,24 @@ function fmtDur(h){ // horas de juego -> texto legible
   if(h>=48)return Math.round(h/24)+" días";
   return Math.round(h)+" h";
 }
+// icono de UI (stats, pestañas, menús): sprite de assets/ui. big = tamaño de botón/pestaña.
+function uiIcon(name,big){return "<img class='uic"+(big?" big":"")+"' src='assets/ui/"+name+".png' alt=''>"}
+// icono de recurso: sprite de assets/res para los 11 bienes de stock; emoji para plata/oro (sin sprite)
+function resImg(k){
+  return RES_KEYS.includes(k)
+    ?"<img class='ric' src='assets/res/"+k+".png' alt='"+(RES_LABEL[k]||k)+"' title='"+(RES_LABEL[k]||k)+"'>"
+    :(RES_ICON[k]||"");
+}
 function buildResBar(){
   const bar=document.getElementById("resbar");
   if(bar.dataset.built)return;
-  const cell=(k,cls)=>"<span class='res "+cls+"' title='"+RES_LABEL[k]+"'><span class='ic'>"+RES_ICON[k]+
-    "</span><b id='r_"+k+"'>0</b></span>";
+  // cada bien: sprite + stock actual + balance mensual (+/-) inline
+  const cell=(k,cls)=>"<span class='res "+cls+"'><img class='ric' src='assets/res/"+k+".png' alt='"+RES_LABEL[k]+"' title='"+RES_LABEL[k]+"'>"+
+    "<b id='r_"+k+"'>0</b><small class='rd' id='d_"+k+"'></small></span>";
   let h=RES_STRAT.map(k=>cell(k,"strat")).join("");
   h+="<span class='sep'></span>";
   h+=RES_TRADE.map(k=>cell(k,"trade")).join("");
-  h+="<span class='sep'></span><span class='res' title='Soldadesca del reino (cupo movilizable disponible)'><span class='ic'>👥</span><b id='r_mano'>0</b></span>";
+  h+="<span class='sep'></span><span class='res' title='Soldadesca del reino (cupo movilizable disponible)'>"+uiIcon('soldadesca')+"<b id='r_mano'>0</b></span>";
   bar.innerHTML=h;bar.dataset.built="1";
 }
 function refreshTop(){
@@ -71,8 +86,16 @@ function refreshTop(){
     const el=document.getElementById("r_"+k);if(!el)continue;
     el.textContent=fmt(R[k]);
     const g=inc[k]||0;
-    el.title=RES_LABEL[k]+": "+(g>=0?"+":"")+(Math.round(g*10)/10)+"/mes";
-    el.style.color=g<-0.05?"#e08a7a":"#fff";
+    el.title=RES_LABEL[k]+": "+(g>=0?"+":"")+(Math.round(g*10)/10)+"/mes\n\n"+(RES_DESC[k]||"");
+    el.style.color="#fff";
+    // balance mensual (+/-) mostrado inline junto al stock — verde ingreso, rojo pérdida
+    const dd=document.getElementById("d_"+k);
+    if(dd){
+      const gv=Math.abs(g)>=10?Math.round(g):Math.round(g*10)/10;
+      dd.textContent=(g>=0?"+":"")+gv;
+      dd.title="Balance de "+RES_LABEL[k]+": "+(g>=0?"+":"")+(Math.round(g*10)/10)+"/mes";
+      dd.style.color=g<-0.05?"var(--neg)":g>0.05?"var(--pos)":"var(--muted)";
+    }
   }
   let realmSold=0;for(const p of S.provs)if(p.owner===S.player&&!p.wasteland&&!isOccupied(p))realmSold+=soldAvail(p);
   document.getElementById("r_mano").textContent=fmt(realmSold);
@@ -96,8 +119,45 @@ function fxText(B){
   if(fx.mano)t.push("+"+Math.round(fx.mano*100)+"% soldadesca");
   if(fx.store)t.push("+"+Math.round(fx.store*100)+"% despensa");
   if(fx.def)t.push("+"+Math.round(fx.def*100)+"% defensa");
-  if(fx.moral)t.push("+moral");
-  if(fx.realmMoral)t.push("+moral del reino");
+  if(fx.moral)t.push("+"+n1(fx.moral)+" moral/mes");
+  if(fx.realmMoral)t.push("+"+n1(fx.realmMoral)+" moral/mes al reino");
+  if(fx.buildSpeed)t.push("obras -"+Math.round(fx.buildSpeed*100)+"%");
+  if(fx.seaMarch)t.push("marcha marítima");
+  if(B.unlock)t.push("desbloquea tropas");
+  return t.join(" · ");
+}
+// Desglose EU4 del cálculo VIVO de un beneficio (para el tooltip al hover del valor verde):
+// base · terreno · moral · dotación · afinidad = total.
+function yieldTip(y){
+  let t=(RES_LABEL[y.res]||y.res)+" — producción de un nivel /mes\n\n";
+  for(const s of y.steps)t+="  "+s[0]+": "+s[1]+"\n";
+  t+="  ─────────────\n  = "+n1(y.amt)+" "+(RES_LABEL[y.res]||y.res)+"/mes";
+  return t;
+}
+// Beneficios de un edificio para la tarjeta: una LÍNEA por beneficio (verde), producción VIVA con
+// su icono de recurso y su DESGLOSE al hover; los % también en verde. Los empleos van en su fila.
+function benefitHTML(p,b){
+  const B=BUILDINGS[b],fx=B.fx,lines=[];
+  for(const y of buildingYield(p,b))
+    lines.push("<div class='bl' data-tip=\""+ta(yieldTip(y))+"\">±"+n1(y.amt)+" "+resImg(y.res)+(y.mul?" <span class='mul'>+"+y.mul+"%</span>":"")+"</div>");
+  if(fx.mano)lines.push("<div class='bl'>+"+Math.round(fx.mano*100)+"% soldadesca</div>");
+  if(fx.store)lines.push("<div class='bl'>+"+Math.round(fx.store*100)+"% despensa</div>");
+  if(fx.def)lines.push("<div class='bl'>+"+Math.round(fx.def*100)+"% defensa</div>");
+  if(fx.moral)lines.push("<div class='bl'>+"+n1(fx.moral)+" moral/mes</div>");
+  if(fx.realmMoral)lines.push("<div class='bl'>+"+n1(fx.realmMoral)+" moral al reino</div>");
+  if(fx.buildSpeed)lines.push("<div class='bl'>obras -"+Math.round(fx.buildSpeed*100)+"%</div>");
+  if(fx.seaMarch)lines.push("<div class='bl eff'>marcha marítima</div>");
+  if(B.unlock)lines.push("<div class='bl eff'>desbloquea tropas</div>");
+  return lines.join("");
+}
+// efectos que NO son producción de recurso (la producción viva se muestra aparte en la tarjeta)
+function fxOtherText(B){
+  const fx=B.fx,t=[];
+  if(fx.mano)t.push("+"+Math.round(fx.mano*100)+"% soldadesca");
+  if(fx.store)t.push("+"+Math.round(fx.store*100)+"% despensa");
+  if(fx.def)t.push("+"+Math.round(fx.def*100)+"% defensa");
+  if(fx.moral)t.push("+"+n1(fx.moral)+" moral/mes");
+  if(fx.realmMoral)t.push("+"+n1(fx.realmMoral)+" al reino");
   if(fx.buildSpeed)t.push("obras -"+Math.round(fx.buildSpeed*100)+"%");
   if(fx.seaMarch)t.push("marcha marítima");
   if(B.unlock)t.push("desbloquea tropas");
@@ -106,7 +166,7 @@ function fxText(B){
 function costLine(c,owner){
   return Object.keys(c).map(k=>{
     const no=owner!=null&&S.nations[owner].res[k]<c[k];
-    return "<span"+(no?" class='no'":"")+">"+RES_ICON[k]+fmt(c[k])+"</span>";
+    return "<span"+(no?" class='no'":"")+">"+resImg(k)+fmt(c[k])+"</span>";
   }).join(" ");
 }
 function renderBuildTabs(){
@@ -115,26 +175,111 @@ function renderBuildTabs(){
   t.innerHTML=opts.map(o=>"<span class='btab"+(S.buildFilter===o[0]?" on":"")+"' onclick='setBuildCat(\""+o[0]+"\")'>"+o[1]+"</span>").join("");
   t.className="show";t.style.display="flex";
 }
-// ficha de solo lectura para una provincia ajena o impracticable (se gestiona abajo)
-function readonlyProvCard(p){
-  let s="<div class='bsum' style='flex:0 0 320px'><h4>"+p.name+(p.capital?" ★":"")+"</h4>";
+// ---- Tooltips (ⓘ de ayuda y desglose de un valor al hover) ----
+function ta(s){return String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"&#10;")}
+function iInfo(t){return " <i class='i' data-tip=\""+ta(t)+"\">i</i>"}
+function statv(val,brk){return "<b class='statv' data-tip=\""+ta(brk)+"\">"+val+"</b>"}
+// ---- Desgloses estilo EU4 (texto multilínea para el tooltip flotante) ----
+function moraleBreak(p){
+  let realmG=0;for(const q of S.provs){if(q.owner!==p.owner||q.wasteland)continue;for(const b in BUILDINGS){const fx=BUILDINGS[b].fx;if(fx.realmMoral)realmG+=fx.realmMoral*(q.buildings[b]||0)}}
+  let hostile=0;for(const a of (S.adj[p.id]||[]))if(!S.provs[a].wasteland&&S.provs[a].owner!==p.owner&&atWar(p.owner,S.provs[a].owner))hostile++;
+  const loc=moraleGrowth(p),per=loc+realmG-MORALE_HOSTILE*hostile;
+  let t="Moral "+Math.round(p.morale)+"% -> productividad x"+n1(p.morale/100)+"\n\nCambio mensual:\n";
+  t+="  edificios de moral: "+(loc>=0?"+":"")+n1(loc)+"\n";
+  if(realmG>0)t+="  obras del reino: +"+n1(realmG)+"\n";
+  if(hostile>0)t+="  enemigos vecinos ("+hostile+"): -"+n1(MORALE_HOSTILE*hostile)+"\n";
+  t+="  = "+(per>=0?"+":"")+n1(per)+"/mes";
+  if(per<=0&&p.morale<100)t+="\n(construye templos para ganártela)";
+  return t;
+}
+function dotBreak(p){
+  const st=staffing(p);
+  let t="Dotación de los edificios (multiplica su producción)\n"+
+    "  Especialistas (cupo): "+fmtPop(specialistCap(p))+"\n"+
+    ((p.mob||0)>1?"  - movilizados: "+fmtPop(p.mob)+"\n":"")+
+    "  = mano de obra libre: "+fmtPop(freeLabor(p))+"\n"+
+    "  Puestos exigidos: "+fmtPop(buildJobs(p))+"\n"+
+    "  Dotación = "+Math.round(st*100)+"%\n\nDónde trabajan los pops (empleados / puestos):\n";
+  let any=false;
+  for(const b in BUILDINGS){const lvl=lvlOf(p,b),jb=jobsOf(b);if(!lvl||jb<=0)continue;any=true;
+    t+="  "+BUILDINGS[b].label+(lvl>1&&!BUILDINGS[b].unique?" x"+lvl:"")+": "+fmtPop(lvl*jb*st)+" / "+fmtPop(lvl*jb)+"\n";}
+  if(!any)t+="  (aún no hay edificios que empleen pops)\n";
+  return t.replace(/\n$/,"");
+}
+function slotBreak(p){
+  return "Huecos de construcción: "+usedSlots(p)+" usados de "+buildSlots(p)+"\n"+
+    "Cupo = 5 base + 1 por cada 8.000 habitantes (máx 40).\n"+
+    "Población: "+fmtPop(p.pop)+" hab. Más gente -> más edificios.";
+}
+function defBreak(p){
+  let t="Defensa de la provincia\n";
+  const T=TERRAINS[p.terrain];
+  for(const b in BUILDINGS){const fx=BUILDINGS[b].fx,lvl=lvlOf(p,b);if(fx.def&&lvl)t+="  "+BUILDINGS[b].label+(lvl>1&&!BUILDINGS[b].unique?" x"+lvl:"")+": +"+Math.round(fx.def*lvl*100)+"%\n"}
+  t+="  = x"+n1(provDefMul(p))+" por edificios\n";
+  if(T.def!==1)t+="  terreno ("+T.label+"): x"+n1(T.def)+" (aparte, en combate)";
+  return t;
+}
+function netBreak(bd,res){
+  let t=RES_LABEL[res]+" — desglose /mes\n";
+  for(const it of bd.income)if(it.res===res&&Math.abs(it.amt)>0.005)t+="  +"+n1(it.amt)+"  "+it.label+"\n";
+  for(const it of bd.upkeep)if(it.res===res&&Math.abs(it.amt)>0.005)t+="  -"+n1(it.amt)+"  "+it.label+"\n";
+  t+="  = "+(bd.net[res]>=0?"+":"")+n1(bd.net[res])+" neto";
+  return t;
+}
+// ---- Ficha de provincia — DETALLE (abajo-izquierda, estilo EU4) ----
+function refreshProvPanel(){
+  const panel=document.getElementById("provPanel");
+  if(S.selArmy||S.selProv<0){panel.className="";panel.style.display="none";return}
+  const p=S.provs[S.selProv];
+  const own=p.owner===S.player&&!p.wasteland&&!isOccupied(p);
+  // icono de estado junto al nombre: ★ capital del reino · ◼ capital de ducado
+  const realmCap=S.nations[p.owner]&&S.nations[p.owner].capital===p.id;
+  const duchyCap=p.duchy>=0&&S.duchies[p.duchy]&&S.duchies[p.duchy].cap===p.id;
+  let statusIco="";
+  if(realmCap)statusIco=" <span data-tip=\"Capital del reino\" style='color:#e8c24a'>★</span>";
+  else if(duchyCap)statusIco=" <span data-tip=\"Capital de ducado\" style='color:#c9b06a;font-size:12px'>◼</span>";
+  let s="<div class='ph'><h4 style='font-size:15px;color:#fff;margin:0'>"+p.name+statusIco+"</h4></div><div class='bsum'>";
   if(p.wasteland){
-    s+="<div class='tl'>"+TERRAINS[p.terrain].label+"</div>";
-    s+="<div class='prow'><span class='dim'>Territorio impracticable: nadie puede reclamarlo ni atravesarlo.</span></div>";
-    return s+"</div>";
+    s+="<div class='tl'>"+TERRAINS[p.terrain].label+"</div>"+
+       "<div class='prow'><span class='dim'>Territorio impracticable: nadie puede reclamarlo ni atravesarlo.</span></div></div>";
+    panel.innerHTML=s;panel.className="show";panel.style.display="block";return;
   }
-  s+="<div class='tl'>"+(p.urban?"Ciudad":RES_LABEL[p.resType])+" · "+TERRAINS[p.terrain].label+" · moral "+Math.round(p.morale)+"%</div>";
-  if(p.duchy>=0&&S.duchies[p.duchy])s+="<div class='tl' style='color:#c9c2ae'>🏛 "+S.duchies[p.duchy].name+(S.provs[S.duchies[p.duchy].cap]===p?" (capital)":"")+"</div>";
-  s+="<div class='prow'><span>👥 Población</span><b>"+fmtPop(p.pop)+"</b></div>";
-  s+=foodLine(p);
-  s+="<div class='prow'><span>Nación</span><b><span class='chip' style='background:"+NATIONS[p.owner].color+"'></span> "+NATIONS[p.owner].name+"</b></div>";
-  if(isOccupied(p))s+="<div class='prow'><span style='color:#e0a17a'>⚔ Ocupada por</span><b><span class='chip' style='background:"+NATIONS[p.occupier].color+"'></span> "+NATIONS[p.occupier].name+"</b></div>";
-  s+=siegeLine(p);
-  s+="<div class='prow'><span class='dim'>"+terrainFx(p.terrain)+"</span></div>";
-  const blist=Object.keys(BUILDINGS).filter(b=>lvlOf(p,b)>0);
-  if(blist.length){
-    s+="<div class='bsec'>Construcciones</div>";
-    for(const b of blist)s+="<div class='prow'><span>"+BUILDINGS[b].icon+" "+BUILDINGS[b].label+"</span><b>"+(BUILDINGS[b].unique?"✓":lvlOf(p,b))+"</b></div>";
+  // Identidad agrupada arriba: reino + ducado juntos
+  s+="<div class='tl'><span class='chip' style='background:"+NATIONS[p.owner].color+"'></span> "+NATIONS[p.owner].name+
+     (p.duchy>=0&&S.duchies[p.duchy]?" <span style='color:#5c636b'>|</span> "+uiIcon('ducado')+" "+S.duchies[p.duchy].name:"")+"</div>";
+  if(isOccupied(p))s+="<div class='tl' style='color:#e0a17a'>⚔ Ocupada por <span class='chip' style='background:"+NATIONS[p.occupier].color+"'></span> "+NATIONS[p.occupier].name+"</div>";
+  const good=p.urban?("Ciudad"+(p.resType?" · "+RES_LABEL[p.resType]:"")):(RES_LABEL[p.resType]||"—");
+  s+="<div class='tl'>"+(p.resType?resImg(p.resType)+" ":"")+good+" · "+TERRAINS[p.terrain].label+
+     iInfo(TERRAINS[p.terrain].label+" — "+terrainFx(p.terrain))+"</div>";
+  s+="<div class='prow'><span>"+uiIcon('poblacion')+" Población"+iInfo("Habitantes: trabajan la tierra (producción base), dotan los edificios, pagan impuestos y aportan la soldadesca. Crece con el excedente de comida.")+"</span>"+
+     statv(fmtPop(p.pop),"Población: "+fmtPop(p.pop)+" hab\nCrece con la despensa llena; cae en hambruna.")+"</div>";
+  s+="<div class='prow'><span>🙂 Moral"+iInfo("Factor de PRODUCTIVIDAD: al 100% los pops rinden al máximo; por debajo, reducen su producción. No se recupera sola: la hacen crecer los edificios de moral (templo, catedral).")+"</span>"+
+     statv(Math.round(p.morale)+"%",moraleBreak(p))+"</div>";
+  if(own){
+    s+="<div class='prow'><span>"+uiIcon('soldadesca')+" Soldadesca"+iInfo("Cupo de población movilizable para reclutar (≈2% de la pop × edificios militares). Se regenera con el tiempo.")+"</span>"+
+       statv(fmtPop(soldAvail(p))+"/"+fmtPop(soldCap(p)),"Soldadesca disponible: "+fmtPop(soldAvail(p))+"\nTecho: "+fmtPop(soldCap(p))+"  (de "+fmtPop(p.pop)+" hab)")+"</div>";
+    if(buildJobs(p)>0)s+="<div class='prow'><span>"+uiIcon('trabajo')+" Dotación"+iInfo("Los edificios producen según los trabajadores empleados. Dotación = mano de obra libre / puestos exigidos; por debajo del 100% la producción de edificios baja.")+"</span>"+
+       statv(Math.round(staffing(p)*100)+"%",dotBreak(p))+"</div>";
+    s+="<div class='prow'><span>"+uiIcon('edificios')+" Edificios"+iInfo("Huecos de construcción de la provincia: crecen con su población. Cuanta más gente, más edificios puede sostener.")+"</span>"+
+       statv(usedSlots(p)+"/"+buildSlots(p),slotBreak(p))+"</div>";
+  }
+  s+=foodLine(p)+siegeLine(p);
+  if(own){
+    const bd=provBreakdown(p);
+    s+="<div class='bsec'>Balance <span class='u'>/mes</span>"+iInfo("Ingresos menos mantenimiento de la provincia, por recurso. Pasa el ratón por un valor para ver de dónde sale.")+"</div>";
+    const nk=Object.keys(bd.net).filter(k=>Math.abs(bd.net[k])>0.005).sort((a,b)=>bd.net[b]-bd.net[a]);
+    if(!nk.length)s+="<div class='prow'><span class='dim'>Sin balance neto.</span></div>";
+    for(const k of nk)s+="<div class='prow'><span>"+resImg(k)+" "+RES_LABEL[k]+"</span>"+
+      "<span class='statv "+(bd.net[k]<0?"neg":"pos")+"' data-tip=\""+ta(netBreak(bd,k))+"\">"+(bd.net[k]>=0?"+":"")+n1(bd.net[k])+"</span></div>";
+    const dm=provDefMul(p);
+    if(dm>1)s+="<div class='prow'><span>"+uiIcon('defensa')+" Defensa"+iInfo("Multiplicador de defensa en batalla y asedio, por castillo/ciudadela. El terreno multiplica aparte.")+"</span>"+
+       statv("+"+Math.round((dm-1)*100)+"%",defBreak(p))+"</div>";
+  }else{
+    const blist=Object.keys(BUILDINGS).filter(b=>lvlOf(p,b)>0);
+    if(blist.length){
+      s+="<div class='bsec'>Construcciones</div>";
+      for(const b of blist)s+="<div class='prow'><span>"+BUILDINGS[b].icon+" "+BUILDINGS[b].label+"</span><b>"+(BUILDINGS[b].unique?"✓":lvlOf(p,b))+"</b></div>";
+    }
   }
   const here=armiesIn(p.id);
   if(here.length){
@@ -142,69 +287,11 @@ function readonlyProvCard(p){
     for(const a of here)s+="<div class='prow'><span><span class='chip' style='background:"+NATIONS[a.nation].color+"'></span> "+
       Math.round(armyCount(a))+" u</span><b class='dim'>"+NATIONS[a.nation].name+"</b></div>";
   }
-  return s+"</div>";
-}
-function refreshBuildBar(){
-  const bar=document.getElementById("buildbar"),tabs=document.getElementById("buildtabs");
-  const hide=()=>{bar.className="";bar.style.display="none";tabs.className="";tabs.style.display="none"};
-  if(S.selArmy||S.selProv<0){hide();return}
-  const p=S.provs[S.selProv];
-  if(p.owner!==S.player||p.wasteland||isOccupied(p)){
-    tabs.className="";tabs.style.display="none";
-    bar.innerHTML=readonlyProvCard(p);
-    bar.className="show";bar.style.display="flex";
-    return;
-  }
-  renderBuildTabs();
-  const scroll=bar.scrollLeft;
-  // desglose de ingresos y gastos de la provincia (de dónde proviene cada cosa)
-  const bd=provBreakdown(p);
-  const row=(lab,val,cls)=>"<div class='prow'><span>"+lab+"</span><b class='"+(cls||"")+"'>"+val+"</b></div>";
-  let s="<div class='bsum'><h4>"+p.name+(p.capital?" ★":"")+"</h4>"+
-    "<div class='tl'>"+(p.urban?"Ciudad":RES_LABEL[p.resType])+" · "+TERRAINS[p.terrain].label+
-    " · moral "+Math.round(p.morale)+"%</div>"+
-    "<div class='tl'>👥 "+fmtPop(p.pop)+" hab · ⚔ "+fmtPop(soldAvail(p))+"/"+fmtPop(soldCap(p))+" soldadesca</div>"+
-    foodLine(p)+laborLine(p)+siegeLine(p);
-  // Ingresos (por fuente), en /mes
-  s+="<div class='bsec'>Ingresos <span class='u'>/mes</span></div>";
-  for(const it of bd.income){if(it.amt<0.005)continue;
-    s+=row(RES_ICON[it.res]+" "+it.label,"+"+n1(it.amt),"pos");}
-  // Mantenimiento (anual), por edificio
-  s+="<div class='bsec'>Mantenimiento <span class='u'>/año</span></div>";
-  let anyUp=false;
-  for(const b in BUILDINGS){
-    const lvl=lvlOf(p,b),bu=BUILDINGS[b].up;if(!lvl||!bu)continue;anyUp=true;
-    const parts=Object.keys(bu).map(k=>RES_ICON[k]+n1(bu[k]*lvl)).join(" ");
-    s+=row(BUILDINGS[b].label+((lvl>1&&!BUILDINGS[b].unique)?" ×"+lvl:""),"−"+parts,"neg");
-  }
-  if(!anyUp)s+="<div class='prow'><span class='dim'>Sin edificios que sostener</span></div>";
-  // Balance neto, en /mes
-  s+="<div class='bsec'>Balance <span class='u'>/mes</span></div>";
-  const nk=Object.keys(bd.net).filter(k=>Math.abs(bd.net[k])>0.005).sort((a,b)=>bd.net[b]-bd.net[a]);
-  for(const k of nk)s+=row(RES_ICON[k]+" "+RES_LABEL[k],(bd.net[k]>=0?"+":"")+n1(bd.net[k]),bd.net[k]<0?"neg":"pos");
-  const dm=provDefMul(p);
-  if(dm>1)s+=row("🏰 Defensa","+"+Math.round((dm-1)*100)+"%","");
-  // Caminos: enlaces a provincias propias adyacentes (se gestionan aquí, en el panel de provincia)
-  s+="<div class='bsec'>Caminos</div>";
-  let anyRoad=false;
-  for(const b of S.adj[p.id]){
-    if(S.provs[b].owner!==S.player)continue;
-    anyRoad=true;
-    const kmR=Math.round(kmBetween(p,S.provs[b]));
-    if(hasRoad(p.id,b)){
-      s+="<div class='prow'><span>→ "+S.provs[b].name+"</span><b class='dim'>camino</b></div>";
-    }else if(S.roadQueue.some(q=>q.key===roadKey(p.id,b))){
-      const q=S.roadQueue.find(q=>q.key===roadKey(p.id,b));
-      s+="<div class='prow'><span>→ "+S.provs[b].name+"</span><b class='dim'>obra "+fmtDur(q.hoursLeft)+"</b></div>";
-    }else{
-      const dis=!canAfford(S.player,{dinero:800,materiales:1200});
-      s+="<div class='prow'><span>→ "+S.provs[b].name+" ("+kmR+" km)</span>"+
-        "<button class='bbtn' "+(dis?"disabled":"")+" title='800 Ducados, 1200 Madera — 6 meses' onclick='tryRoad("+p.id+","+b+")'>Camino</button></div>";
-    }
-  }
-  if(!anyRoad)s+="<div class='prow'><span class='dim'>Sin provincias propias adyacentes.</span></div>";
   s+="</div>";
-  // tarjetas de la categoría activa (o todas si el filtro es "Todos")
+  panel.innerHTML=s;panel.className="show";panel.style.display="block";
+}
+// tarjetas de construcción (una por categoría filtrada); las pinta la ventana de Construir
+function buildTilesHTML(p){
   const showAll=S.buildFilter==="all";
   const cList=showAll?BUILD_CATS:BUILD_CATS.filter(c=>c[0]===S.buildFilter);
   let cats="<div class='bcats'>";
@@ -212,49 +299,131 @@ function refreshBuildBar(){
     let tiles="";
     for(const b in BUILDINGS){
       const B=BUILDINGS[b];if(B.cat!==cat)continue;
+      if(B.resReq&&p.resType!==B.resReq)continue; // mina de plata/oro: solo donde hay yacimiento
       const lvl=lvlOf(p,b),max=buildMax(p,b),inQ=p.buildQueue.some(q=>q.b===b);
       const block=inQ?null:buildBlock(p,b);
       const maxed=lvl>=max;
       let cls="btile";
       if(inQ)cls+=" building";else if(maxed)cls+=" done";else if(block)cls+=" locked";
-      // indicador de nivel
-      let lvIndicator;
-      if(B.unique)lvIndicator="<span class='uni'>Única</span>";
-      else{let d="";for(let i=0;i<max;i++)d+="<span class='dot"+(i<lvl?" on":"")+"'></span>";lvIndicator="<span class='dots'>"+d+"</span>";}
-      // pie: coste, estado o acción
+      const lvBadge=B.unique?"<span class='uni'>Única</span>":(lvl>0?"<span class='lvb'>Nivel "+lvl+"</span>":"");
+      // pie anclado abajo (misma posición en TODAS las tarjetas): mantenimiento · coste · tiempo/estado
+      const upStr=B.up?"<div class='up'>"+uiIcon('mantenimiento')+" "+Object.keys(B.up).map(k=>resImg(k)+n1(B.up[k])).join(" ")+"/año</div>":"";
       let foot;
-      if(inQ){const q=p.buildQueue.find(q=>q.b===b);foot="<div class='foot' style='color:#c9a86a'>En obra · "+fmtDur(q.hoursLeft)+"</div>";}
-      else if(maxed)foot="<div class='foot' style='color:#8fbc62'>"+(B.unique?"Construida":"Nivel máximo")+"</div>";
-      else{
-        foot="<div class='cost'>"+costLine(costFor(p,b),S.player)+"</div>"+
-          "<div class='foot'>"+(block?"🔒 "+block:"⏱ "+fmtDur(timeFor(p,b)))+"</div>";
-      }
-      // mantenimiento anual por nivel (lo que sostiene cada nivel)
-      const upStr=B.up?"<div class='up' title='Mantenimiento anual por nivel'>🔧 "+
-        Object.keys(B.up).map(k=>RES_ICON[k]+n1(B.up[k])).join(" ")+"/año</div>":"";
+      if(inQ){const q=p.buildQueue.find(q=>q.b===b);foot="<div class='ftime' style='color:var(--title)'>⏳ En obra · "+fmtDur(q.hoursLeft)+"</div>";}
+      else if(maxed)foot="<div class='ftime pos'>"+(B.unique?"✓ Construida":"Nivel máximo")+"</div>";
+      else foot="<div class='cost'>"+costLine(costFor(p,b),S.player)+"</div>"+
+          "<div class='ftime'>"+(block?"🔒 "+block:"⏱ "+fmtDur(timeFor(p,b)))+"</div>";
+      // beneficios (producción viva + efectos, cada uno en su línea) y empleos en su propia fila
+      const jb=jobsOf(b);
+      const jobsHtml=jb>0?"<div class='jobs2'>"+uiIcon('poblacion')+" "+fmtPop(jb)+" empleos/niv</div>":"";
       const onclick=(!inQ&&!maxed&&!block)?" onclick='tryBuild("+p.id+",\""+b+"\")'":"";
-      tiles+="<div class='"+cls+"'"+onclick+" title='"+B.desc.replace(/'/g,"’")+"'>"+
-        "<div class='th'><span class='ic'>"+B.icon+"</span><span class='nm'>"+B.label+"</span>"+
-        (B.unique?"":"<span class='lv'>"+lvl+"/"+max+"</span>")+"</div>"+
-        lvIndicator+
-        "<div class='fx'>"+fxText(B)+"</div>"+upStr+foot+"</div>";
+      tiles+="<div class='"+cls+"'"+onclick+" data-tip=\""+ta(B.desc)+"\">"+
+        "<img class='bic' src='assets/buildings/"+b+".png' alt='"+B.label+"' title='"+B.label+"'>"+
+        "<div class='th'><span class='nm'>"+B.label+"</span>"+lvBadge+"</div>"+
+        "<div class='ben'>"+benefitHTML(p,b)+jobsHtml+"</div>"+
+        "<div class='foot2'>"+upStr+foot+"</div></div>";
     }
-    cats+="<div class='bcat'>"+(showAll?"<div class='lab'>"+label+"</div>":"")+"<div class='btiles'>"+tiles+"</div></div>";
+    cats+="<div class='bcat'><div class='lab'>"+label+"</div><div class='btiles'>"+tiles+"</div></div>";
   }
-  cats+="</div>";
-  bar.innerHTML=s+cats;
-  bar.className="show";bar.style.display="flex";
-  bar.scrollLeft=scroll;
+  return cats+"</div>";
 }
+// lista de caminos (enlaces a provincias propias adyacentes); la pinta la ventana de Caminos
+function roadsHTML(p){
+  let rows="",any=false;
+  for(const b of S.adj[p.id]){
+    if(S.provs[b].owner!==S.player)continue;
+    any=true;
+    const kmR=Math.round(kmBetween(p,S.provs[b]));
+    if(hasRoad(p.id,b))rows+="<div class='recrow'><span class='u'>→ "+S.provs[b].name+"</span><span class='cst'>✓ camino</span></div>";
+    else if(S.roadQueue.some(q=>q.key===roadKey(p.id,b))){
+      const q=S.roadQueue.find(q=>q.key===roadKey(p.id,b));
+      rows+="<div class='recrow'><span class='u'>→ "+S.provs[b].name+"</span><span class='cst'>obra "+fmtDur(q.hoursLeft)+"</span></div>";
+    }else{
+      const dis=!canAfford(S.player,{dinero:800,materiales:1200});
+      rows+="<div class='recrow'><span class='u'>→ "+S.provs[b].name+" <span class='sm'>("+kmR+" km)</span></span>"+
+        "<button class='bbtn' "+(dis?"disabled":"")+" onclick='tryRoad("+p.id+","+b+")'>Camino</button></div>";
+    }
+  }
+  if(!any)return "<div class='prow'><span class='dim'>Sin provincias propias adyacentes a las que unir por camino.</span></div>";
+  return "<div class='sm' style='color:#9aa3ad;margin-bottom:7px'>Une provincias propias adyacentes: +50% de velocidad de marcha entre ellas. Cada camino cuesta 800 Ducados y 1200 Madera (6 meses).</div>"+rows;
+}
+// ejércitos presentes + reclutamiento de esta provincia; la pinta la ventana de Ejércitos
+function armyHTML(p){
+  let s="<div class='sm' style='margin:0 0 8px;color:#c9c2ae'>"+uiIcon('soldadesca')+" Soldadesca: <b>"+fmtPop(soldAvail(p))+"</b> / "+fmtPop(soldCap(p))+" <span style='color:#9aa3ad'>(de "+fmtPop(p.pop)+" hab)</span></div>";
+  let any=false,r="";
+  for(const u in UNITS){
+    const U=UNITS[u];
+    let ok=true;for(const req in U.req)if((p.buildings[req]||0)<U.req[req])ok=false;
+    if(!ok)continue;
+    any=true;
+    const dis=!canAfford(S.player,U.cost)||soldAvail(p)<U.mano;
+    r+="<div class='recrow'><span class='u'>"+U.label+" <span class='sm'>("+fmtDur(recruitTime(p,u))+")</span>"+
+      "<div class='cst'>"+costStr(U.cost,U.mano)+"</div></span>"+
+      "<button class='bbtn' "+(dis?"disabled":"")+" onclick='tryRecruit("+p.id+",\""+u+"\")'>Reclutar</button></div>";
+  }
+  s+="<div class='winh' style='font-size:12px;margin-top:2px'>Reclutar</div>";
+  s+=any?r:"<div class='prow'><span class='dim'>Construye un Cuartel de levas para reclutar aquí.</span></div>";
+  if(p.recruitQueue.length){
+    s+="<div class='winh' style='font-size:12px'>En cola</div>";
+    for(const q of p.recruitQueue)s+="<div class='recrow'><span class='u'>"+UNITS[q.u].label+"</span><span class='cst'>"+fmtDur(q.hoursLeft)+"</span></div>";
+  }
+  const here=armiesIn(p.id);
+  s+="<div class='winh' style='font-size:12px'>Aquí ("+here.length+")</div>";
+  if(!here.length)s+="<div class='prow'><span class='dim'>Sin ejércitos en la provincia.</span></div>";
+  for(const a of here){
+    const mine=a.nation===S.player;
+    const comp=Object.keys(a.units).filter(k=>a.units[k]>0.5).map(k=>Math.round(a.units[k])+"× "+UNITS[k].label).join(", ")||"—";
+    s+="<div class='acard'><div class='top'><b><span class='chip' style='background:"+NATIONS[a.nation].color+"'></span> "+Math.round(armyCount(a))+" u</b>"+
+      (mine?"<button class='bbtn' onclick='selectArmyId("+a.id+")'>Seleccionar</button>":"<span class='sm' style='color:#9aa3ad'>"+NATIONS[a.nation].name+"</span>")+"</div>"+
+      "<div class='comp'>"+comp+"</div></div>";
+  }
+  return s;
+}
+// ---- Columna de botones cuadrados a la derecha del detalle (abren su ventana) ----
+function refreshProvTabs(){
+  const el=document.getElementById("provTabs");
+  if(S.selArmy||S.selProv<0){el.className="";el.style.display="none";return}
+  const p=S.provs[S.selProv];
+  const own=p.owner===S.player&&!p.wasteland&&!isOccupied(p);
+  if(!own){el.className="";el.style.display="none";return}
+  const tabs=[["build","trabajo","Construir"],["roads","caminos","Caminos"],["army","espadas","Ejércitos"]];
+  el.innerHTML=tabs.map(t=>"<div class='ptab"+(S.provTab===t[0]?" on":"")+"' onclick='setProvTab(\""+t[0]+"\")'>"+
+    uiIcon(t[1],true)+"<span class='lb'>"+t[2]+"</span></div>").join("");
+  el.className="show";el.style.display="flex";
+}
+// ---- Ventana activa: Construir / Caminos / Ejércitos (según S.provTab) ----
+function refreshProvWin(){
+  const win=document.getElementById("provWin"),tabs=document.getElementById("buildtabs");
+  const hide=()=>{win.className="";win.style.display="none";tabs.className="";tabs.style.display="none"};
+  if(S.selArmy||S.selProv<0){hide();return}
+  const p=S.provs[S.selProv];
+  const own=p.owner===S.player&&!p.wasteland&&!isOccupied(p);
+  if(!own||!S.provTab){hide();return}
+  if(S.provTab==="build"){
+    renderBuildTabs();
+    const scroll=win.scrollLeft;
+    win.innerHTML=buildTilesHTML(p);
+    win.className="show build";win.style.display="flex";win.scrollLeft=scroll;
+    return;
+  }
+  tabs.className="";tabs.style.display="none";
+  let body;
+  if(S.provTab==="roads")body="<div class='winh'>"+uiIcon('caminos')+" Caminos</div>"+roadsHTML(p);
+  else body="<div class='winh'>"+uiIcon('espadas')+" Ejércitos y reclutamiento</div>"+armyHTML(p);
+  win.innerHTML="<div class='winbody'>"+body+"</div>";
+  win.className="show list";win.style.display="block";
+}
+// compatibilidad: los llamadores antiguos refrescan la ficha completa (detalle + botones + ventana)
+function refreshBuildBar(){refreshProvPanel();refreshProvTabs();refreshProvWin();}
 // menú del reino (arriba-izquierda, estilo EU4): escudo + botonera de ajustes del reino
 function buildRealmMenu(){
   if(S.player<0)return;
   const el=document.getElementById("realmMenu");
   const N=NATIONS[S.player];
   const btns=[
-    {ic:"⚔",lab:"Ejército",on:"openArmyPanel()"},
-    {ic:"🏛",lab:"Corte",dis:1},
-    {ic:"📜",lab:"Leyes",dis:1},
+    {ic:uiIcon('espadas',true),lab:"Ejército",on:"openArmyPanel()"},
+    {ic:uiIcon('estandarte',true),lab:"Corte",dis:1},
+    {ic:uiIcon('leyes',true),lab:"Leyes",dis:1},
     {ic:"⛪",lab:"Iglesia",dis:1}
   ];
   el.innerHTML="<div class='rmRow'><span class='rmShield' style='background:"+N.color+"' title='"+N.name+"'></span>"+
@@ -270,12 +439,12 @@ function refreshMetricsLog(){
   const ne=nationEconomy(S.player),N=NATIONS[S.player];
   let realmPop=0;for(const p of S.provs)if(p.owner===S.player&&!p.wasteland)realmPop+=p.pop||0;
   let h="<div class='mlog'><span class='sh' style='background:"+N.color+"'></span>"+
-    "<div><b>"+N.name+"</b><div style='color:#9aa3ad;font-size:11px'>"+ne.provs+" provincias · 👥 "+fmtPop(realmPop)+"<br>"+ne.troops+" tropas</div></div></div>";
+    "<div><b>"+N.name+"</b><div style='color:#9aa3ad;font-size:11px'>"+ne.provs+" provincias · "+uiIcon('poblacion')+" "+fmtPop(realmPop)+"<br>"+ne.troops+" tropas</div></div></div>";
   h+="<h3>Tesorería del reino <span style='color:#7a828b;font-weight:normal'>/mes</span></h3>";
   const ks=Object.keys(ne.res).filter(k=>Math.abs(ne.res[k])>0.05).sort((a,b)=>ne.res[b]-ne.res[a]);
   if(!ks.length)h+="<div class='kpi'><span class='dim' style='color:#7a828b'>Sin balance neto.</span></div>";
   for(const k of ks){const v=ne.res[k];
-    h+="<div class='kpi'><span>"+RES_ICON[k]+" "+RES_LABEL[k]+"</span><span class='v' style='color:"+(v<0?"#e08a7a":"#8fce7e")+"'>"+(v>=0?"+":"")+n1(v)+"</span></div>";}
+    h+="<div class='kpi'><span>"+resImg(k)+" "+RES_LABEL[k]+"</span><span class='v "+(v<0?"neg":"pos")+"'>"+(v>=0?"+":"")+n1(v)+"</span></div>";}
   const mine=S.armies.filter(a=>a.nation===S.player);
   h+="<h3>Ejércitos desplegados <span style='color:#7a828b;font-weight:normal'>"+mine.length+"</span></h3>";
   if(!mine.length)h+="<div class='kpi'><span style='color:#7a828b'>Ninguno. Recluta en ⚔ Ejército.</span></div>";
@@ -292,6 +461,7 @@ function refreshMetricsLog(){
     h+="<h3>Ejército seleccionado</h3>";
     h+="<div class='kpi'><span>Ataque "+armyAtk(a).toFixed(1)+" · Def "+armyDef(a).toFixed(1)+"</span><span class='v'>"+armySpd(a)+" km/d</span></div>";
     if(a.path.length)h+="<div class='row'><span class='sm'>En marcha → "+S.provs[a.path[a.path.length-1]].name+"</span><button class='bbtn red' onclick='haltArmy()'>Detener</button></div>";
+    else if(a.muster&&S.hour<a.muster.until)h+="<div class='kpi'><span style='color:#c9a86a'>⏳ Reuniendo levas… (se mueve al terminar o si lo ordenas)</span></div>";
     else h+="<div class='kpi'><span style='color:#7a828b'>Clic derecho en el mapa para mover.</span></div>";
     // Levantar levas alrededor del ejército (el juego reparte por provincias cercanas y hacen rally)
     h+="<div class='row' style='margin-top:6px;align-items:center'><span class='sm'>⚔ Levantar levas</span><span>"+
@@ -333,7 +503,7 @@ function refreshArmyPanel(){
     R+="<select class='recSel' onchange='setRecruitProv(this.value)'>"+
       provs.map(p=>"<option value='"+p.id+"'"+(p.id===S.recruitProv?" selected":"")+">"+p.name+(p.capital?" ★":"")+"</option>").join("")+"</select>";
     const p=S.provs[S.recruitProv];
-    R+="<div class='sm' style='margin:4px 0 6px;color:#c9c2ae'>⚔ Soldadesca disponible: <b>"+fmtPop(soldAvail(p))+"</b> / "+fmtPop(soldCap(p))+" <span style='color:#9aa3ad'>(de "+fmtPop(p.pop)+" hab)</span></div>";
+    R+="<div class='sm' style='margin:4px 0 6px;color:#c9c2ae'>"+uiIcon('soldadesca')+" Soldadesca disponible: <b>"+fmtPop(soldAvail(p))+"</b> / "+fmtPop(soldCap(p))+" <span style='color:#9aa3ad'>(de "+fmtPop(p.pop)+" hab)</span></div>";
     let any=false;
     for(const u in UNITS){
       const U=UNITS[u];
@@ -412,13 +582,31 @@ function refreshLedger(){
     h+="<tr"+(me?" style='background:rgba(159,184,120,.18)'":"")+"><td>"+(i+1)+"</td>";
     h+="<td><span class='chip' style='background:"+r.color+"'></span> "+r.name+(me?" <b style='color:#9fb878'>(tú)</b>":"")+"</td>";
     h+="<td>"+r.provs+"</td><td>"+fmtPop(r.pop)+"</td><td>"+r.troops+"</td><td>"+r.str+"</td>";
-    h+="<td style='color:"+(r.income<0?"#e08a7a":"#8fce7e")+"'>"+(r.income>=0?"+":"")+n1(r.income)+"</td>";
-    h+="<td style='color:"+(r.pc<0?"#e08a7a":"#c9c2ae")+"'>"+(r.pc>=0?"+":"")+n1(r.pc)+"</td></tr>";
+    h+="<td class='"+(r.income<0?"neg":"pos")+"'>"+(r.income>=0?"+":"")+n1(r.income)+"</td>";
+    h+="<td class='"+(r.pc<0?"neg":"")+"'>"+(r.pc>=0?"+":"")+n1(r.pc)+"</td></tr>";
   });
   h+="</table>";
   document.getElementById("ledgerBody").innerHTML=h;
 }
 window.sortLedger=function(k){ledgerSort=k;refreshLedger()};
+// Informes Reales: crónica mundial (guerras, batallas, plazas, paces, reinos caídos), lo más
+// reciente arriba, con fecha; se resalta lo que implica al reino del jugador.
+function reportDate(hour){const d=new Date(START_DATE+hour*3600e3);return d.getUTCDate()+" "+MESES[d.getUTCMonth()]+" "+d.getUTCFullYear();}
+function refreshReports(){
+  const el=document.getElementById("reportsBody");if(!el)return;
+  if(!S.reports.length){el.innerHTML="<p style='text-align:center;color:#9aa3ad;font-style:italic'>Aún no hay sucesos que reportar. La paz reina… por ahora.</p>";return}
+  let h="";
+  for(let i=S.reports.length-1;i>=0;i--){
+    const r=S.reports[i];
+    const hi=r.who&&S.player>=0&&r.who.includes(S.player);
+    h+="<div style='display:flex;gap:10px;align-items:baseline;padding:7px 8px;border-bottom:1px solid #3a3628"+
+      (hi?";background:rgba(159,184,120,.12);border-left:3px solid #9fb878;padding-left:5px":"")+"'>"+
+      "<span style='color:#9c8f6f;font-size:11px;min-width:98px;white-space:nowrap'>"+reportDate(r.hour)+"</span>"+
+      "<span style='font-size:15px'>"+r.icon+"</span>"+
+      "<span style='font-size:13px;color:#d8cfb8'>"+r.text+"</span></div>";
+  }
+  el.innerHTML=h;
+}
 // ---- Pantalla de gestión de paz (estilo EU4) ----
 function peaceBar(ws){
   const pct=(ws+100)/2;
@@ -513,5 +701,5 @@ function showNationPicker(){
 }
 
 export {
-  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshPeace, showNationPicker, buildRealmMenu, refreshMetricsLog, refreshArmyPanel
+  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, buildRealmMenu, refreshMetricsLog, refreshArmyPanel
 };

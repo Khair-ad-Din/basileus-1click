@@ -6,12 +6,13 @@ export const S = {
   rand: null,
   provs: [], provIdx: null, pixOfProv: [], borderPxOfProv: [], adj: [], seaAdj: [],
   nations: [], armies: [], wars: new Map(), truces: new Map(), armyIdSeq: 1,
-  duchies: [],
+  duchies: [], reports: [],
   roads: new Set(), roadQueue: [], customRoads: false,
   player: -1, hour: 0, acc: 0, speed: 1, started: false, gameOver: false,
   selProv: -1, selArmy: null, battleFlash: {},
   // vista (compartida por render, entrada y guardado)
-  zoom: 1, panX: 0, panY: 0, terrainView: false, popView: false, showGraph: true,
+  zoom: 1, panX: 0, panY: 0, terrainView: false, popView: false, resView: false, showGraph: true,
+  provTab: null, // pestaña abierta junto a la ficha de provincia: null | "build" | "roads" | "army"
   // editor (compartido por editor, entrada y render del overlay)
   editMode: false, shapeSel: -1, shapePoly: [], dragVi: -1, editTool: "shape",
   mergeFrom: -1, mergeCur: null, splitFrom: -1, splitCur: null,

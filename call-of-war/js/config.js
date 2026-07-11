@@ -12,14 +12,34 @@ const NEUTRAL=NPLAY;
 const RES_KEYS=["dinero","comida","materiales","piedra","metal","petroleo","raros","pano","vino","sal","seda"];
 const RES_STRAT=["dinero","comida","materiales","piedra","metal","petroleo"];
 const RES_TRADE=["raros","pano","vino","sal","seda"];
+// Nota: "plata" y "oro" NO son recursos de stock (no van en RES_KEYS/START_STOCK): son un
+// resType de provincia (yacimiento) cuya extracción rinde DUCADOS (plata poco, oro mucho).
+// Estas etiquetas solo sirven para pintar el bien de la provincia en la UI.
 const RES_LABEL={dinero:"Ducados",comida:"Grano",materiales:"Madera",piedra:"Piedra",metal:"Hierro",petroleo:"Caballos",
-  raros:"Especias",pano:"Paño",vino:"Vino",sal:"Sal",seda:"Seda"};
+  raros:"Especias",pano:"Paño",vino:"Vino",sal:"Sal",seda:"Seda",plata:"Plata",oro:"Oro"};
 const RES_SHORT={dinero:"Duc",comida:"Gra",materiales:"Mad",piedra:"Pie",metal:"Hie",petroleo:"Cab",
-  raros:"Esp",pano:"Pañ",vino:"Vin",sal:"Sal",seda:"Sed"};
+  raros:"Esp",pano:"Pañ",vino:"Vin",sal:"Sal",seda:"Sed",plata:"Pla",oro:"Oro"};
 const RES_ICON={dinero:"🪙",comida:"🌾",materiales:"🪵",piedra:"🪨",metal:"⛓",petroleo:"🐎",
-  raros:"🌶",pano:"🧵",vino:"🍷",sal:"🧂",seda:"🎗"};
+  raros:"🌶",pano:"🧵",vino:"🍷",sal:"🧂",seda:"🎗",plata:"🥈",oro:"🥇"};
 const START_STOCK={dinero:5000,comida:3000,materiales:4000,piedra:2500,metal:2500,petroleo:1500,
   raros:800,pano:600,vino:600,sal:800,seda:300};
+// Descripción larga de cada bien (para los tooltips del menú): qué es, para qué sirve, quién lo
+// produce/consume y su papel económico. plata/oro no son stock: son yacimientos que rinden ducados.
+const RES_DESC={
+  dinero:"Moneda del reino y bien de PRESTIGIO, ahora escaso. Paga construcciones, el mantenimiento de los ejércitos y la compra de bienes en el mercado. Su motor son los IMPUESTOS a la población (los mayores ingresos); lo completan el comercio (mercado, lonja, puerto) y las raras minas de plata y oro.",
+  comida:"Grano: alimenta a la población (subsistencia) y a los ejércitos. El excedente llena la despensa e impulsa el crecimiento demográfico; su falta trae hambrunas y muertes. Lo da el campo —granjas y tierras fértiles (vega, pradera)—.",
+  materiales:"Madera: material básico de construcción y de muchas unidades, y además una NECESIDAD de confort de la población. La dan aserraderos y provincias de bosque.",
+  piedra:"Para murallas, castillos, catedrales y grandes obras. La dan canteras y el terreno montañoso.",
+  metal:"Hierro: arma a las tropas pesadas (alabarderos, bombardas, caballeros) y desbloquea la fundición. Lo dan minas de hierro y montañas/colinas.",
+  petroleo:"Caballos: monturas para la caballería y el transporte. Los crían estepas y praderas.",
+  raros:"Especias: lujo de comercio regional, usado en obras y unidades caras. Escaso y muy demandado.",
+  pano:"Paño: NECESIDAD de confort de la población y bien de lujo. Lo producen sobre todo las CIUDADES (manufactura textil) y algunas comarcas laneras.",
+  vino:"Vino: NECESIDAD de confort de la población. De viñedos en vegas y colinas soleadas.",
+  sal:"Sal: NECESIDAD de confort crítica (conserva los alimentos). Deficitaria en gran parte de Europa —el cuello de botella histórico—; tenerla es una ventaja.",
+  seda:"Seda: lujo caro y escaso, imprescindible para obras únicas (catedral, universidad). Llega por las rutas de Oriente.",
+  plata:"Yacimiento de PLATA (común en la Europa central minera: Bohemia, Tirol, Sajonia, Serbia). Su mina rinde DUCADOS de forma modesta y constante: una fuente secundaria de tesoro y prestigio.",
+  oro:"Raro yacimiento de ORO (los Cárpatos: Hungría, Transilvania). Su mina rinde MUCHOS ducados y prestigio: controlarlo es una ventaja estratégica de primer orden."
+};
 // Tiempos en horas de juego (1 h real = 1 mes de juego a velocidad 1x).
 // spd de unidad = kilómetros por día de marcha (ritmos medievales reales).
 // Edificios: cat (eco/mil/inf/uni), niveles (max) o únicos, coste que escala con el
@@ -35,58 +55,77 @@ const BUILDINGS={
   // ---- Economía (con niveles) ----
   granja:{label:"Granja",cat:"eco",icon:"🌾",max:3,time:2160,
     cost:{materiales:600,piedra:200},fx:{prodAdd:{comida:0.9}},up:{dinero:2},
-    desc:"La despensa del reino: más Grano cada mes."},
+    desc:"Cultiva la tierra: más Grano según los trabajadores empleados. Llena la despensa, sostiene el crecimiento y su excedente libera manos del campo para otros oficios. Ocupa un hueco de construcción."},
   aserradero:{label:"Aserradero",cat:"eco",icon:"🪵",max:3,time:2160,
     cost:{materiales:400,metal:150},fx:{prodAdd:{materiales:0.9}},up:{dinero:2},
-    desc:"Más Madera para construir y armar."},
+    desc:"Tala y asierra: más Madera según sus trabajadores. Alimenta la construcción, el ejército y el confort de la población."},
   cantera:{label:"Cantera",cat:"eco",icon:"🪨",max:3,time:2880,
     cost:{materiales:700,metal:250},fx:{prodAdd:{piedra:0.8}},up:{dinero:3},
-    desc:"Más Piedra para murallas y grandes obras."},
+    desc:"Extrae Piedra según sus trabajadores. Imprescindible para murallas, castillos y grandes obras."},
   mina:{label:"Mina de hierro",cat:"eco",icon:"⛏",max:3,time:3600,
     cost:{materiales:800,piedra:400},fx:{prodAdd:{metal:0.8}},up:{dinero:4,materiales:2},
-    desc:"Más Hierro para armas y herramientas."},
+    desc:"Extrae Hierro según sus trabajadores. El metal arma a la tropa pesada y la artillería, y desbloquea la fundición."},
+  // Minas de metal precioso: SOLO en provincias con el yacimiento (resReq). Rinden DUCADOS
+  // (no un recurso de stock). La plata es común y modesta; el oro, raro y muy rentable.
+  minaPlata:{label:"Mina de plata",cat:"eco",icon:"🥈",max:3,time:4320,resReq:"plata",
+    cost:{materiales:700,piedra:500,dinero:600},fx:{prodAdd:{dinero:2.2}},up:{dinero:3,materiales:2},
+    desc:"Explota el filón de plata: más Ducados cada mes (fuente secundaria y de prestigio)."},
+  minaOro:{label:"Mina de oro",cat:"eco",icon:"🥇",max:2,time:7200,resReq:"oro",
+    cost:{materiales:1000,piedra:800,dinero:1500},fx:{prodAdd:{dinero:6}},up:{dinero:6,materiales:3},
+    desc:"Explota el raro filón de oro: gran renta en Ducados y prestigio para el reino."},
   mercado:{label:"Mercado",cat:"eco",icon:"🏪",max:3,time:2880,
     cost:{materiales:700,piedra:400,dinero:800},fx:{goldAdd:2},up:{dinero:3},
-    desc:"Comercio local: más Ducados cada mes."},
+    desc:"Comercio local: renta FIJA de Ducados por nivel (de momento no depende de la población; se reworkeará con el sistema de comercio). Uno de los pocos grifos de tesoro que quedan."},
   gremio:{label:"Gremio de artesanos",cat:"eco",icon:"🧵",max:3,time:4320,
     cost:{materiales:900,metal:500,dinero:1200},fx:{prodMul:0.12,goldAdd:0.5},up:{dinero:5,materiales:3},
-    desc:"+12% a la producción del recurso propio por nivel."},
+    desc:"Los artesanos elevan la producción: +12% al bien propio de la provincia por nivel (según la dotación) y algo de Ducados. Se apila con otros multiplicadores."},
   templo:{label:"Templo",cat:"eco",icon:"⛪",max:3,time:3600,
-    cost:{piedra:900,materiales:400,dinero:600},fx:{goldAdd:0.9,moral:0.012},up:{dinero:4},
-    desc:"Diezmos y fe: más Ducados y moral de la provincia."},
+    cost:{piedra:900,materiales:400,dinero:600},fx:{moral:1.2},up:{dinero:4},
+    desc:"Gana el corazón de la provincia: crecimiento mensual de moral (súbelo apilando templos)."},
   // ---- Militar (con niveles) ----
   cuartel:{label:"Cuartel de levas",cat:"mil",icon:"🛡",max:3,time:2880,
     cost:{dinero:900,materiales:1200,piedra:300},fx:{mano:0.25,recruit:0.15},up:{dinero:6,comida:6},
-    desc:"Recluta más rápido y aporta Mano de obra."},
+    desc:"Adiestra las levas más rápido y amplía el cupo de soldadesca movilizable de la provincia. Requisito de la tropa profesional."},
   fabrica:{label:"Fundición",cat:"mil",icon:"🔨",max:4,time:6480,
     cost:{dinero:2500,materiales:2200,metal:1000,piedra:500},fx:{prodMul:0.10},unlock:true,up:{dinero:8,metal:4},
-    desc:"+10% producción; desbloquea la tropa pesada."},
+    desc:"Fundición: +10% de producción por nivel (según la dotación) y desbloquea la tropa pesada (alabarderos, bombardas, caballería). Fuerte mantenimiento en Hierro."},
   campo:{label:"Campo de entrenamiento",cat:"mil",icon:"🏹",max:2,time:4320,req:{cuartel:1},
     cost:{dinero:1200,materiales:800,comida:600},fx:{mano:0.4},up:{dinero:6,comida:8},
-    desc:"Adiestramiento: bastante más Mano de obra."},
+    desc:"Eleva bastante el cupo de soldadesca movilizable. Requiere Cuartel."},
   fortaleza:{label:"Castillo",cat:"mil",icon:"🏰",max:5,time:17520,
     cost:{piedra:2200,materiales:1500,metal:600,dinero:1500},fx:{def:0.3},up:{dinero:8,piedra:2},
-    desc:"+30% defensa de la provincia por nivel."},
+    desc:"+30% de defensa de la provincia por nivel y guarnición que socorre en batalla; convierte la plaza en un tapón que el enemigo debe ASEDIAR."},
   // ---- Infraestructura (costera) ----
   puerto:{label:"Puerto",cat:"inf",icon:"⚓",max:2,time:3600,coastal:true,
     cost:{materiales:1500,piedra:500,dinero:800},fx:{goldAdd:1.2,mano:0.2,seaMarch:true},up:{dinero:5,materiales:3},
-    desc:"Comercio marítimo: más Ducados y Mano de obra."},
+    desc:"Comercio marítimo: Ducados y cupo de soldadesca extra, y habilita la marcha por mar de los ejércitos. Solo en provincias costeras."},
   almacen:{label:"Almacén",cat:"inf",icon:"🏚",max:3,time:2880,
     cost:{materiales:800,piedra:300},fx:{store:0.8},up:{dinero:2},
-    desc:"Amplía la despensa: guarda más comida para resistir las hambrunas."},
+    desc:"Amplía la despensa: guarda más Grano para resistir las malas cosechas y las hambrunas."},
   // ---- Obras únicas (caras, con modificadores especiales; no todos podrán costearlas) ----
   catedral:{label:"Catedral",cat:"uni",icon:"⛪",unique:true,time:26280,urban:true,req:{templo:1},
-    cost:{piedra:6000,dinero:8000,materiales:2000,seda:400},fx:{goldAdd:4,moral:0.04,realmMoral:3},up:{dinero:20},
-    desc:"Obra única: prestigio y moral para TODO el reino."},
+    cost:{piedra:6000,dinero:8000,materiales:2000,seda:400},fx:{moral:3,realmMoral:2},up:{dinero:20},
+    desc:"Obra única: fuerte crecimiento de moral local y un empujón de moral a TODO el reino."},
   universidad:{label:"Universidad",cat:"uni",icon:"🎓",unique:true,time:26280,urban:true,req:{templo:1},
     cost:{dinero:10000,piedra:3000,pano:500,seda:300},fx:{buildSpeed:0.25,prodMul:0.2},up:{dinero:25},
-    desc:"Obra única: obras un 25% más rápidas y +20% producción."},
+    desc:"Obra única: acelera un 25% todas las obras de la provincia y +20% de producción. Saber y prestigio; exige lujos (Paño, Seda)."},
   lonja:{label:"Lonja de comercio",cat:"uni",icon:"🏛",unique:true,time:21900,coastal:true,req:{mercado:1},
     cost:{dinero:9000,piedra:2500,pano:600,sal:600},fx:{goldAdd:7},up:{dinero:15},
-    desc:"Obra única: enorme renta comercial en el puerto."},
+    desc:"Obra única: enorme renta de Ducados en un gran puerto comercial. (Comercio flat por ahora; se reworkeará con el sistema de comercio.)"},
   ciudadela:{label:"Ciudadela",cat:"uni",icon:"🏯",unique:true,time:35040,req:{fortaleza:2},
     cost:{piedra:8000,metal:3000,dinero:6000,materiales:3000},fx:{def:1.0},up:{dinero:30,piedra:5,metal:5},
-    desc:"Obra única: fortaleza inexpugnable (+100% defensa)."}
+    desc:"Obra única: fortaleza casi inexpugnable (+100% defensa) y fuerte guarnición. La plaza más dura de asediar del reino."}
+};
+// EMPLEOS por NIVEL de cada edificio: los pops que ocupa esa industria. La producción del
+// edificio escala con los trabajadores realmente empleados (nivel × empleos × dotación), no es
+// una cantidad fija. Los productivos ocupan mucha mano de obra; comercio/clero/entrenamiento,
+// menos; los fuertes usan guarnición (soldadesca), no mano de obra civil → 0 empleos.
+// Sin entrada aquí => JOBS_PER_LEVEL por defecto (economy.js).
+const BUILD_JOBS={
+  granja:700,aserradero:550,cantera:550,mina:600,minaPlata:600,minaOro:600,
+  fabrica:500,mercado:350,gremio:450,lonja:300,puerto:350,
+  templo:150,catedral:250,universidad:250,cuartel:250,campo:200,almacen:120,
+  fortaleza:0,ciudadela:0
 };
 const BUILD_CATS=[["eco","Economía"],["mil","Militar"],["inf","Infraestructura"],["uni","Obras únicas"]];
 function newBuildings(){const o={};for(const b in BUILDINGS)o[b]=0;return o}
@@ -132,7 +171,7 @@ const START_DATE=Date.UTC(1444,10,11,6);
 const MESES=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
 
 // ===== Guerra: bloqueo inicial, ocupación y warscore =====
-const WAR_LOCK_HOURS=4*8760;   // 4 años sin conquista alguna (fase de construcción)
+const WAR_LOCK_HOURS=0;        // TEMPORAL testeo: bloqueo desactivado (valor normal: 4*8760 = 4 años)
 const LOOT_FRAC=0.35;          // fracción de la renta de dinero que saquea el ocupante de una provincia
 const GOLD_PER_WS=120;         // ducados por punto de warscore al exigir/ceder oro en la paz
 const WS_DUCHY_BASE=12;        // valor en warscore de un ducado = base + WS_DUCHY_PER·nProvs
@@ -149,5 +188,5 @@ const GARR_CITADEL=3;          // guarnición extra de la Ciudadela
 export {
   GH_PER_SEC, START_DATE, MESES, WAR_LOCK_HOURS, LOOT_FRAC, GOLD_PER_WS, WS_DUCHY_BASE, WS_DUCHY_PER, WS_BATTLE,
   LEVY_RAISE_HOURS, SIEGE_BASE_H, GARR_MIN, GARR_FORT, GARR_CITADEL,
-  MW, MH, NATIONS, NPLAY, NEUTRAL, RES_KEYS, RES_STRAT, RES_TRADE, RES_LABEL, RES_SHORT, RES_ICON, START_STOCK, BUILDINGS, BUILD_CATS, newBuildings, UNITS, TERRAINS, TERRAIN_KEYS, terrainFx
+  MW, MH, NATIONS, NPLAY, NEUTRAL, RES_KEYS, RES_STRAT, RES_TRADE, RES_LABEL, RES_SHORT, RES_ICON, RES_DESC, START_STOCK, BUILDINGS, BUILD_JOBS, BUILD_CATS, newBuildings, UNITS, TERRAINS, TERRAIN_KEYS, terrainFx
 };

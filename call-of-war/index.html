@@ -5,7 +5,26 @@
 <title>Europa 1444 — Gran Estrategia (prototipo)</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0;font-family:"Segoe UI",Arial,sans-serif}
-  html,body{width:100%;height:100%;overflow:hidden;background:#1c2127;color:#d8d4c8}
+  /* ===== PALETA ESTÁNDAR (aplicar en todas las ventanas) =====
+     Texto general BLANCO; ingreso/positivo VERDE (EU4), pérdida ROJO; secundario atenuado.
+     Tamaño de letra uniforme (--fs) salvo títulos (--fs-t). */
+  :root{
+    --txt:#ecebe4;    /* texto general (blanco cálido) */
+    --muted:#9aa3ad;  /* secundario / menos importante */
+    --dim:#7a828b;    /* muy atenuado */
+    --pos:#5fbf4c;    /* ingreso / ganancia (verde EU4) */
+    --neg:#d85c50;    /* pérdida / negativo (rojo) */
+    --title:#d8c191;  /* cabeceras y títulos */
+    --fs:12px;        /* tamaño de letra base */
+    --fs-t:14px;      /* títulos */
+    --fs-s:11px;      /* sublabels mínimos */
+  }
+  .pos{color:var(--pos)}
+  .neg{color:var(--neg)}
+  .muted,.sm{color:var(--muted)}
+  .dim{color:var(--dim)}
+  .ttl{color:var(--title)}
+  html,body{width:100%;height:100%;overflow:hidden;background:#1c2127;color:var(--txt)}
   #topbar{position:fixed;top:0;left:0;right:0;height:46px;background:#262b31;border-bottom:2px solid #3a4047;
     display:flex;align-items:center;gap:14px;padding:0 12px;z-index:20;font-size:13px}
   .res{display:flex;align-items:center;gap:4px;white-space:nowrap}
@@ -19,9 +38,9 @@
   #canvasWrap{position:absolute;top:46px;left:0;right:0;bottom:0;background:#27384a;overflow:hidden}
   #map{display:block;cursor:grab}
   #side{position:fixed;top:56px;right:10px;width:300px;max-height:calc(100% - 76px);overflow-y:auto;
-    background:rgba(33,38,44,.96);border:1px solid #3a4047;border-radius:6px;padding:12px;z-index:15;font-size:13px;display:none}
-  #side h2{font-size:16px;margin-bottom:6px;color:#fff}
-  #side h3{font-size:13px;margin:10px 0 4px;color:#c9c2ae;border-bottom:1px solid #3a4047;padding-bottom:2px}
+    background:rgba(33,38,44,.96);border:1px solid #3a4047;border-radius:6px;padding:12px;z-index:15;font-size:var(--fs);color:var(--txt);display:none}
+  #side h2{font-size:var(--fs-t);margin-bottom:6px;color:#fff}
+  #side h3{font-size:var(--fs-t);margin:10px 0 4px;color:var(--title);border-bottom:1px solid #3a4047;padding-bottom:2px}
   .row{display:flex;justify-content:space-between;align-items:center;margin:3px 0;gap:6px}
   .row .sm{font-size:11px;color:#9aa3ad}
   .bbtn{background:#3d5a3a;border:1px solid #57804f;color:#e8e4d8;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:11px;white-space:nowrap}
@@ -29,21 +48,21 @@
   .bbtn.red{background:#6a3a3a;border-color:#8a5050}
   .bbtn:hover:not(:disabled){filter:brightness(1.15)}
   #log{position:fixed;left:10px;bottom:238px;width:360px;z-index:14;font-size:12px;pointer-events:none}
-  #terrLegend,#popLegend{position:fixed;right:10px;bottom:238px;width:310px;z-index:14;font-size:11px;
+  #terrLegend,#popLegend,#resLegend{position:fixed;right:10px;bottom:238px;width:310px;z-index:14;font-size:11px;
     background:rgba(33,38,44,.96);border:1px solid #3a4047;border-radius:6px;padding:10px;color:#d8d4c8}
   #log div{background:rgba(20,24,28,.78);padding:3px 8px;border-radius:4px;margin-top:3px;color:#cfc9ba}
   .overlay{position:fixed;inset:0;background:rgba(12,15,18,.88);z-index:50;display:flex;align-items:center;justify-content:center}
-  .panel{background:#262b31;border:1px solid #4a525b;border-radius:8px;padding:26px;max-width:680px;max-height:86vh;overflow-y:auto}
-  .panel h1{color:#e8e0c8;font-size:26px;margin-bottom:4px}
-  .panel h2{color:#c9c2ae;font-size:15px;margin:14px 0 8px}
-  .panel p{font-size:13px;color:#b8b2a4;line-height:1.5;margin:6px 0}
+  .panel{background:#262b31;border:1px solid #4a525b;border-radius:8px;padding:26px;max-width:680px;max-height:86vh;overflow-y:auto;color:var(--txt);font-size:var(--fs)}
+  .panel h1{color:#e8e0c8;font-size:24px;margin-bottom:4px}
+  .panel h2{color:var(--title);font-size:var(--fs-t);margin:14px 0 8px}
+  .panel p{font-size:var(--fs);color:var(--muted);line-height:1.5;margin:6px 0}
   #nationGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px}
   .ncard{background:#31373e;border:2px solid #4a525b;border-radius:6px;padding:12px;cursor:pointer;text-align:center}
   .ncard:hover{border-color:#9fb878;background:#3a424a}
   .ncard .chip{width:34px;height:22px;margin:0 auto 8px;display:block}
   .ncard b{font-size:13px}
   .ncard span{font-size:11px;color:#9aa3ad;display:block;margin-top:3px}
-  table.dip{width:100%;border-collapse:collapse;font-size:12px}
+  table.dip{width:100%;border-collapse:collapse;font-size:var(--fs);color:var(--txt)}
   table.dip td,table.dip th{padding:5px 6px;border-bottom:1px solid #3a4047;text-align:left}
   table.led th{position:sticky;top:0;background:#212832;user-select:none}
   table.led th:hover{color:#fff}
@@ -51,62 +70,118 @@
   table.led td:nth-child(n+3),table.led th:nth-child(n+3){text-align:right}
   #loadMsg{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:60;
     background:#1c2127;color:#c9c2ae;font-size:18px}
-  /* barra de recursos (topbar) */
-  #topbar{flex-wrap:wrap;height:auto;min-height:46px;padding:5px 12px}
-  #resbar{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  /* barra de recursos (topbar) — SIEMPRE una sola fila; los botones nunca se encogen ni se ocultan,
+     la barra de recursos absorbe el ajuste (scroll interno sin barra visible si el ancho aprieta) */
+  #topbar{flex-wrap:nowrap;height:48px;padding:5px 10px;gap:6px}
+  #topbar>button,#topbar>#dateBox,#topbar>.mapdd,#topbar>.spdBtn,#topbar>.uiBtn{flex:0 0 auto}
+  #resbar{display:flex;align-items:center;gap:7px;flex-wrap:nowrap;flex:0 1 auto;min-width:0;overflow-x:auto;overflow-y:hidden}
+  #resbar::-webkit-scrollbar{height:0}
+  #resbar .res{flex:0 0 auto}
+  /* dropdown de vistas de mapa (un solo botón) */
+  .mapdd{position:relative;display:inline-block}
+  .mapdd-list{position:absolute;top:100%;left:0;margin-top:3px;background:#262b31;border:1px solid #4a525b;
+    border-radius:6px;z-index:30;min-width:118px;box-shadow:0 6px 16px rgba(0,0,0,.5);overflow:hidden}
+  .mapdd-list div{padding:7px 12px;font-size:13px;color:#d8d4c8;cursor:pointer;white-space:nowrap}
+  .mapdd-list div:hover{background:#3a424a;color:#fff}
   .res{display:flex;align-items:center;gap:3px;white-space:nowrap;font-size:13px}
   .res .ic{font-size:14px;filter:saturate(.85)}
   .res.trade{opacity:.92}
   .res.trade .ic{font-size:13px}
+  /* iconos de recurso (sprites de assets/res): caja CUADRADA + object-fit para que todos
+     ocupen lo mismo pese a su relación de aspecto (si no, vino/sal/caballos se ven pequeños) */
+  .ric{height:18px;width:18px;object-fit:contain;vertical-align:middle}
+  .res .ric{height:20px;width:20px}
+  /* iconos de UI (población, espadas, defensa, ducado, caminos, mantenimiento…) */
+  .uic{height:18px;width:auto;vertical-align:-4px}
+  .uic.big{height:26px;vertical-align:middle}
+  .rd{font-size:10.5px;margin-left:1px;font-weight:normal}  /* +/- mensual junto al stock */
   .res .sep{width:1px;height:18px;background:#3a4047;margin:0 2px}
-  /* índice de categorías (pestañas por fuera del box) */
-  #buildtabs{position:fixed;left:8px;bottom:210px;z-index:17;display:none;gap:5px;align-items:flex-end}
+  /* índice de categorías (pestañas por fuera de la ventana de construcción, arriba) */
+  #buildtabs{position:fixed;left:396px;bottom:298px;z-index:17;display:none;gap:5px;align-items:flex-end}
   #buildtabs.show{display:flex}
   .btab{background:#262b31;border:1px solid #3f464e;border-bottom:none;color:#c9c2ae;font-size:12px;
     padding:5px 13px;border-radius:7px 7px 0 0;cursor:pointer;user-select:none}
   .btab:hover{background:#31373e;color:#fff}
   .btab.on{background:linear-gradient(180deg,#3a424a,#2b3138);color:#fff;border-color:#7fa56b;
     box-shadow:0 -2px 8px rgba(0,0,0,.25)}
-  /* barra inferior de edificios (estilo EU4) */
-  #buildbar{position:fixed;left:8px;right:8px;bottom:8px;height:196px;z-index:16;display:none;
+  /* Ficha de provincia (estilo EU4): DETALLE abajo-izq + columna de botones cuadrados + ventana activa */
+  #provPanel{position:fixed;left:8px;bottom:8px;width:322px;max-height:calc(100vh - 118px);z-index:17;display:none;
     background:linear-gradient(180deg,#2b3138,#22272d);border:1px solid #3f464e;border-radius:8px;
-    box-shadow:0 4px 18px rgba(0,0,0,.45);padding:8px 10px;overflow-x:auto;overflow-y:hidden;
-    display:flex;gap:12px;align-items:stretch}
-  #buildbar.show{display:flex}
-  .bsum{flex:0 0 240px;border-right:1px solid #3a4047;padding-right:10px;overflow-y:auto}
-  .bsum h4{font-size:14px;color:#fff;margin-bottom:2px}
-  .bsum .tl{font-size:11px;color:#9aa3ad;margin-bottom:4px}
-  .bsum .bsec{font-size:9.5px;color:#c9a86a;text-transform:uppercase;letter-spacing:.4px;font-weight:bold;
-    margin:5px 0 1px;border-bottom:1px solid #3a4047;padding-bottom:1px}
-  .bsum .bsec .u{color:#7a828b;font-weight:normal;text-transform:none;letter-spacing:0}
-  .bsum .prow{display:flex;justify-content:space-between;font-size:10.5px;line-height:1.35;margin:0;gap:8px}
+    box-shadow:0 4px 18px rgba(0,0,0,.45);padding:10px 12px;overflow-y:auto;color:var(--txt);font-size:var(--fs)}
+  #provPanel.show{display:block}
+  /* columna de botones cuadrados a la derecha del detalle (abren su ventana) */
+  #provTabs{position:fixed;left:336px;bottom:8px;z-index:17;display:none;flex-direction:column;gap:6px}
+  #provTabs.show{display:flex}
+  .ptab{width:50px;height:50px;background:linear-gradient(180deg,#2f353d,#23282e);border:1px solid #454d56;
+    border-radius:8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:1px;color:#c9c2ae;box-shadow:0 3px 10px rgba(0,0,0,.35)}
+  .ptab:hover{border-color:#7fa56b;background:#3a424a}
+  .ptab.on{border-color:#c9a86a;background:linear-gradient(180deg,#3a424a,#2b3138);color:#fff}
+  .ptab .ic{font-size:19px;line-height:1}
+  .ptab .lb{font-size:8.5px;letter-spacing:.2px}
+  /* ventana activa: construcción (tiles en fila) / caminos / ejércitos (lista) */
+  #provWin{position:fixed;left:392px;right:8px;bottom:8px;height:240px;z-index:16;display:none;
+    background:linear-gradient(180deg,#2b3138,#22272d);border:1px solid #3f464e;border-radius:8px;
+    box-shadow:0 4px 18px rgba(0,0,0,.45);padding:8px 12px;overflow:auto;color:var(--txt);font-size:var(--fs)}
+  #provWin.show{display:block}
+  /* Construir: caja ancha y baja (tiles en fila horizontal) */
+  #provWin.build{display:flex;overflow-x:auto;overflow-y:hidden;gap:4px;align-items:flex-start;padding:8px 10px;height:288px;right:8px;width:auto}
+  /* Caminos / Ejércitos: panel ALTO y ESTRECHO (listas verticales, sin ancho desperdiciado) */
+  #provWin.list{right:auto;width:344px;height:auto;max-height:calc(100vh - 118px);overflow-x:hidden;overflow-y:auto}
+  .winh{font-size:var(--fs-t);color:var(--title);font-weight:bold;margin:0 0 7px;border-bottom:1px solid #3a4047;padding-bottom:4px}
+  /* tooltip flotante (ⓘ y desglose de un valor al hover) */
+  #tip{position:fixed;z-index:80;display:none;max-width:320px;background:#12161a;border:1px solid #55606b;
+    border-radius:6px;padding:7px 10px;font-size:11.5px;color:#d8d4c8;white-space:pre-wrap;line-height:1.45;
+    box-shadow:0 6px 18px rgba(0,0,0,.55);pointer-events:none}
+  .i{display:inline-block;min-width:13px;height:13px;line-height:13px;text-align:center;border-radius:50%;
+    background:#3a4653;color:#bcd0dd;font-size:9px;font-style:normal;cursor:help;margin-left:3px;vertical-align:middle}
+  .i:hover{background:#4a5a6a}
+  .statv{cursor:help;border-bottom:1px dotted #5a6470}
+  .ph{display:flex;align-items:center;gap:7px;margin-bottom:6px}
+  .ph .btnBuild{margin-left:auto;background:#3a4a34;border:1px solid #5f7a4a;color:#dfe6d5;font-size:11px;
+    padding:4px 9px;border-radius:5px;cursor:pointer;white-space:nowrap}
+  .ph .btnBuild:hover{filter:brightness(1.15)}.ph .btnBuild.on{background:#5f7a4a;border-color:#7fa56b}
+  .bsum{overflow-y:auto}
+  .bsum h4{font-size:var(--fs-t);color:#fff;margin-bottom:2px}
+  .bsum .tl{font-size:var(--fs);color:var(--txt);margin-bottom:4px}
+  .bsum .bsec{font-size:var(--fs-s);color:var(--title);text-transform:uppercase;letter-spacing:.4px;font-weight:bold;
+    margin:7px 0 2px;border-bottom:1px solid #3a4047;padding-bottom:2px}
+  .bsum .bsec .u{color:var(--dim);font-weight:normal;text-transform:none;letter-spacing:0}
+  .bsum .prow{display:flex;justify-content:space-between;font-size:var(--fs);line-height:1.4;margin:1px 0;gap:8px}
   .bsum .prow span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .bsum .prow b{color:#e8e4d8;white-space:nowrap}
-  .bsum .pos{color:#8fce7e}.bsum .neg{color:#e08a7a}.bsum .dim{color:#7a828b}
-  .btile .up{font-size:10px;color:#d19a6a;margin-top:3px;white-space:nowrap;overflow:hidden}
-  .bcats{display:flex;gap:14px;align-items:stretch;height:100%}
-  .bcat{display:flex;flex-direction:column;height:100%}
-  .bcat > .lab{font-size:11px;color:#c9a86a;letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px;font-weight:bold}
-  .btiles{display:flex;gap:7px;height:100%}
-  .btile{width:146px;height:100%;background:#31373e;border:1px solid #454d56;border-radius:6px;padding:6px 7px;
-    display:flex;flex-direction:column;cursor:pointer;position:relative;transition:border-color .1s}
+  .bsum .prow b{color:var(--txt);white-space:nowrap}
+  .bsum .pos{color:var(--pos)}.bsum .neg{color:var(--neg)}.bsum .dim{color:var(--dim)}
+  .bcats{display:flex;gap:14px;align-items:flex-start}
+  .bcat{display:flex;flex-direction:column;padding:0 2px}
+  .bcat + .bcat{border-left:1px solid #4a525b;padding-left:12px;margin-left:4px}  /* separador entre apartados */
+  .bcat > .lab{font-size:var(--fs-s);color:var(--title);letter-spacing:.6px;text-transform:uppercase;margin-bottom:5px;
+    font-weight:bold;border-bottom:1px solid #3f464e;padding-bottom:3px}
+  .btiles{display:flex;gap:7px;align-items:flex-start}
+  /* Tarjeta de edificio: layout FIJO (icono · nombre · beneficios · [pin abajo] mantenim.·coste·tiempo) */
+  .btile{width:192px;height:246px;flex:0 0 auto;background:#31373e;border:1px solid #454d56;border-radius:7px;padding:9px 10px;
+    display:flex;flex-direction:column;cursor:pointer;position:relative;transition:border-color .1s;overflow:hidden}
+  .btile .bic{width:100%;height:72px;object-fit:contain;margin:0 0 3px;image-rendering:auto;flex:0 0 auto}
+  .btile .ben{flex:0 0 auto;margin-top:2px}                                    /* beneficios: NO se encoge (no corta el texto) */
+  .btile .bl{font-size:var(--fs);line-height:1.5;color:var(--pos);font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .btile .bl[data-tip]{cursor:help}
+  .btile .bl.eff{color:var(--muted);font-weight:normal}                        /* efecto sin cifra (features) */
+  .btile .bl .ric{height:16px;vertical-align:-3px}
+  .btile .bl .mul{color:var(--pos)}
+  .btile .jobs2{font-size:var(--fs-s);color:var(--muted);margin-top:2px;white-space:nowrap}
+  .btile .foot2{margin-top:auto;flex:0 0 auto}                                 /* anclado al fondo (coste/tiempo a la misma altura) */
+  .btile .ftime{font-size:var(--fs-s);color:var(--muted);margin-top:2px}
   .btile:hover{border-color:#7fa56b;background:#3a424a}
   .btile.locked{cursor:not-allowed;opacity:.62}
   .btile.locked:hover{border-color:#8a5050;background:#31373e}
   .btile.done{border-color:#6a7f4e}
   .btile.building{border-color:#c9a86a}
-  .btile .th{display:flex;align-items:center;gap:5px}
-  .btile .ic{font-size:19px;line-height:1}
-  .btile .nm{font-size:12px;font-weight:bold;color:#f0ece0;line-height:1.1}
-  .btile .lv{margin-left:auto;font-size:10px;color:#9aa3ad}
-  .btile .dots{display:flex;gap:2px;margin-top:3px}
-  .btile .dot{width:11px;height:5px;border-radius:2px;background:#4a525b}
-  .btile .dot.on{background:#8fbc62}
-  .btile .fx{font-size:10.5px;color:#a8c78e;margin-top:4px;line-height:1.25;flex:1 1 auto;min-height:0;overflow:hidden}
-  .btile .cost{font-size:10.5px;color:#cbb98a;margin-top:4px;padding-top:4px;border-top:1px solid #3f464e}
-  .btile .cost .no{color:#e08a7a}
-  .btile .foot{font-size:10px;color:#9aa3ad;margin-top:2px}
-  .btile .uni{color:#d8b25a;font-weight:bold}
+  .btile .th{display:flex;align-items:center;gap:6px}
+  .btile .nm{font-size:var(--fs);font-weight:bold;color:var(--txt);line-height:1.15;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .btile .lvb{flex:0 0 auto;font-size:var(--fs-s);color:var(--muted);background:#3a424a;border-radius:4px;padding:1px 6px;white-space:nowrap}
+  .btile .cost{font-size:var(--fs-s);color:var(--txt);margin-top:3px;padding-top:4px;border-top:1px solid #3f464e;white-space:nowrap}
+  .btile .cost .no{color:var(--neg)}
+  .btile .up{font-size:var(--fs-s);color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden}
+  .btile .uni{flex:0 0 auto;font-size:var(--fs-s);color:var(--title);font-weight:bold}
   /* menú del reino (arriba-izquierda, estilo EU4/5: escudo + botonera) */
   #realmMenu{position:fixed;top:56px;left:10px;z-index:16;display:none;width:max-content;
     background:linear-gradient(180deg,#2f353d,#23282e);border:1px solid #454d56;border-radius:8px;
@@ -129,7 +204,7 @@
     display:flex;align-items:center;gap:8px}
   #side .mlog .sh{width:20px;height:24px;flex:0 0 auto;clip-path:polygon(0 0,100% 0,100% 62%,50% 100%,0 62%)}
   #side .mlog b{color:#f0ece0}
-  #side .kpi{display:flex;justify-content:space-between;margin:2px 0;font-size:12px}
+  #side .kpi{display:flex;justify-content:space-between;margin:3px 0;font-size:var(--fs)}
   #side .kpi .v{font-weight:bold}
   #side .armrow{display:flex;justify-content:space-between;align-items:center;margin:3px 0;gap:6px;
     padding:3px 5px;border-radius:4px;cursor:pointer}
@@ -151,14 +226,14 @@
   .acard{background:#31373e;border:1px solid #454d56;border-radius:6px;padding:8px 10px;margin:6px 0}
   .acard .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
   .acard .top b{color:#f0ece0}
-  .acard .comp{font-size:11px;color:#b8b2a4;margin-top:3px}
-  .acard .stat{font-size:11px;color:#9aa3ad;margin-top:2px}
+  .acard .comp{font-size:var(--fs-s);color:var(--muted);margin-top:3px}
+  .acard .stat{font-size:var(--fs-s);color:var(--muted);margin-top:2px}
   .recSel{width:100%;background:#31373e;border:1px solid #4a525b;color:#e8e4d8;border-radius:4px;
     padding:5px 6px;font-size:12px;margin:4px 0 8px}
-  .recrow{display:flex;justify-content:space-between;align-items:center;margin:4px 0;gap:8px}
-  .recrow .u{font-size:12px}
-  .recrow .u .sm{color:#9aa3ad;font-size:10px}
-  .recrow .cst{font-size:10px;color:#cbb98a}
+  .recrow{display:flex;justify-content:space-between;align-items:center;margin:4px 0;gap:8px;font-size:var(--fs)}
+  .recrow .u{font-size:var(--fs)}
+  .recrow .u .sm{color:var(--muted);font-size:var(--fs-s)}
+  .recrow .cst{font-size:var(--fs-s);color:var(--muted)}
 </style>
 </head>
 <body>
@@ -172,22 +247,33 @@
   <button class="spdBtn" data-s="60" title="1 mes de juego por minuto">60x</button>
   <button class="spdBtn" data-s="720" title="1 año de juego por minuto">720x</button>
   <button class="uiBtn" id="dipBtn">Diplomacia</button>
+  <button class="uiBtn" id="reportsBtn" title="Crónica de guerras, batallas y paces">📜 Informes Reales</button>
   <button class="uiBtn" id="ledgerBtn">Registro</button>
-  <button class="uiBtn" id="terrBtn">Terreno</button>
-  <button class="uiBtn" id="popBtn">Población</button>
+  <span class="mapdd" id="mapMenu">
+    <button class="uiBtn" id="mapBtn" title="Vista del mapa: clic para elegir o volver a Político">🗺 Político</button>
+    <div class="mapdd-list" id="mapList" style="display:none">
+      <div data-m="terrain">Terreno</div>
+      <div data-m="pop">Población</div>
+      <div data-m="res">Recursos</div>
+    </div>
+  </span>
   <button class="uiBtn" id="graphBtn" title="Malla de conexiones y posición real de las unidades">Conexiones</button>
   <button class="uiBtn" id="helpBtn">Ayuda</button>
   <button class="uiBtn" id="editBtn">Editor</button>
 </div>
 <div id="terrLegend" style="display:none"></div>
 <div id="popLegend" style="display:none"></div>
+<div id="resLegend" style="display:none"></div>
 
 <div id="realmMenu"></div>
 
 <div id="canvasWrap"><canvas id="map"></canvas></div>
 <div id="side"></div>
 <div id="buildtabs"></div>
-<div id="buildbar"></div>
+<div id="provWin"></div>
+<div id="provTabs"></div>
+<div id="provPanel"></div>
+<div id="tip"></div>
 <div id="log"></div>
 
 <div class="overlay" id="startOverlay" style="display:none">
@@ -276,6 +362,15 @@
     <p style="text-align:center;color:#9aa3ad;font-size:12px;margin:-6px 0 12px">Clic en una columna para ordenar.</p>
     <div id="ledgerBody"></div>
     <p style="text-align:center;margin-top:16px"><button class="uiBtn" onclick="document.getElementById('ledgerOverlay').style.display='none'">Cerrar</button></p>
+  </div>
+</div>
+
+<div class="overlay" id="reportsOverlay" style="display:none">
+  <div class="panel" id="reportsPanel" style="min-width:600px;max-width:720px;max-height:88vh;overflow:auto">
+    <h1 style="text-align:center;letter-spacing:2px;border-bottom:3px double #6b5a3a;padding-bottom:8px;margin-bottom:4px">📜 INFORMES REALES</h1>
+    <p style="text-align:center;color:#9c8f6f;font-size:12px;font-style:italic;margin:0 0 12px">Crónica de la corte · guerras, batallas y tratados de Europa</p>
+    <div id="reportsBody"></div>
+    <p style="text-align:center;margin-top:16px"><button class="uiBtn" onclick="document.getElementById('reportsOverlay').style.display='none'">Cerrar</button></p>
   </div>
 </div>
 

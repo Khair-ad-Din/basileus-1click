@@ -12,6 +12,16 @@ function hex2rgb(h){return[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),p
 const NCOL=NATIONS.map(n=>hex2rgb(n.color));
 const TCOL=Object.fromEntries(TERRAIN_KEYS.map(k=>[k,hex2rgb(TERRAINS[k].color)]));
 const WASTECOL=hex2rgb("#847c6a");
+// Mapa de RECURSOS: color por bien de la provincia (resType). Plata/oro destacan (metales preciosos).
+const RES_MAPHEX={comida:"#d9c463",materiales:"#4a7c3f",piedra:"#9a948a",metal:"#6b7078",
+  petroleo:"#b0824e",raros:"#d9713a",pano:"#7fb0c0",vino:"#8a3d6b",sal:"#e6e0cf",seda:"#d18ac0",
+  plata:"#cfd3d9",oro:"#e8c24a",dinero:"#d4af37"};
+const RES_MAPCOL=Object.fromEntries(Object.keys(RES_MAPHEX).map(k=>[k,hex2rgb(RES_MAPHEX[k])]));
+function resColor(pid){
+  const p=S.provs[pid];
+  if(p.wasteland)return WASTECOL;
+  return RES_MAPCOL[p.resType]||[150,150,150];
+}
 // Jerarquía de fronteras (estilo EU4): nación = gruesa y opaca, ducado = media, provincia = fina.
 // [r,g,b,a]. La nacional se engrosa 1px hacia dentro en paintBorders.
 const B_NATION=[6,8,11,255];
@@ -105,6 +115,7 @@ function popColor(pid){
 }
 function provColor(p){
   if(S.popView)return popColor(p);
+  if(S.resView)return resColor(p);
   if(S.terrainView)return TCOL[S.provs[p].terrain];
   return S.provs[p].wasteland?WASTECOL:NCOL[S.provs[p].owner];
 }
@@ -119,7 +130,7 @@ function paintAll(){
     }else{
       const P=S.provs[p];let c=provColor(p);
       // ocupación (solo en vista política): franjas diagonales del color del ocupante
-      if(!S.terrainView&&!S.popView&&!P.wasteland&&P.occupier>=0&&P.occupier!==P.owner&&((x+y)>>2&1))c=NCOL[P.occupier];
+      if(!S.terrainView&&!S.popView&&!S.resView&&!P.wasteland&&P.occupier>=0&&P.occupier!==P.owner&&((x+y)>>2&1))c=NCOL[P.occupier];
       const s=P.shade;
       d[o]=c[0]*s;d[o+1]=c[1]*s;d[o+2]=c[2]*s;d[o+3]=255;
     }
@@ -209,7 +220,7 @@ function updateBordersAround(pid){
 }
 function repaintProvince(pid){
   const P=S.provs[pid],base=provColor(pid),s=P.shade,d=baseData.data;
-  const occ=(!S.terrainView&&!S.popView&&!P.wasteland&&P.occupier>=0&&P.occupier!==P.owner)?NCOL[P.occupier]:null;
+  const occ=(!S.terrainView&&!S.popView&&!S.resView&&!P.wasteland&&P.occupier>=0&&P.occupier!==P.owner)?NCOL[P.occupier]:null;
   for(const i of S.pixOfProv[pid]){
     const o=i*4;let c=base;
     if(occ){const x=i%MW,y=(i/MW)|0;if((x+y)>>2&1)c=occ}

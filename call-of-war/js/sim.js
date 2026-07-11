@@ -1,7 +1,7 @@
 // sim.js
 import { BUILDINGS, GARR_CITADEL, GARR_FORT, GARR_MIN, GOLD_PER_WS, LEVY_RAISE_HOURS, NATIONS, NEUTRAL, NPLAY, RES_KEYS, SIEGE_BASE_H, START_STOCK, TERRAINS, UNITS, WAR_LOCK_HOURS, WS_BATTLE, WS_DUCHY_BASE, WS_DUCHY_PER } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyDef, armyHp, armySpd, buildBlock, buildJobs, buildMax, canAfford, costFor, economyTick, foodCap, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor } from "./economy.js";
+import { armyAtk, armyCount, armyDef, armyHp, armySpd, buildBlock, buildJobs, buildMax, canAfford, costFor, economyTick, foodCap, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor } from "./economy.js";
 import { buildDuchies, hasRoad, isDuchyCap, kmBetween, roadKey } from "./mapgen.js";
 import { drawRoads, paintBorders, repaintProvince } from "./render.js";
 import { saveGame } from "./save.js";
@@ -89,6 +89,12 @@ function tryRoad(a,b){
   S.roadQueue.push({key:roadKey(a,b),hoursLeft:4320,nation:S.player}); // 6 meses de obra
   refreshSide();refreshTop();
 }
+// "Informes Reales": crónica mundial de sucesos (guerras, paces, plazas, reinos caídos, batallas).
+// who = naciones implicadas (para resaltar lo que toca al jugador). Se acumula y se cap a 150.
+function report(icon,text,who){
+  S.reports.push({hour:S.hour,icon,text,who:who||null});
+  if(S.reports.length>150)S.reports.shift();
+}
 // ===== Guerras con warscore (estilo EU4). S.wars es un Map key "a|b" (a<b) -> objeto guerra
 // {a,b,start,tA,tB} donde tA/tB son los puntos de batalla acumulados por cada bando. =====
 function warKey(a,b){return a<b?a+"|"+b:b+"|"+a}
@@ -104,6 +110,7 @@ function declareWar(a,b){
   const lo=Math.min(a,b),hi=Math.max(a,b);
   S.wars.set(warKey(a,b),{a:lo,b:hi,start:S.hour,tA:0,tB:0});
   log(NATIONS[a].name+" declara la guerra a "+NATIONS[b].name+".");
+  report("⚔","<b>"+NATIONS[a].name+"</b> declara la guerra a <b>"+NATIONS[b].name+"</b>.",[a,b]);
 }
 function tallyOf(w,nation){return nation===w.a?w.tA:w.tB}
 function addBattleScore(w,nation,pts){if(nation===w.a)w.tA+=pts;else w.tB+=pts}
@@ -162,16 +169,19 @@ function makePeace(a,b,terms){
   const key=warKey(a,b);
   S.wars.delete(key);
   S.truces.set(key,S.hour+17520); // tregua de 2 años
-  let transferred=false;
+  let transferred=false;const parts=[];
   if(terms){
     for(const did of (terms.duchies||[])){
       const d=S.duchies[did];if(!d||d.occBy<0)continue;
+      const to=d.occBy,from=S.provs[d.cap].owner;
+      parts.push(NATIONS[from].name+" cede el "+d.name+" a "+NATIONS[to].name);
       transferDuchy(d,d.occBy);transferred=true;
     }
     if(terms.gold>0&&terms.goldFrom!=null&&terms.goldTo!=null){
       const amt=Math.min(terms.gold,S.nations[terms.goldFrom].res.dinero||0);
       S.nations[terms.goldFrom].res.dinero-=amt;
       S.nations[terms.goldTo].res.dinero=(S.nations[terms.goldTo].res.dinero||0)+amt;
+      if(amt>0)parts.push(NATIONS[terms.goldFrom].name+" paga "+Math.round(amt)+" ducados");
     }
   }
   clearOccupation(a,b); // lo no cedido revierte a su dueño
@@ -183,10 +193,12 @@ function makePeace(a,b,terms){
     if(ar.path.some(p=>S.provs[p].owner===other)){ar.path=[];ar.legDone=0;ar.legTotal=0}
   }
   log("Paz firmada entre "+NATIONS[a].name+" y "+NATIONS[b].name+".");
+  report("🕊","Paz entre <b>"+NATIONS[a].name+"</b> y <b>"+NATIONS[b].name+"</b>."+(parts.length?" "+parts.join("; ")+".":" Paz blanca."),[a,b]);
   // eliminación diferida: solo al perder el último ducado en la mesa de paz
   for(const nn of [a,b])if(nn<NPLAY&&S.nations[nn].alive&&nationProvCount(nn)===0){
     S.nations[nn].alive=false;
     log(NATIONS[nn].name+" ha sido borrada del mapa.");
+    report("☠","El reino de <b>"+NATIONS[nn].name+"</b> desaparece del mapa.",[nn]);
   }
   checkVictory();
 }
@@ -276,6 +288,7 @@ function updateDuchy(dId){
     // el ducado pasa a poder del ocupante: se ocupan también los tiles no clave (marcador visual)
     for(const pid of d.provs){const P=S.provs[pid];if(P.occupier!==occ){P.occupier=occ;repaintProvince(pid)}}
     if(occ===S.player||owner===S.player)log(NATIONS[occ].name+" ocupa el "+d.name+" ("+NATIONS[owner].name+").");
+    report("🏰","<b>"+NATIONS[occ].name+"</b> ocupa el <b>"+d.name+"</b> ("+NATIONS[owner].name+").",[occ,owner]);
   }else{
     // control roto: los tiles no clave (ocupados solo por el efecto ducado) vuelven a su dueño
     for(const pid of d.provs){
@@ -336,13 +349,9 @@ function hourTick(){
           if(!a)a=spawnArmy(q.nation,p.id,{});
           a.units[q.u]=(a.units[q.u]||0)+1;
           a.src=a.src||{};a.src[p.id]=(a.src[p.id]||0)+(UNITS[q.u].mano||0); // pops que aporta esta provincia
-          // rally: las levas levantadas marchan a reunirse con el ejército que las llamó
-          if(q.rally!=null){
-            const tgt=S.armies.find(x=>x.id===q.rally);
-            if(tgt&&tgt!==a){
-              const dest=tgt.path.length?tgt.path[tgt.path.length-1]:tgt.prov;
-              if(dest!==a.prov)orderMove(a,dest,pp=>{const P=S.provs[pp];return P.owner===q.nation||P.occupier===q.nation});
-            }
+          // rally: las levas marchan al PUNTO DE REUNIÓN FIJO (q.rally = provincia), no a un blanco móvil
+          if(q.rally!=null&&q.rally!==a.prov){
+            orderMove(a,q.rally,pp=>{const P=S.provs[pp];return P.owner===q.nation||P.occupier===q.nation});
           }
           if(q.nation===S.player&&q.rally==null)log(UNITS[q.u].label+" reclutado en "+p.name+".");
         }
@@ -397,13 +406,21 @@ function hourTick(){
   // 7. diario: moral y autoguardado
   if(S.hour%24===0){
     saveGame();
+    // Moral diaria (Fase 3): la moral es el FACTOR DE PRODUCTIVIDAD (mor=morale/100 multiplica toda
+    // la producción) y NO se recupera sola. La hacen crecer los EDIFICIOS de moral de la provincia
+    // (templo/catedral; en el futuro, tecnologías) y las obras únicas del reino (realmMoral), en
+    // dosis mensuales pequeñas y stackeables; la erosionan las provincias vecinas enemigas en guerra.
+    // Así una provincia conquistada (moral baja) hay que "ganársela" construyendo.
+    const realmG=new Float64Array(NPLAY);
+    for(const p of S.provs){const n=p.owner;if(n>=NPLAY||p.wasteland)continue;
+      for(const b in BUILDINGS){const fx=BUILDINGS[b].fx;if(fx.realmMoral)realmG[n]+=fx.realmMoral*(p.buildings[b]||0)}}
     for(const p of S.provs){
-      if(p.wasteland)continue;
+      if(p.wasteland||p.owner>=NPLAY)continue;
       let hostile=0;
       for(const a of S.adj[p.id])if(!S.provs[a].wasteland&&S.provs[a].owner!==p.owner&&atWar(p.owner,S.provs[a].owner))hostile++;
-      const target=Math.max(25,(p.capital?85:75)-6*hostile);
-      p.morale+=Math.max(-4,Math.min(4,target-p.morale));
-      p.morale=Math.max(5,Math.min(100,p.morale));
+      const perMonth=moraleGrowth(p)+realmG[p.owner]-MORALE_HOSTILE*hostile; // puntos de moral/mes
+      p.morale+=perMonth/30;                                                 // aplicados por día
+      p.morale=Math.max(MORALE_MIN,Math.min(100,p.morale));
     }
     checkVictory();
   }
@@ -415,6 +432,8 @@ function resolveBattles(){
     if(!byProv.has(a.prov))byProv.set(a.prov,[]);
     byProv.get(a.prov).push(a);
   }
+  if(!S._battling)S._battling=new Set();   // provincias con batalla el tick anterior (para reportar solo el inicio)
+  const nowBattling=new Set();
   for(const[pid,list]of byProv){
     const p=S.provs[pid];
     // el defensor es el CONTROLADOR del tile (ocupante si lo hay, si no el dueño de iure)
@@ -433,6 +452,12 @@ function resolveBattles(){
     }
     // batalla de campo. SOCORRO: si es un tile clave del dueño, su guarnición pelea del lado defensor.
     S.battleFlash[pid]=S.hour;
+    // reportar el CHOQUE una vez (al iniciarse), si ambos bandos son de cierta entidad
+    const atkU=atk.reduce((s,a)=>s+armyCount(a),0),defU=def.reduce((s,a)=>s+armyCount(a),0);
+    if(atkU>=4&&defU>=4){
+      nowBattling.add(pid);
+      if(!S._battling.has(pid))report("⚔","Choque de ejércitos en <b>"+p.name+"</b>: <b>"+NATIONS[atk[0].nation].name+"</b> contra <b>"+NATIONS[controller].name+"</b>.",[atk[0].nation,controller]);
+    }
     const terr=TERRAINS[p.terrain].def;
     const fort=provDefMul(p);
     const relief=(isKeyTile(pid)&&controller===p.owner)?fortGarrison(p):0;
@@ -450,11 +475,16 @@ function resolveBattles(){
     if(netDef>0)for(const dr of def){const w=getWar(dr.nation,atk[0].nation);if(w)addBattleScore(w,dr.nation,WS_BATTLE*Math.min(1,netDef/Math.max(1,hpA)))}
     p.morale=Math.max(5,p.morale-0.05);
   }
-  // limpiar asedios huérfanos: si ya no hay sitiadores plantados, se levanta el asedio
+  S._battling=nowBattling; // memoria de batallas para no re-reportar el mismo choque
+  // limpiar asedios: se levantan si el sitiador se marchó O ya no está en guerra con el dueño/
+  // ocupante (paz, tregua o eliminación). Sin esto, una paz firmada durante un asedio lo dejaba
+  // clavado (el ejército aparcado no cuenta como atacante válido pero seguía "asediando").
   for(const p of S.provs){
     if(!p.siege)continue;
-    const still=S.armies.some(a=>a.prov===p.id&&!a.path.length&&a.nation===p.siege.by);
-    if(!still){p.siege=null;if(p.owner===S.player)log("Se ha levantado el asedio de "+p.name+".")}
+    const by=p.siege.by,ctrl=p.occupier>=0?p.occupier:p.owner;
+    const here=S.armies.some(a=>a.prov===p.id&&!a.path.length&&a.nation===by);
+    const hostile=by!==ctrl&&(atWar(by,p.owner)||atWar(by,ctrl));
+    if(!here||!hostile){p.siege=null;if(p.owner===S.player)log("Se ha levantado el asedio de "+p.name+".")}
   }
   // limpiar ejércitos vacíos
   for(let i=S.armies.length-1;i>=0;i--){
@@ -495,6 +525,8 @@ function mergeIdle(){
     }else key.set(k,a);
   }
 }
+// potencia de una nación para decisiones de agresión: fuerza militar + territorio (levas latentes)
+function mightOf(n){let s=0;for(const a of S.armies)if(a.nation===n)s+=armyAtk(a)+armyDef(a);return s+6*nationProvCount(n)}
 function aiTurn(n){
   const N=S.nations[n];
   const owned=S.provs.filter(p=>p.owner===n&&!isOccupied(p)); // no desarrollar lo ocupado
@@ -506,7 +538,7 @@ function aiTurn(n){
     // orden de preferencia según recurso de la provincia y si es capital
     const pri=[];
     if(p.capital){pri.push("cuartel","fabrica","fortaleza","templo","mercado");}
-    const byRes={comida:"granja",materiales:"aserradero",piedra:"cantera",metal:"mina"};
+    const byRes={comida:"granja",materiales:"aserradero",piedra:"cantera",metal:"mina",plata:"minaPlata",oro:"minaOro"};
     if(byRes[p.resType])pri.push(byRes[p.resType]);
     pri.push("mercado","gremio","granja","templo","cuartel","fabrica","campo");
     if(p.coastal)pri.push("puerto");
@@ -524,7 +556,8 @@ function aiTurn(n){
   // reclutar
   let troops=0;
   for(const a of S.armies)if(a.nation===n)troops+=armyCount(a);
-  if(troops<6+owned.length){
+  const treasury=S.nations[n].res.dinero;
+  if(troops<6+owned.length&&treasury>800){ // no reclutar si el tesoro está bajo
     for(const p of owned){
       if(p.recruitQueue.length||p.buildings.cuartel<1)continue;
       let u="infanteria";
@@ -538,11 +571,27 @@ function aiTurn(n){
       }
     }
   }
+  // solvencia: en bancarrota, licenciar la tropa MÁS CARA de mantener para no hundir el tesoro
+  if(treasury<0){
+    let big=null,bc=-1;for(const a of S.armies)if(a.nation===n){const c=armyCount(a);if(c>bc){bc=c;big=a}}
+    if(big){
+      let bu=null,bup=-1;for(const k in big.units){if(big.units[k]<1)continue;const up=(UNITS[k].up&&UNITS[k].up.dinero)||0;if(up>bup){bup=up;bu=k}}
+      if(bu)disbandUnit(big,bu,1);
+    }
+  }
   // guerra: declarar al vecino con el que más frontera se comparte, ponderado por debilidad
   const enemies=[];
   for(let m=0;m<NPLAY;m++)if(m!==n&&S.nations[m].alive&&atWar(n,m))enemies.push(m);
+  // engrosar con LEVAS antes de campaña: reúne levas alrededor del mayor ejército propio parado en casa
+  if(enemies.length&&treasury>1500&&S.rand()<0.06){
+    let host=null,hc=-1;
+    for(const a of S.armies)if(a.nation===n&&!a.path.length&&!(a.muster&&S.hour<a.muster.until)&&S.provs[a.prov].owner===n&&!isOccupied(S.provs[a.prov])){
+      const c=armyCount(a);if(c>hc){hc=c;host=a}
+    }
+    if(host&&hc<14)raiseLevies(host,6);
+  }
   const day=S.hour/24;
-  if(!enemies.length&&day>90&&S.rand()<0.001){ // las guerras surgen cada pocos años, no cada semana
+  if(!enemies.length&&day>90&&S.rand()<0.0025){ // las guerras surgen cada pocos años, no cada semana
     const capP=S.provs[S.nations[n].capital];
     const contact=new Map(); // nación -> {c: frontera compartida, d: distancia mínima a mi capital}
     const register=(a,w)=>{
@@ -564,24 +613,47 @@ function aiTurn(n){
       const score=e.c/(nationStrength(m)+50)/(1+e.d/350); // vecino pegado a casa > lejano
       if(score>bs){bs=score;best=m}
     }
-    if(best>=0&&nationStrength(n)>nationStrength(best)*1.3)declareWar(n,best);
+    // fuerza para decidir: ejércitos + territorio (potencial de levas). Ejércitos levy-heavy pesan menos.
+    if(best>=0&&mightOf(n)>mightOf(best)*1.05)declareWar(n,best);
   }
-  // mover ejércitos (la guarnición por provincia se precalcula una vez por turno)
+  // mover ejércitos. La guarnición (def de ejércitos parados por tile) se precalcula una vez.
   const wantNeutral=day>1&&S.hour>=WAR_LOCK_HOURS; // sin expansión durante el bloqueo inicial
   const garrison=new Map();
   for(const g of S.armies){
     if(g.path.length)continue;
     garrison.set(g.prov,(garrison.get(g.prov)||0)+armyDef(g));
   }
+  // fuertes PROPIOS bajo asedio → candidatos a socorro
+  const besieged=[];
+  for(const p of S.provs)if(p.owner===n&&p.siege)besieged.push(p.id);
   for(const a of S.armies){
     if(a.nation!==n||a.path.length)continue;
-    if(armyCount(a)<1.5)continue;
-    if(S.provs[a.prov].capital&&armiesIn(a.prov).filter(x=>x.nation===n).length<=1&&enemies.length)continue;
-    const target=findTarget(a.prov,n,enemies,wantNeutral,armyAtk(a)+armyDef(a),garrison);
+    if(armyCount(a)<1.2)continue;
+    if(a.muster&&S.hour<a.muster.until)continue;                 // reuniendo levas: aguarda
+    const here=S.provs[a.prov];
+    if(here.siege&&here.siege.by===n)continue;                   // asediando: no abandonar el asedio
+    if(isKeyTile(a.prov)&&(here.occupier>=0?here.occupier:here.owner)!==n&&enemies.includes(here.owner))continue; // plantado sobre el fuerte a tomar
+    if(armiesIn(a.prov).some(x=>x.nation!==n&&atWar(n,x.nation)))continue; // combatiendo: quedarse
+    if(here.owner===n&&here.siege)continue;                      // defendiendo su propio fuerte asediado
+    if(here.capital&&armiesIn(a.prov).filter(x=>x.nation===n).length<=1&&enemies.length)continue; // guardia de la capital
+    const myPower=armyAtk(a)+armyDef(a);
+    // socorro: si un fuerte propio cercano está asediado, ir a romper el asedio (la guarnición ayuda)
+    let target=-1,bd=1e9;
+    for(const pid of besieged){const d=Math.hypot(here.x-S.provs[pid].x,here.y-S.provs[pid].y);if(d<bd){bd=d;target=pid}}
+    if(target<0||bd>520)target=findTarget(a.prov,n,enemies,wantNeutral,myPower,garrison);
+    const pass=p=>{const P=S.provs[p];return P.owner===n||P.occupier===n||P.owner===NEUTRAL||enemies.includes(P.owner)};
     if(target>=0){
-      // no cruzar territorio de terceros pacíficos (evita declaraciones de guerra al pasar)
-      const pass=p=>{const o=S.provs[p].owner;return o===n||o===NEUTRAL||enemies.includes(o)};
+      // tránsito por lo propio/ocupado/neutral y por el enemigo en guerra (evita declarar al pasar por terceros)
       orderMove(a,target,pass);
+    }else if(here.owner!==n&&here.occupier!==n){
+      // REPLIEGUE: varado en tierra ajena sin objetivo (guerra acabada) → volver a la provincia propia más cercana
+      let home=-1,hd=1e18;
+      for(const p of S.provs)if(p.owner===n&&!p.wasteland&&!isOccupied(p)){const d=(p.x-here.x)**2+(p.y-here.y)**2;if(d<hd){hd=d;home=p.id}}
+      if(home>=0){
+        const path=bfsPath(a.prov,home,pass);
+        if(path){a.path=path;startLeg(a)}                          // marcha a casa por ruta limpia
+        else{a.prov=home;a.path=[];a.legDone=0;a.legTotal=0}       // atrapado: repliegue directo
+      }
     }
   }
   // paz: el bando que gana propone quedándose con 1 ducado (contiguo/por mar) u oro.
@@ -632,36 +704,43 @@ function maybeOfferPlayerPeace(n,m,ws){
   S.incomingPeace={enemy:n,terms,ws};
 }
 function findTarget(from,n,enemies,wantNeutral,myPower,garrison){
-  // Explora por anillos puntuando candidatos en vez de devolver el primero:
-  // cerca > lejos, la travesía marítima cuesta más que la terrestre, una
-  // provincia rodeada por territorio propio tiene prioridad máxima, y la
-  // lejanía respecto a la CAPITAL penaliza (el país se expande alrededor de
-  // su núcleo, no alrededor de sus conquistas avanzadas).
+  // Con el modelo de ocupación, lo ÚNICO que hace progresar la guerra es tomar TILES CLAVE
+  // (capitales de ducado y fuertes): son los que se ocupan y voltean el ducado. Así que el
+  // objetivo es siempre un tile clave enemigo que YO no controle y que pueda asaltar con mi
+  // fuerza (puerta de fuerza: no alimento fuertes que me superan). Se puntúa cerca>lejos,
+  // cerco (rodeado de lo mío) y debilidad del objetivo. El tránsito atraviesa cualquier tile.
   const capId=S.nations[n].capital;
   const capP=capId>=0?S.provs[capId]:S.provs[from];
   const seen=new Map([[from,0]]);
   let ring=[from];
   let best=-1,bs=-1e9;
-  for(let d=0;d<7&&ring.length;d++){
+  for(let d=0;d<9&&ring.length;d++){
     const next=[];
     for(const c of ring){
       const dc=seen.get(c);
       const step=(a,cost)=>{
         if(seen.has(a))return;
         seen.set(a,cost);
-        if(S.provs[a].wasteland)return; // ni objetivo ni tránsito
+        const P=S.provs[a];
+        if(P.wasteland)return; // ni objetivo ni tránsito
         next.push(a);
-        const o=S.provs[a].owner;
+        if(!isKeyTile(a))return; // solo los tiles clave son OBJETIVO (lo demás es solo tránsito)
+        const o=P.owner,ctrl=P.occupier>=0?P.occupier:o;
+        if(ctrl===n)return; // ya lo controlo
         let s;
-        if(enemies.includes(o))s=10;
-        else if(wantNeutral&&o===NEUTRAL&&myPower>(garrison.get(a)||0)*1.6)s=4;
+        if(o===n&&P.occupier>=0&&enemies.includes(P.occupier))s=14; // MI fuerte ocupado: liberar (prioritario)
+        else if(enemies.includes(o))s=12;                          // fuerte enemigo a tomar
+        else if(wantNeutral&&o===NEUTRAL)s=5;
         else return;
-        s-=cost*1.6;
-        s-=Math.hypot(S.provs[a].x-capP.x,S.provs[a].y-capP.y)/90; // atracción de la capital
+        // fuerza defensiva del objetivo: guarnición del fuerte + ejércitos parados en él
+        const defHere=fortGarrison(P)*UNITS.miliciano.def+(garrison.get(a)||0);
+        if(myPower<defHere*0.8)return; // demasiado fuerte para asaltarlo solo → no lo elijo (concentrar)
+        s-=cost*1.3;
+        s-=Math.hypot(P.x-capP.x,P.y-capP.y)/110; // atracción de la capital propia
         let mine=0,tot=0;
         for(const b of S.adj[a]){if(S.provs[b].wasteland)continue;tot++;if(S.provs[b].owner===n)mine++}
-        if(tot)s+=6*mine/tot; // bonus de cerco: enclaves y bolsas primero
-        if(S.provs[a].capital)s+=1.5;
+        if(tot)s+=5*mine/tot;           // cerco: enclaves y bolsas primero
+        s-=defHere*0.02;                // a igualdad, el más débil
         if(s>bs){bs=s;best=a}
       };
       for(const a of S.adj[c])step(a,dc+1);
@@ -716,9 +795,10 @@ function disbandUnit(army,type,n){
 function raiseLevies(army,n){
   if(!army)return 0;
   const nat=army.nation,U=UNITS.miliciano;
+  const muster=army.prov;                 // punto de reunión FIJO (donde está el ejército al llamar)
   let raised=0;
-  const seen=new Set([army.prov]);
-  let ring=[army.prov];
+  const seen=new Set([muster]);
+  let ring=[muster];
   while(raised<n&&ring.length){
     const capable=ring.filter(pid=>{
       const p=S.provs[pid];
@@ -732,7 +812,7 @@ function raiseLevies(army,n){
         const p=S.provs[pid];
         if(soldAvail(p)<U.mano||!canAfford(nat,U.cost))continue;
         pay(nat,U.cost);p.sold=soldAvail(p)-U.mano;
-        p.recruitQueue.push({u:"miliciano",nation:nat,hoursLeft:LEVY_RAISE_HOURS,rally:army.id});
+        p.recruitQueue.push({u:"miliciano",nation:nat,hoursLeft:LEVY_RAISE_HOURS,rally:muster}); // rally al punto FIJO
         raised++;progressed=true;
       }
     }
@@ -740,8 +820,13 @@ function raiseLevies(army,n){
     for(const pid of ring)for(const a of S.adj[pid])if(!seen.has(a)){seen.add(a);next.push(a)}
     ring=next;
   }
+  if(raised>0){
+    // el ejército se PLANTA a reunir las levas (no las persigue): halt + estado de muster
+    army.path=[];army.legDone=0;army.legTotal=0;
+    army.muster={prov:muster,until:S.hour+LEVY_RAISE_HOURS+2400}; // espera ~reclutamiento + viaje
+  }
   if(nat===S.player){
-    if(raised>0)log("Se levantan "+raised+" levas y marchan a reunirse con el ejército.");
+    if(raised>0)log("Se levantan "+raised+" levas; el ejército aguarda a que se reúnan.");
     else log("No hay provincias cercanas con soldadesca o recursos para levantar levas.");
     refreshSide();refreshTop();
   }

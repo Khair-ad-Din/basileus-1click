@@ -1,5 +1,5 @@
 // economy.js
-import { NPLAY, BUILDINGS, TERRAINS, UNITS, RES_KEYS, LOOT_FRAC } from "./config.js";
+import { NPLAY, BUILDINGS, BUILD_JOBS, TERRAINS, UNITS, RES_KEYS, LOOT_FRAC } from "./config.js";
 import { S } from "./state.js";
 
 // ---- Ocupación (estilo EU4): la provincia sigue siendo de iure de su dueño (p.owner) pero
@@ -13,8 +13,15 @@ function provLoot(p){const e=provEconomy(p);return Math.max(0,e.res.dinero||0)*L
  * La población es ahora el motor: paga impuestos, aporta la soldadesca (el cupo
  * movilizable) y crece. Ver [[basileus-pop-economy-vision]]. */
 const SOLD_FRAC=0.02;      // techo de soldadesca = 2% de la población (movilización máxima realista)
-const TAX_PC=0.000012;     // ducados/mes por habitante (campo); la ciudad rinde más
-const TAX_URBAN=2.4;       // multiplicador de impuestos en provincia urbana
+// Impuestos = MOTOR de los ducados (realista: las arcas medievales vivían del impuesto, no de las
+// minas). Antes la producción base de las ciudades daba "dinero gratis" y eclipsaba al impuesto;
+// ahora las ciudades producen manufacturas y el ducado sale del impuesto + comercio + minas.
+const TAX_PC=0.000015;     // ducados/mes por habitante (campo); sube algo: ahora es el grifo principal
+const TAX_URBAN=3.0;       // multiplicador de impuestos en ciudad (burguesía): compensa que ya no dan dinero base
+// Extracción de metal precioso: la producción base de un yacimiento (los pops "de serie" que lo
+// trabajan) rinde DUCADOS a estas tasas. Plata = fuente secundaria; oro = raro y muy rentable.
+const SILVER_YIELD=7;      // multiplicador de la base→ducados en provincia de plata (común, modesto)
+const GOLD_YIELD=22;       // multiplicador de la base→ducados en provincia de oro (raro, jugoso)
 // Producción del BIEN BASE de la provincia: escala con la POBLACIÓN (los "pops de serie" trabajan
 // su tierra), no con el nº de provincias. Así la riqueza va con la gente, no con tener mucho
 // territorio despoblado. La provincia tiene AFINIDAD por su bien (+15%, bonus pequeño y stackeable).
@@ -83,10 +90,67 @@ function specialistCap(p){  // cuántos pops puede sostener la provincia fuera d
   const f=Math.max(0.02,Math.min(SPEC_MAX,SPEC_BASE+SPEC_K*(structPPF(p)-1)));
   return (p.pop||0)*f;
 }
-function buildJobs(p){let j=0;for(const b in BUILDINGS)j+=lvlOf(p,b)*JOBS_PER_LEVEL;return j}
+function jobsOf(b){return BUILD_JOBS[b]!=null?BUILD_JOBS[b]:JOBS_PER_LEVEL} // empleos por nivel de ese edificio
+function buildJobs(p){let j=0;for(const b in BUILDINGS)j+=lvlOf(p,b)*jobsOf(b);return j}
 function freeLabor(p){return Math.max(0,specialistCap(p)-(p.mob||0))}    // libres tras descontar movilizados
 function staffing(p){const j=buildJobs(p);return j>0?Math.min(1,freeLabor(p)/j):1} // dotación 0..1
+// Producción POP-DRIVEN: cada nivel de edificio ofrece jobsOf(b) puestos; los pops libres los cubren
+// (staffing). La producción de un edificio = trabajadores empleados en él × rendimiento/trabajador.
+// employedIn = pops realmente trabajando en ese edificio (nivel × puestos × dotación). Así una
+// provincia populosa dota (y produce) más; una despoblada se queda a medias.
+function employedIn(p,b){return lvlOf(p,b)*jobsOf(b)*staffing(p)}
 
+/* ---- Huecos de construcción por población (modelo EU5) ----
+ * El nº de edificios (niveles) que sostiene una provincia crece con su población: una aldea solo
+ * cabe unas pocas obras; una metrópoli, muchas. Antes era plano (solo el max por edificio). */
+const SLOT_BASE=5;          // huecos mínimos de cualquier provincia habitada
+const POP_PER_SLOT=8000;    // +1 hueco por cada tanto de población
+const SLOT_MAX=40;          // tope de huecos (gran metrópoli)
+function buildSlots(p){if(!p||p.wasteland||p.owner>=NPLAY)return 0;return Math.min(SLOT_MAX,SLOT_BASE+Math.floor((p.pop||0)/POP_PER_SLOT))}
+function usedSlots(p){let s=0;for(const b in BUILDINGS)s+=lvlOf(p,b);return s} // cada nivel ocupa un hueco
+
+// Producción VIVA que añadiría UN nivel de b en ESTA provincia (lo que el jugador obtendrá de
+// verdad al construir): escala con terreno, moral, afinidad del bien y la dotación RESULTANTE
+// (contando los empleos que añade). Devuelve [{res, amt, mul?}]. Así la misma granja rinde más
+// en una vega con moral alta que en una montaña. Empareja el cálculo real de provEconomy.
+function buildingYield(p,b){
+  if(!p||p.owner>=NPLAY||p.wasteland)return [];
+  const B=BUILDINGS[b],fx=B.fx,mor=p.morale/100,terr=TERRAINS[p.terrain].prod;
+  const jb=jobsOf(b);
+  const futureJobs=buildJobs(p)+jb; // dotación tras añadir este nivel
+  const st=futureJobs>0?Math.min(1,freeLabor(p)/futureJobs):1;
+  const workers=Math.round(jb*st), terrL=TERRAINS[p.terrain].label;
+  const out=[];
+  // pasos del cálculo VIVO (para el desglose tipo EU4): [etiqueta, valor]
+  const S1=(baseLabel,base,affinity,useTerr)=>{
+    const s=[[baseLabel,"+"+nn(base)]];
+    if(useTerr&&terr!==1)s.push(["Terreno ("+terrL+")","×"+nn(terr)]);
+    s.push(["Moral "+Math.round(mor*100)+"%","×"+nn(mor)]);
+    s.push(["Dotación "+Math.round(st*100)+"% ("+workers+" trab.)","×"+nn(st)]);
+    if(affinity)s.push(["Afinidad del bien","×"+nn(1+AFFINITY)]);
+    return s;
+  };
+  if(fx.prodAdd)for(const k in fx.prodAdd){
+    const aff=(k===p.resType), amt=fx.prodAdd[k]*terr*mor*st*(aff?1+AFFINITY:1);
+    out.push({res:k,amt,steps:S1("Base del edificio",fx.prodAdd[k],aff,true)});
+  }
+  if(fx.goldAdd){
+    const aff=(p.resType==="dinero"), amt=fx.goldAdd*mor*st*(aff?1+AFFINITY:1);
+    out.push({res:"dinero",amt,steps:S1("Comercio base",fx.goldAdd,aff,false)});
+  }
+  if(fx.prodMul){ // efecto del multiplicador sobre la producción base del bien de la provincia
+    const baseNoMul=(p.pop||0)*BASE_PC*(p.urban?BASE_URBAN:1)*terr*mor*(1+AFFINITY);
+    const yieldMul=p.resType==="plata"?SILVER_YIELD:p.resType==="oro"?GOLD_YIELD:1;
+    const res=(p.resType==="plata"||p.resType==="oro")?"dinero":p.resType;
+    const amt=baseNoMul*yieldMul*fx.prodMul*st;
+    out.push({res,amt,mul:Math.round(fx.prodMul*100),
+      steps:[["Producción base de la provincia","+"+nn(baseNoMul*yieldMul)],
+             ["Bonus del edificio","+"+Math.round(fx.prodMul*100)+"%"],
+             ["Dotación "+Math.round(st*100)+"%","×"+nn(st)]]});
+  }
+  return out;
+}
+function nn(v){return (Math.round(v*100)/100).toString().replace(/\.?0+$/,"")||"0"} // 2 decimales, sin ceros de cola
 function canAfford(n,cost){
   for(const k in cost)if(S.nations[n].res[k]<cost[k])return false;
   return true;
@@ -108,13 +172,17 @@ function buildSpeedBonus(p){
   let s=0;for(const b in BUILDINGS){const fx=BUILDINGS[b].fx;if(fx.buildSpeed)s+=fx.buildSpeed*lvlOf(p,b)}
   return Math.min(0.6,s);
 }
-function buildMax(p,b){return BUILDINGS[b].unique?1:BUILDINGS[b].max}
+// Sin límite por edificio (los HUECOS de construcción por población limitan el total): las obras
+// únicas siguen en 1; el resto usa un tope alto y práctico (el coste creciente y los slots frenan antes).
+function buildMax(p,b){return BUILDINGS[b].unique?1:20}
 function buildBlock(p,b){
   const B=BUILDINGS[b];
   if(lvlOf(p,b)>=buildMax(p,b))return B.unique?"Ya construida":"Nivel máximo";
   if(p.buildQueue.length)return"Obra en curso";
   if(B.coastal&&!p.coastal)return"Requiere costa";
   if(B.urban&&!p.urban)return"Requiere ciudad";
+  if(B.resReq&&p.resType!==B.resReq)return"Requiere yacimiento de "+B.resReq;
+  if(usedSlots(p)>=buildSlots(p))return"Sin espacio ("+usedSlots(p)+"/"+buildSlots(p)+" edificios)";
   if(B.req)for(const r in B.req)if(lvlOf(p,r)<B.req[r])return"Requiere "+BUILDINGS[r].label+" "+B.req[r];
   if(!canAfford(p.owner,costFor(p,b)))return"Sin recursos";
   return null;
@@ -138,6 +206,20 @@ function provUpkeep(p){
 function taxOf(p){ // impuestos que pagan los pops (antes salían de la nada)
   return (p.pop||0)*TAX_PC*(p.urban?TAX_URBAN:1)*(p.morale/100);
 }
+/* ---- Moral: factor de productividad ganado con edificios (Fase 3) ----
+ * mor = morale/100 multiplica TODA la producción (ver provEconomy). Al 100% los pops rinden a su
+ * valor base; por debajo, es un reductor. La moral NO se recupera sola: la hacen crecer los
+ * EDIFICIOS de moral (templo, catedral; en el futuro, tecnologías) en dosis pequeñas y stackeables,
+ * y las obras únicas dan crecimiento a TODO el reino (realmMoral). Las provincias conquistadas
+ * nacen con la moral baja y hay que "ganárselas" construyendo; la cercanía de enemigos en guerra
+ * la erosiona. fx.moral y fx.realmMoral = puntos de moral por MES y nivel (el bloque diario de
+ * sim.js aplica 1/30 por día). */
+const MORALE_MIN=15;        // suelo de moral (una provincia hostil no cae por debajo)
+const MORALE_HOSTILE=2.0;   // moral/mes que drena cada provincia vecina enemiga en guerra
+function moraleGrowth(p){   // crecimiento de moral/mes por los edificios de moral de ESTA provincia
+  let g=0;for(const b in BUILDINGS){const fx=BUILDINGS[b].fx;if(fx.moral)g+=fx.moral*lvlOf(p,b)}
+  return g;
+}
 function provEconomy(p){
   const out={res:{},mano:0};
   if(!p||p.owner>=NPLAY||p.wasteland)return out;
@@ -145,7 +227,11 @@ function provEconomy(p){
   const add=(k,v)=>{out.res[k]=(out.res[k]||0)+v};
   // producción base del bien de la provincia: pop-driven (pops de serie), con afinidad; SIN dotación
   const base=(p.pop||0)*BASE_PC*(p.urban?BASE_URBAN:1)*terr*mor;
-  add(p.resType,base*(1+AFFINITY)*(1+(provProdMul(p)-1)*st));             // afinidad + multiplicador de edificios (este sí con dotación)
+  const baseOut=base*(1+AFFINITY)*(1+(provProdMul(p)-1)*st);              // afinidad + multiplicador de edificios (este sí con dotación)
+  // los yacimientos de plata/oro no producen un recurso de stock: su extracción ES renta en ducados
+  if(p.resType==="plata")add("dinero",baseOut*SILVER_YIELD);
+  else if(p.resType==="oro")add("dinero",baseOut*GOLD_YIELD);
+  else add(p.resType,baseOut);
   add("dinero",taxOf(p));                                                 // impuestos de la población (no dependen de la dotación)
   for(const b in BUILDINGS){
     const lvl=lvlOf(p,b);if(!lvl)continue;
@@ -163,11 +249,15 @@ function provBreakdown(p){
   const net={};
   if(!p||p.owner>=NPLAY||p.wasteland)return{income,upkeep,net,mano};
   const mor=p.morale/100,terr=TERRAINS[p.terrain].prod,st=staffing(p);
-  const baseNoMul=(p.pop||0)*BASE_PC*(p.urban?BASE_URBAN:1)*terr*mor*(1+AFFINITY); // pop-driven + afinidad
-  income.push({label:p.urban?"Comercio de la ciudad":"Producción",res:p.resType,amt:baseNoMul});
+  // plata/oro: la base rinde ducados a su tasa; el resto rinde su propio bien
+  const yieldMul=p.resType==="plata"?SILVER_YIELD:p.resType==="oro"?GOLD_YIELD:1;
+  const baseRes=(p.resType==="plata"||p.resType==="oro")?"dinero":p.resType;
+  const baseLabel=p.resType==="plata"?"Minería de plata":p.resType==="oro"?"Minería de oro":(p.urban?"Comercio de la ciudad":"Producción");
+  const baseNoMul=(p.pop||0)*BASE_PC*(p.urban?BASE_URBAN:1)*terr*mor*(1+AFFINITY)*yieldMul; // pop-driven + afinidad
+  income.push({label:baseLabel,res:baseRes,amt:baseNoMul});
   for(const b in BUILDINGS){ // multiplicadores de producción (gremio, fundición, universidad), con dotación
     const fx=BUILDINGS[b].fx,lvl=lvlOf(p,b);
-    if(fx.prodMul&&lvl)income.push({label:BUILDINGS[b].label+" +"+Math.round(fx.prodMul*100)+"%",res:p.resType,amt:baseNoMul*fx.prodMul*lvl*st});
+    if(fx.prodMul&&lvl)income.push({label:BUILDINGS[b].label+" +"+Math.round(fx.prodMul*100)+"%",res:baseRes,amt:baseNoMul*fx.prodMul*lvl*st});
   }
   income.push({label:"Impuestos de la población",res:"dinero",amt:taxOf(p)});
   for(const b in BUILDINGS){
@@ -221,12 +311,11 @@ function economyTick(dt=1){
   // 0. mano de obra movilizada por provincia (soldados que dejaron el trabajo): retira dotación
   for(const p of S.provs)p.mob=0;
   for(const a of S.armies)if(a.src)for(const pid in a.src){const P=S.provs[pid];if(P)P.mob+=a.src[pid]}
-  // agregados por nación en pasadas O(provincias), no O(naciones×provincias): moral de obras
-  // únicas, tropas, y población (esta última se llena en la pasada A)
-  const realmMor=new Float64Array(NPLAY),troops=new Float64Array(NPLAY),nationPop=new Float64Array(NPLAY);
+  // agregados por nación en pasadas O(provincias), no O(naciones×provincias): tropas y población
+  // (esta última se llena en la pasada A). La MORAL ya no se integra aquí: la gobierna el bloque
+  // diario de sim.js (crecimiento pop-driven por edificios; ver moraleGrowth/moraleTarget).
+  const troops=new Float64Array(NPLAY),nationPop=new Float64Array(NPLAY);
   const armyUp=Array.from({length:NPLAY},()=>({})); // mantenimiento del ejército por nación y recurso
-  for(const p of S.provs){const n=p.owner;if(n>=NPLAY)continue;const bl=p.buildings;
-    for(const b in BUILDINGS){const fx=BUILDINGS[b].fx;if(fx.realmMoral){const l=bl[b]||0;if(l)realmMor[n]+=fx.realmMoral*l}}}
   for(const a of S.armies){if(a.nation>=NPLAY)continue;
     for(const k in a.units){troops[a.nation]+=a.units[k];const u=UNITS[k].up||{};
       for(const r in u)armyUp[a.nation][r]=(armyUp[a.nation][r]||0)+u[r]*a.units[k]}}
@@ -244,9 +333,6 @@ function economyTick(dt=1){
     nationPop[n]+=p.pop||0;
     const R=S.nations[n].res,e=provEconomy(p);
     for(const k in e.res)R[k]+=e.res[k]*dt;
-    let mreg=0.004;for(const b in BUILDINGS){const fx=BUILDINGS[b].fx;if(fx.moral)mreg+=fx.moral*(p.buildings[b]||0)}
-    const cap=Math.min(100,90+realmMor[n]);
-    if(p.morale<cap)p.morale=Math.min(cap,p.morale+mreg*dt);
   }
   // Por nación: mantenimiento del ejército y necesidades de confort (consumo/mercado/desabastecimiento).
   for(let n=0;n<NPLAY;n++){
@@ -289,5 +375,5 @@ function economyTick(dt=1){
 }
 
 export {
-  canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, isOccupied, occupierOf, provLoot, armyCount, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, taxOf, SOLD_FRAC, foodProd, foodCons, foodBalance, foodCap, specialistCap, buildJobs, freeLabor, staffing, structPPF, JOBS_PER_LEVEL, NEED_PC, NEED_PRICE, FOOD_PRICE, economyTick
+  canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, isOccupied, occupierOf, provLoot, armyCount, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, taxOf, moraleGrowth, MORALE_MIN, MORALE_HOSTILE, SOLD_FRAC, foodProd, foodCons, foodBalance, foodCap, specialistCap, buildJobs, freeLabor, staffing, employedIn, jobsOf, buildingYield, buildSlots, usedSlots, structPPF, JOBS_PER_LEVEL, NEED_PC, NEED_PRICE, FOOD_PRICE, economyTick
 };

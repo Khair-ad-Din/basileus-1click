@@ -5,7 +5,7 @@ import {
   enterEditor, exitEditor, pushUndo, restoreWorldFromSnap, toggleRoadEdit, setProvinceOwner, dpSimplify, simplifyRing, traceProvince, applyShape, mergeProvinces, rasterPoly, keepLargestFragment, splitProvince, refreshEditorPanel, vertexAt, nearestSegment
 } from "./editor.js";
 import {
-  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshPeace, showNationPicker, refreshArmyPanel
+  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, refreshArmyPanel
 } from "./ui.js";
 import {
   atWar, declareWar, makePeace, underTruce, spawnArmy, setupNations, tryRoad, nbrs, bfsPath, startLeg, orderMove, takeTile, updateDuchy, isKeyTile, hourTick, resolveBattles, applyDamage, mergeIdle, aiTurn, findTarget, tryBuild, tryRecruit, disbandUnit, raiseLevies, checkVictory, armiesIn,
@@ -262,7 +262,7 @@ function regenerateWorld(){
   document.getElementById("loadMsg").style.display="flex";
   document.getElementById("endOverlay").style.display="none";
   setTimeout(()=>{
-    S.provs=[];S.armies=[];S.wars=new Map();S.truces=new Map();S.armyIdSeq=1;S.duchies=[];
+    S.provs=[];S.armies=[];S.wars=new Map();S.truces=new Map();S.armyIdSeq=1;S.duchies=[];S.reports=[];
     S.peaceWith=-1;S.peaceSel=new Set();S.peaceGold=0;S.incomingPeace=null;
     S.player=-1;S.hour=0;S.acc=0;S.started=false;S.gameOver=false;
     S.selProv=-1;S.selArmy=null;S.battleFlash={};clearSelOutline();
@@ -333,24 +333,27 @@ window.scaleProvPop=function(f){
   refreshEditorPanel();
 };
 function syncMapModeUI(){
-  document.getElementById("terrBtn").textContent=S.terrainView?"Político":"Terreno";
-  document.getElementById("terrLegend").style.display=S.terrainView?"block":"none";
-  const pb=document.getElementById("popBtn");if(pb)pb.textContent=S.popView?"Político":"Población";
+  const cur=S.terrainView?"Terreno":S.popView?"Población":S.resView?"Recursos":"Político";
+  const mb=document.getElementById("mapBtn");
+  if(mb){mb.textContent="🗺 "+cur;mb.classList.toggle("active",cur!=="Político");}
+  const tl=document.getElementById("terrLegend");if(tl)tl.style.display=S.terrainView?"block":"none";
   const pl=document.getElementById("popLegend");if(pl)pl.style.display=S.popView?"block":"none";
+  const rl=document.getElementById("resLegend");if(rl)rl.style.display=S.resView?"block":"none";
 }
-window.toggleTerrainView=function(){
-  S.terrainView=!S.terrainView;
-  if(S.terrainView)S.popView=false; // los modos de mapa son excluyentes
+// vista de mapa: político (null) o "terrain"/"pop"/"res" (excluyentes entre sí)
+window.setMapView=function(mode){
+  S.terrainView=mode==="terrain";S.popView=mode==="pop";S.resView=mode==="res";
   paintAll();
   syncMapModeUI();
   if(S.editMode)refreshEditorPanel();
 };
-window.togglePopView=function(){
-  S.popView=!S.popView;
-  if(S.popView)S.terrainView=false;
-  paintAll();
-  syncMapModeUI();
-  if(S.editMode)refreshEditorPanel();
+// wrappers (el panel del editor usa toggleTerrainView para alternar terreno/político)
+window.toggleTerrainView=function(){window.setMapView(S.terrainView?null:"terrain")};
+window.togglePopView=function(){window.setMapView(S.popView?null:"pop")};
+window.toggleResView=function(){window.setMapView(S.resView?null:"res")};
+window.setProvTab=function(t){
+  S.provTab=(S.provTab===t?null:t); // clic en el botón activo lo cierra (pestañas mutuamente excluyentes)
+  refreshSide();
 };
 window.downloadMap=function(){
   const s=JSON.stringify(buildSnapshot());
@@ -570,6 +573,7 @@ canvas.addEventListener("contextmenu",e=>{
   const t=S.provIdx[iy*MW+ix];
   if(t<0)return;
   if(orderMove(S.selArmy,t)){
+    S.selArmy.muster=null; // mover a mano cancela la espera de levas
     const tp=S.provs[t];
     if(tp.owner!==S.player&&tp.owner<NPLAY&&!atWar(S.player,tp.owner))
       log("Aviso: entrar en "+NATIONS[tp.owner].name+" declarará la guerra.");
@@ -593,11 +597,44 @@ document.querySelectorAll(".spdBtn").forEach(b=>b.addEventListener("click",()=>{
 }));
 document.getElementById("helpBtn").addEventListener("click",()=>document.getElementById("helpOverlay").style.display="flex");
 document.getElementById("dipBtn").addEventListener("click",()=>{refreshDiplomacy();document.getElementById("dipOverlay").style.display="flex"});
+document.getElementById("reportsBtn").addEventListener("click",()=>{refreshReports();document.getElementById("reportsOverlay").style.display="flex"});
 document.getElementById("ledgerBtn").addEventListener("click",()=>{refreshLedger();document.getElementById("ledgerOverlay").style.display="flex"});
-document.getElementById("terrBtn").addEventListener("click",()=>window.toggleTerrainView());
 {
-  const pb=document.getElementById("popBtn");
-  if(pb)pb.addEventListener("click",()=>window.togglePopView());
+  // dropdown de mapas: en político abre el menú; en cualquier vista, vuelve a político
+  const mb=document.getElementById("mapBtn"),ml=document.getElementById("mapList");
+  if(mb&&ml){
+    mb.addEventListener("click",e=>{
+      e.stopPropagation();
+      if(S.terrainView||S.popView||S.resView){window.setMapView(null);ml.style.display="none";}
+      else ml.style.display=(ml.style.display==="none"?"block":"none");
+    });
+    ml.querySelectorAll("div").forEach(d=>d.addEventListener("click",e=>{
+      e.stopPropagation();window.setMapView(d.dataset.m);ml.style.display="none";
+    }));
+    document.addEventListener("click",()=>{ml.style.display="none"});
+  }
+}
+{
+  // leyenda del mapa de recursos: color por bien de la provincia (mismos hex que resColor en render.js)
+  const rl=document.getElementById("resLegend");
+  if(rl){
+    const legend=[["#d9c463","Grano"],["#4a7c3f","Madera"],["#9a948a","Piedra"],["#6b7078","Hierro"],
+      ["#b0824e","Caballos"],["#d9713a","Especias"],["#7fb0c0","Paño"],["#8a3d6b","Vino"],
+      ["#e6e0cf","Sal"],["#d18ac0","Seda"],["#cfd3d9","Plata"],["#e8c24a","Oro"]];
+    let lh="<b style='font-size:12px'>Recurso de la provincia</b>";
+    for(const[c,lab]of legend)lh+="<div class='row' style='margin:2px 0'><span><span class='chip' style='background:"+c+"'></span> "+lab+"</span></div>";
+    lh+="<div class='row' style='margin:2px 0'><span><span class='chip' style='background:#847c6a'></span> Impracticable</span></div>";
+    rl.innerHTML=lh;
+  }
+}
+{
+  // tooltip flotante reutilizable: cualquier elemento con [data-tip] lo muestra al pasar el ratón
+  const tipEl=document.getElementById("tip");
+  if(tipEl){
+    document.addEventListener("mouseover",e=>{const t=e.target.closest&&e.target.closest("[data-tip]");if(t){tipEl.textContent=t.getAttribute("data-tip");tipEl.style.display="block"}});
+    document.addEventListener("mouseout",e=>{const t=e.target.closest&&e.target.closest("[data-tip]");if(t)tipEl.style.display="none"});
+    document.addEventListener("mousemove",e=>{if(tipEl.style.display!=="block")return;let x=e.clientX+14,y=e.clientY+16;const w=tipEl.offsetWidth,h=tipEl.offsetHeight;if(x+w>innerWidth-8)x=innerWidth-8-w;if(y+h>innerHeight-8)y=innerHeight-8-h;tipEl.style.left=x+"px";tipEl.style.top=y+"px"});
+  }
 }
 window.toggleGraph=function(){
   S.showGraph=!S.showGraph;

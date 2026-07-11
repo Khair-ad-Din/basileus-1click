@@ -11,7 +11,9 @@ function enterEditor(){
   S.editMode=true;S.shapeSel=-1;S.shapePoly=[];S.dragVi=-1;
   S.editTool="shape";S.mergeFrom=-1;S.splitFrom=-1;S.roadFrom=-1;S.ownerPaint=-1;
   S.editBackup=buildSnapshot();S.editUndoStack=[];S.editDirty=false;
-  document.getElementById("buildbar").style.display="none";
+  document.getElementById("provPanel").style.display="none";
+  document.getElementById("provWin").style.display="none";
+  document.getElementById("provTabs").style.display="none";
   document.getElementById("buildtabs").style.display="none";
   document.getElementById("realmMenu").className="";
   document.getElementById("side").style.display="none";
@@ -42,7 +44,7 @@ function pushUndo(){
   S.editDirty=true;
 }
 function restoreWorldFromSnap(snap){
-  S.provs=[];S.armies=[];S.wars=new Map();S.truces=new Map();S.armyIdSeq=1;S.duchies=[];
+  S.provs=[];S.armies=[];S.wars=new Map();S.truces=new Map();S.armyIdSeq=1;S.duchies=[];S.reports=[];
   S.player=-1;S.hour=0;S.acc=0;S.started=false;S.gameOver=false;
   S.selProv=-1;S.selArmy=null;S.battleFlash={};clearSelOutline();
   S.shapeSel=-1;S.shapePoly=[];S.dragVi=-1;S.mergeFrom=-1;S.splitFrom=-1;S.roadFrom=-1;
