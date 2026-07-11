@@ -81,7 +81,7 @@ function spawnArmy(nation,prov,units){
   const src={};
   let w=0;for(const k in units)w+=units[k]*(UNITS[k].mano||0);
   if(w>0)src[prov]=w;
-  const a={id:S.armyIdSeq++,nation,prov,units:Object.assign({},units),src,path:[],legDone:0,legTotal:0};
+  const a={id:S.armyIdSeq++,nation,prov,units:Object.assign({},units),src,path:[],legDone:0,legTotal:0,supply:70}; // supply = % de grano forrajeado localmente (resto, nacional)
   S.armies.push(a);
   return a;
 }

@@ -118,6 +118,14 @@ window.setBuildCat=function(k){S.buildFilter=k;refreshBuildBar()};
 
 window.tryBuild=tryBuild;window.tryRecruit=tryRecruit;
 window.haltArmy=function(){if(S.selArmy){S.selArmy.path=[];S.selArmy.legDone=0;S.selArmy.legTotal=0;refreshSide()}};
+// slider de suministro del ejército: solo actualiza el % y la etiqueta (no reconstruye el panel, para
+// no cortar el arrastre); el resto de la ventana se refresca en el siguiente tick.
+window.setArmySupply=function(id,val){
+  const a=S.armies.find(x=>x.id===+id);if(!a)return;
+  a.supply=Math.max(0,Math.min(100,Math.round(+val)));
+  const el=document.getElementById("supLbl");
+  if(el)el.innerHTML="<span>🌾 Forrajeo local <b>"+a.supply+"%</b></span><b>Nacional "+(100-a.supply)+"%</b>";
+};
 window.selectArmyId=function(id){const a=S.armies.find(x=>x.id===id);if(a){S.selArmy=a;S.selProv=-1;refreshSide()}};
 window.raiseLevies=function(id,n){const a=S.armies.find(x=>x.id===id);if(a){raiseLevies(a,n);refreshSide();refreshTop()}};
 window.disbandUnit=function(id,type,n){const a=S.armies.find(x=>x.id===id);if(a){disbandUnit(a,type,n);refreshSide();refreshTop()}};

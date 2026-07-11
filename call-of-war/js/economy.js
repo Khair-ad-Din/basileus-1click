@@ -330,6 +330,10 @@ function nationLedger(n){
   return items;
 }
 function armyCount(a){let t=0;for(const k in a.units)t+=a.units[k];return t}
+function armyPops(a){let t=0;for(const k in a.units)t+=a.units[k]*(UNITS[k].mano||0);return t} // pops soldados totales del ejército
+// consumo de comida del ejército POR TICK (pop-driven): pops × ración/año / YR_TICKS. Los profesionales
+// comen más que las levas (campo). Se forrajea de reservas locales/nacional según el slider a.supply.
+function armyFood(a){let t=0;for(const k in a.units)t+=a.units[k]*(UNITS[k].mano||0)*(UNITS[k].food||0);return t/YR_TICKS}
 function armyAtk(a){let t=0;for(const k in a.units)t+=a.units[k]*UNITS[k].atk;return t}
 function armyDef(a){let t=0;for(const k in a.units)t+=a.units[k]*UNITS[k].def;return t}
 function armyHp(a){let t=0;for(const k in a.units)t+=a.units[k]*UNITS[k].hp;return t}
@@ -388,6 +392,27 @@ function economyTick(dt=1){
     }
     for(const k of RES_KEYS)if(R[k]<0)R[k]=0;
   }
+  // Comida del EJÉRCITO (pop-driven): cada ejército consume grano por sus pops. El slider a.supply
+  // reparte entre FORRAJEO local (la provincia que pisa + sus vecinas, proporcional a la reserva de
+  // cada una, para no drenar una sola) y el grano NACIONAL. Se resuelve ANTES de la subsistencia,
+  // así el forrajeo cuenta como consumo extra y puede provocar hambruna local si aprieta.
+  // Atrición (morir si no hay comida) es futura: por ahora el déficit simplemente no se cubre.
+  for(const a of S.armies){
+    if(a.nation>=NPLAY)continue;
+    const food=armyFood(a)*dt;
+    if(food<=1e-9)continue;
+    const forage=(a.supply==null?70:a.supply)/100;        // % del grano forrajeado localmente
+    const R=S.nations[a.nation].res;
+    R.comida=Math.max(0,(R.comida||0)-food*(1-forage));    // parte NACIONAL
+    const localNeed=food*forage;                           // parte LOCAL (provincia + vecinas)
+    if(localNeed>1e-9){
+      const P=S.provs[a.prov],pool=[];
+      if(P&&!P.wasteland&&P.store&&P.store.comida>0)pool.push(P);
+      for(const nb of (S.adj[a.prov]||[])){const q=S.provs[nb];if(q&&!q.wasteland&&q.store&&q.store.comida>0)pool.push(q)}
+      let avail=0;for(const q of pool)avail+=q.store.comida;
+      if(avail>0){const take=Math.min(localNeed,avail);for(const q of pool)q.store.comida-=take*(q.store.comida/avail)}
+    }
+  }
   // Pasada B: subsistencia LOCAL por bien básico (reserva por provincia p.store), hambruna de comida,
   // crecimiento ligado al llenado de la despensa y regeneración de la soldadesca.
   const regen=Math.min(1,SOLD_REGEN*dt);
@@ -418,5 +443,5 @@ function economyTick(dt=1){
 }
 
 export {
-  canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, nationLedger, isOccupied, occupierOf, provLoot, armyCount, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, taxOf, moraleGrowth, MORALE_MIN, MORALE_HOSTILE, SOLD_FRAC, foodCons, foodBalance, foodCap, foodFill, harvestMul, subsProd, subsCons, subsBalance, storeCap, storeOf, SUBS_BASICS, specialistCap, buildJobs, freeLabor, staffing, employedIn, jobsOf, buildingYield, buildSlots, usedSlots, structPPF, JOBS_PER_LEVEL, NEED_PC, NEED_PRICE, FOOD_PRICE, economyTick
+  canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, nationLedger, isOccupied, occupierOf, provLoot, armyCount, armyPops, armyFood, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, taxOf, moraleGrowth, MORALE_MIN, MORALE_HOSTILE, SOLD_FRAC, foodCons, foodBalance, foodCap, foodFill, harvestMul, subsProd, subsCons, subsBalance, storeCap, storeOf, SUBS_BASICS, specialistCap, buildJobs, freeLabor, staffing, employedIn, jobsOf, buildingYield, buildSlots, usedSlots, structPPF, JOBS_PER_LEVEL, NEED_PC, NEED_PRICE, FOOD_PRICE, economyTick
 };

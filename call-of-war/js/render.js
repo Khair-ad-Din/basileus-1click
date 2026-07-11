@@ -2,7 +2,9 @@
 import { MW, MH, NATIONS, TERRAINS, TERRAIN_KEYS } from "./config.js";
 import { S } from "./state.js";
 import { hashN, roadKey, hasRoad, kmBetween } from "./mapgen.js";
-import { armyCount } from "./economy.js";
+import { armyCount, armyPops } from "./economy.js";
+// número compacto para el marcador del ejército (pops soldados): 850, 4.2k, 12k
+function popTag(v){return v>=1000?(v/1000).toFixed(v>=10000?0:1).replace(".0","")+"k":Math.round(v)}
 
 const baseC=Object.assign(document.createElement("canvas"),{width:MW,height:MH});
 const baseCtx=baseC.getContext("2d");
@@ -481,7 +483,7 @@ function draw(){
       ctx.fillStyle="rgba(230,40,30,0.95)";ctx.fill();
       ctx.lineWidth=1/S.zoom;ctx.strokeStyle="rgba(255,255,255,0.85)";ctx.stroke();
     }
-    const cnt=Math.round(armyCount(a));
+    const pops=armyPops(a),cnt=popTag(pops); // marcador = pops soldados totales (no nº de stacks)
     const sheet=armySheet(a.nation);
     const du=sheet?dominantUnit(a):null;
     let fr=null,row=0;
@@ -503,12 +505,14 @@ function draw(){
       ctx.translate(pos.x,pos.y);if(flip)ctx.scale(-1,1);
       ctx.drawImage(sheet.canvas,fr.sx,fr.sy,fr.sw,fr.sh,-Wd/2,-Hd*0.62,Wd,Hd);
       ctx.restore();
-      if(cnt>0){
+      if(pops>0){
+        ctx.font="bold 8px Arial";
+        const tw=ctx.measureText(cnt).width,pw=Math.max(12,tw+6);
         const bx=pos.x+half*0.42,by=pos.y+Hd*0.30;
-        ctx.beginPath();ctx.arc(bx,by,6,0,7);
+        ctx.beginPath();ctx.ellipse(bx,by,pw/2,6,0,0,7); // píldora para que quepan los pops (ej. 4.2k)
         ctx.fillStyle="rgba(20,24,28,.85)";ctx.fill();
         ctx.lineWidth=1/S.zoom;ctx.strokeStyle=a===S.selArmy?"#fff":NATIONS[a.nation].color;ctx.stroke();
-        ctx.fillStyle="#fff";ctx.font="bold 8px Arial";ctx.fillText(cnt,bx,by+0.3);
+        ctx.fillStyle="#fff";ctx.fillText(cnt,bx,by+0.3);
       }
     }else{
       const w=40,hh=26;

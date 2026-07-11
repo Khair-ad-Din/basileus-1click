@@ -139,6 +139,17 @@
     background:linear-gradient(180deg,#2b3138,#22272d);border:1px solid #3f464e;border-radius:8px;
     box-shadow:0 4px 18px rgba(0,0,0,.45);padding:10px 12px;overflow-y:auto;color:var(--txt);font-size:var(--fs)}
   #provPanel.show{display:block}
+  /* ventana de EJÉRCITO (abajo-izquierda; excluyente con la ficha de provincia) */
+  #armyWin{position:fixed;left:8px;bottom:8px;width:322px;max-height:calc(100vh - 118px);z-index:18;display:none;
+    background:linear-gradient(180deg,#2b3138,#22272d);border:1px solid #4a525b;border-radius:8px;
+    box-shadow:0 4px 18px rgba(0,0,0,.45);padding:10px 12px;overflow-y:auto;color:var(--txt);font-size:var(--fs)}
+  #armyWin.show{display:block}
+  #armyWin .supply{width:100%;margin:5px 0 2px;accent-color:#9fb878}
+  #armyWin .uline{display:flex;justify-content:space-between;align-items:center;gap:6px;margin:2px 0}
+  #armyWin .mini{background:#343b43;border:1px solid #4a525b;color:#d8d4c8;border-radius:3px;cursor:pointer;padding:1px 7px;font-size:11px}
+  #armyWin .mini:hover{background:#414a54}
+  #armyWin .mini.red{border-color:#7a4a44;color:#e0a99f}
+  #armyWin .mini:disabled{opacity:.4;cursor:default}
   /* columna de botones cuadrados a la derecha del detalle (abren su ventana) */
   #provTabs{position:fixed;left:336px;bottom:8px;z-index:17;display:none;flex-direction:column;gap:6px}
   #provTabs.show{display:flex}
@@ -302,6 +313,7 @@
 <div id="provWin"></div>
 <div id="provTabs"></div>
 <div id="provPanel"></div>
+<div id="armyWin"></div>
 <div id="tip"></div>
 <div id="log"></div>
 

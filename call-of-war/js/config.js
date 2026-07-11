@@ -157,14 +157,18 @@ function newBuildings(){const o={};for(const b in BUILDINGS)o[b]=0;return o}
 // up = MANTENIMIENTO por unidad y MES (dinero/comida/recurso). Las levas son baratísimas de sostener
 // (campesinos armados) pero su coste real es la POBLACIÓN: la soldadesca sale de los pops y las bajas
 // restan pob para siempre. Las tropas profesionales muerden fuerte el tesoro cada mes.
+// food = RACIÓN de grano por POP y AÑO (el consumo de comida del ejército es pop-driven y se
+// forrajea de las reservas locales / nacional según el slider de suministro; ya NO va en up).
+// Levas = ración de campesino (1/año); los profesionales comen más (mejor alimentados, monturas).
+// up = mantenimiento en dinero/recursos (SIN comida). cost.comida sigue siendo el gasto de reclutar.
 const UNITS={
-  miliciano:{label:"Levas",atk:1.2,def:2.5,hp:12,spd:16,time:504,cost:{dinero:350,comida:250},up:{dinero:0.15,comida:0.4},mano:200,req:{}},                                  // 3 semanas
-  infanteria:{label:"Piqueros",atk:2.5,def:4,hp:18,spd:18,time:1440,cost:{dinero:850,comida:560,materiales:280},up:{dinero:0.8,comida:0.6},mano:400,req:{cuartel:1}},      // 2 meses
-  motorizada:{label:"Caballería ligera",atk:4,def:5,hp:20,spd:40,time:2160,cost:{dinero:1300,comida:700,petroleo:420,materiales:420},up:{dinero:1.2,comida:0.7,petroleo:0.4},mano:500,req:{cuartel:2}}, // 3 meses
-  antitanque:{label:"Alabarderos",atk:3,def:7,hp:16,spd:16,time:1800,cost:{dinero:1300,metal:850,materiales:420},up:{dinero:1.0,comida:0.5,metal:0.2},mano:300,req:{cuartel:1,fabrica:1}},
-  artilleria:{label:"Bombardas",atk:7,def:2,hp:14,spd:10,time:4320,cost:{dinero:2100,metal:1300,materiales:560},up:{dinero:1.6,comida:0.4,metal:0.3},mano:300,req:{fabrica:2}},        // 6 meses
-  blindadoLigero:{label:"Caballería",atk:6,def:4,hp:22,spd:35,time:2400,cost:{dinero:2000,metal:1100,petroleo:700},up:{dinero:1.5,comida:0.7,petroleo:0.5},mano:300,req:{fabrica:1}},
-  blindadoMedio:{label:"Caballeros",atk:9,def:6,hp:30,spd:28,time:4320,cost:{dinero:3400,metal:2100,petroleo:1100,raros:420},up:{dinero:2.2,comida:0.9,petroleo:0.7,metal:0.4},mano:400,req:{fabrica:3}} // 6 meses
+  miliciano:{label:"Levas",atk:1.2,def:2.5,hp:12,spd:16,time:504,cost:{dinero:350,comida:250},up:{dinero:0.15},food:1,mano:200,req:{}},                                  // 3 semanas
+  infanteria:{label:"Piqueros",atk:2.5,def:4,hp:18,spd:18,time:1440,cost:{dinero:850,comida:560,materiales:280},up:{dinero:0.8},food:1.45,mano:400,req:{cuartel:1}},      // 2 meses
+  motorizada:{label:"Caballería ligera",atk:4,def:5,hp:20,spd:40,time:2160,cost:{dinero:1300,comida:700,petroleo:420,materiales:420},up:{dinero:1.2,petroleo:0.4},food:2.2,mano:500,req:{cuartel:2}}, // 3 meses
+  antitanque:{label:"Alabarderos",atk:3,def:7,hp:16,spd:16,time:1800,cost:{dinero:1300,metal:850,materiales:420},up:{dinero:1.0,metal:0.2},food:1.45,mano:300,req:{cuartel:1,fabrica:1}},
+  artilleria:{label:"Bombardas",atk:7,def:2,hp:14,spd:10,time:4320,cost:{dinero:2100,metal:1300,materiales:560},up:{dinero:1.6,metal:0.3},food:1.45,mano:300,req:{fabrica:2}},        // 6 meses
+  blindadoLigero:{label:"Caballería",atk:6,def:4,hp:22,spd:35,time:2400,cost:{dinero:2000,metal:1100,petroleo:700},up:{dinero:1.5,petroleo:0.5},food:2.2,mano:300,req:{fabrica:1}},
+  blindadoMedio:{label:"Caballeros",atk:9,def:6,hp:30,spd:28,time:4320,cost:{dinero:3400,metal:2100,petroleo:1100,raros:420},up:{dinero:2.2,petroleo:0.7,metal:0.4},food:2.2,mano:400,req:{fabrica:3}} // 6 meses
 };
 // Tipos de terreno: def multiplica la defensa en combate, mov la velocidad de
 // movimiento terrestre, prod la producción de la provincia.
