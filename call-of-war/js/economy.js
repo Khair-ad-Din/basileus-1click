@@ -334,12 +334,52 @@ function armyPops(a){let t=0;for(const k in a.units)t+=a.units[k]*(UNITS[k].mano
 // consumo de comida del ejército POR TICK (pop-driven): pops × ración/año / YR_TICKS. Los profesionales
 // comen más que las levas (campo). Se forrajea de reservas locales/nacional según el slider a.supply.
 function armyFood(a){let t=0;for(const k in a.units)t+=a.units[k]*(UNITS[k].mano||0)*(UNITS[k].food||0);return t/YR_TICKS}
+// reparto del grano LOCAL que forrajea el ejército a, por provincia: [{p, amt/tick}] (provincia que
+// pisa + vecinas, proporcional a su reserva). Para el desglose "de dónde come" en la UI del ejército.
+function armyForage(a){
+  const out=[],localNeed=armyFood(a)*((a.supply==null?70:a.supply)/100);
+  if(localNeed<=1e-9)return out;
+  const A=S.provs[a.prov],pool=[];
+  if(A&&!A.wasteland&&A.store&&A.store.comida>0)pool.push(A);
+  for(const nb of (S.adj[a.prov]||[])){const q=S.provs[nb];if(q&&!q.wasteland&&q.store&&q.store.comida>0)pool.push(q)}
+  let avail=0;for(const q of pool)avail+=q.store.comida;
+  if(avail<=0)return out;
+  const take=Math.min(localNeed,avail);
+  for(const q of pool)out.push({p:q,amt:take*(q.store.comida/avail)});
+  return out.sort((x,y)=>y.amt-x.amt);
+}
+// grano que las tropas forrajean de la reserva de la provincia p POR TICK (replica el reparto del
+// tick: cada ejército reparte su parte local entre la provincia que pisa y sus vecinas, proporcional
+// a la reserva). Suma la porción que toca a p de todos los ejércitos que la incluyen en su pool.
+function troopDrainOn(p){
+  if(!p||p.wasteland||!p.store||!(p.store.comida>0))return 0;
+  let drain=0;
+  for(const a of S.armies){
+    if(a.nation>=NPLAY)continue;
+    const localNeed=armyFood(a)*((a.supply==null?70:a.supply)/100);
+    if(localNeed<=1e-9)continue;
+    const A=S.provs[a.prov],pool=[];
+    if(A&&!A.wasteland&&A.store&&A.store.comida>0)pool.push(A);
+    for(const nb of (S.adj[a.prov]||[])){const q=S.provs[nb];if(q&&!q.wasteland&&q.store&&q.store.comida>0)pool.push(q)}
+    if(pool.indexOf(p)<0)continue;
+    let avail=0;for(const q of pool)avail+=q.store.comida;
+    if(avail>0)drain+=Math.min(localNeed,avail)*(p.store.comida/avail);
+  }
+  return drain;
+}
 function armyAtk(a){let t=0;for(const k in a.units)t+=a.units[k]*UNITS[k].atk;return t}
 function armyDef(a){let t=0;for(const k in a.units)t+=a.units[k]*UNITS[k].def;return t}
 function armyHp(a){let t=0;for(const k in a.units)t+=a.units[k]*UNITS[k].hp;return t}
 function armySpd(a){let s=999;for(const k in a.units)if(a.units[k]>0.05)s=Math.min(s,UNITS[k].spd);return s===999?18:s}
 function nationStrength(n){let t=0;for(const a of S.armies)if(a.nation===n)t+=armyAtk(a)+armyDef(a);return t}
 function nationProvCount(n){let t=0;for(const p of S.provs)if(p.owner===n)t++;return t}
+// ¿la provincia p puede reclutar la unidad u (para el jugador)? Comprueba dueño/estado y los edificios
+// requeridos; la solvencia y la soldadesca se comprueban al reclutar. Usado por la UI, el mapa y el clic.
+function recruitable(p,u){
+  if(!p||p.owner!==S.player||isOccupied(p)||p.wasteland)return false;
+  const U=UNITS[u];for(const r in U.req)if((p.buildings[r]||0)<U.req[r])return false;
+  return true;
+}
 function recruitTime(p,u){
   return Math.max(2,Math.round(UNITS[u].time*(1-0.15*p.buildings.cuartel)*(UNITS[u].req.fabrica?1-0.08*p.buildings.fabrica:1)));
 }
@@ -443,5 +483,5 @@ function economyTick(dt=1){
 }
 
 export {
-  canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, nationLedger, isOccupied, occupierOf, provLoot, armyCount, armyPops, armyFood, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, taxOf, moraleGrowth, MORALE_MIN, MORALE_HOSTILE, SOLD_FRAC, foodCons, foodBalance, foodCap, foodFill, harvestMul, subsProd, subsCons, subsBalance, storeCap, storeOf, SUBS_BASICS, specialistCap, buildJobs, freeLabor, staffing, employedIn, jobsOf, buildingYield, buildSlots, usedSlots, structPPF, JOBS_PER_LEVEL, NEED_PC, NEED_PRICE, FOOD_PRICE, economyTick
+  canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, nationLedger, isOccupied, occupierOf, provLoot, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, recruitable, taxOf, moraleGrowth, MORALE_MIN, MORALE_HOSTILE, SOLD_FRAC, foodCons, foodBalance, foodCap, foodFill, harvestMul, subsProd, subsCons, subsBalance, storeCap, storeOf, SUBS_BASICS, specialistCap, buildJobs, freeLabor, staffing, employedIn, jobsOf, buildingYield, buildSlots, usedSlots, structPPF, JOBS_PER_LEVEL, NEED_PC, NEED_PRICE, FOOD_PRICE, economyTick
 };

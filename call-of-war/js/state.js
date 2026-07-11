@@ -20,6 +20,8 @@ export const S = {
   buildFilter: "eco",
   // panel de reino / ejército (arriba-izquierda estilo EU4)
   recruitProv: -1, armyPanelOpen: false,
+  // ventana de ejército: unidad en modo "reclutar desde el mapa" (null=off) y menú Editar abierto
+  recruitUnit: null, armyEdit: false,
   // tesorería (libro mayor): pestaña activa y ruta de navegación por categorías
   treasuryTab: "tesoro", treasuryPath: [],
   // negociación de paz (pantalla estilo EU4): con quién, ducados en la mesa, oro exigido/ofrecido,

@@ -762,15 +762,20 @@ function tryBuild(pid,b){
   p.buildQueue.push({b,hoursLeft:timeFor(p,b)});
   refreshSide();refreshTop();refreshBuildBar();
 }
-function tryRecruit(pid,u){
+// rally = provincia a la que la unidad marchará al terminar (auto-rally; p.ej. reunirse con un
+// ejército seleccionado). Si es null o la misma provincia, la unidad se queda donde se recluta.
+function tryRecruit(pid,u,rally){
   const p=S.provs[pid];
-  if(p.owner!==S.player||isOccupied(p))return;
+  if(p.owner!==S.player||isOccupied(p))return false;
   const U=UNITS[u];
-  for(const r in U.req)if(p.buildings[r]<U.req[r])return;
-  if(!canAfford(S.player,U.cost)||soldAvail(p)<U.mano)return;
+  for(const r in U.req)if(p.buildings[r]<U.req[r])return false;
+  if(!canAfford(S.player,U.cost)||soldAvail(p)<U.mano)return false;
   pay(S.player,U.cost);p.sold=soldAvail(p)-U.mano;
-  p.recruitQueue.push({u,nation:S.player,hoursLeft:recruitTime(p,u)});
+  const q={u,nation:S.player,hoursLeft:recruitTime(p,u)};
+  if(rally!=null&&rally!==pid)q.rally=rally; // marchará a reunirse (profesionales y levas por igual)
+  p.recruitQueue.push(q);
   refreshSide();refreshTop();
+  return true;
 }
 // Licenciar `n` unidades de un tipo: desmoviliza (NO mata población), devuelve la soldadesca a las
 // provincias de origen (baja el mantenimiento y recupera mano de obra). Devuelve cuántas licenció.

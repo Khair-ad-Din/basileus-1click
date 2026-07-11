@@ -1,7 +1,7 @@
 // ui.js
 import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, RES_DESC, RES_ICON, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, WAR_LOCK_HOURS, terrainFx } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyPops, armyFood, armyDef, armySpd, buildBlock, buildingYield, buildJobs, buildMax, buildSlots, canAfford, costFor, employedIn, foodBalance, foodCap, foodCons, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationEconomy, nationLedger, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots } from "./economy.js";
+import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildingYield, buildJobs, buildMax, buildSlots, canAfford, costFor, employedIn, foodBalance, foodCap, foodCons, foodFill, harvestMul, subsProd, subsCons, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationEconomy, nationLedger, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
 import { canvas, clampPan } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
@@ -41,6 +41,32 @@ function foodLine(p){ // despensa de comida: llenado, balance como % del consumo
   else extra=" · llena";
   const pct="<span class='"+(balPct<0?"neg":"pos")+"'>"+(balPct>=0?"+":"")+balPct+"%</span>";
   return "<div class='tl'>"+uiIcon('despensa')+" Despensa "+Math.round(fill*100)+"% · "+pct+extra+"</div>"+hvRow;
+}
+// Sección "Reservas" (categoría propia, como Balance): TODO el grano local en la MISMA unidad que el
+// consumo de las tropas (grano/mes), con desglose producción campesina / consumo población / consumo
+// tropas, el neto, el crecimiento anual, la despensa y cuánto aguanta o tarda en llenarse.
+function reservesSection(p){
+  if(p.wasteland)return "";
+  const prodM=subsProd(p,"comida")*730, consM=subsCons(p,"comida")*730, troopM=troopDrainOn(p)*730;
+  const netM=prodM-consM-troopM, netT=netM/730;
+  const cap=foodCap(p), fill=foodFill(p), store=fill*cap;
+  const hv=Math.round((harvestMul(p)-1)*100);
+  let dur;
+  if(p.famine)dur="<b class='neg'>⚠ HAMBRUNA</b>";
+  else if(Math.abs(netM)<0.5)dur="estable";
+  else if(netM<0)dur="aguanta ~"+foodMonths(store/-netT);
+  else if(fill<0.99)dur="se llena en ~"+foodMonths((cap-store)/netT);
+  else dur="llena";
+  let h="<div class='bsec'>Reservas de grano <span class='u'>/mes</span>"+iInfo("El grano LOCAL de la provincia: lo producen sus campesinos y lo consumen su población y las tropas que forrajean aquí (o en las vecinas). El neto llena o vacía la despensa; si se agota en un mal año, hay hambruna. Misma unidad (grano/mes) que el consumo de las tropas.")+"</div>";
+  h+="<div class='prow'><span>🌾 Producción "+iInfo("Los campesinos trabajan la tierra: población × fertilidad del terreno × granjas × cosecha del año.")+"</span><b class='pos'>+"+fmt(prodM)+"</b></div>";
+  h+="<div class='prow'><span>"+uiIcon('poblacion')+" Consumo población</span><b class='neg'>−"+fmt(consM)+"</b></div>";
+  if(troopM>0.5)h+="<div class='prow'><span>"+uiIcon('espadas')+" Consumo tropas</span><b class='neg'>−"+fmt(troopM)+"</b></div>";
+  h+="<div class='prow' style='border-top:1px solid #3a4047;margin-top:2px;padding-top:3px'><span>Neto</span>"+
+     "<b class='"+(netM<0?"neg":"pos")+"'>"+(netM>=0?"+":"")+fmt(netM)+"/mes · "+(netM>=0?"+":"")+fmt(netM*12)+"/año</b></div>";
+  h+="<div class='prow'><span>🥖 Despensa "+Math.round(fill*100)+"% <span style='color:#7a828b'>("+fmt(store)+"/"+fmt(cap)+")</span></span><b>"+dur+"</b></div>";
+  const hvTxt=hv>=5?"<b class='pos'>+"+hv+"%</b>":hv<=-5?"<b class='neg'>"+hv+"%</b>":"<b style='color:#9aa3ad'>normal</b>";
+  h+="<div class='prow'><span>🌾 Cosecha del año</span>"+hvTxt+"</div>";
+  return h;
 }
 function reservesLine(p){ // reservas locales de los demás bienes básicos de subsistencia (madera/piedra/hierro)
   if(p.wasteland)return "";
@@ -299,7 +325,7 @@ function refreshProvPanel(){
     s+="<div class='prow'><span>"+uiIcon('edificios')+" Edificios"+iInfo("Huecos de construcción de la provincia: crecen con su población. Cuanta más gente, más edificios puede sostener.")+"</span>"+
        statv(usedSlots(p)+"/"+buildSlots(p),slotBreak(p))+"</div>";
   }
-  s+=foodLine(p)+siegeLine(p); // reservesLine (madera/piedra/hierro) oculta hasta que tengan uso
+  s+=siegeLine(p); // la despensa/cosecha se muestra ahora en la sección "Reservas" (abajo)
   if(own){
     const bd=provBreakdown(p);
     s+="<div class='bsec'>Balance <span class='u'>/mes</span>"+iInfo("Ingresos menos mantenimiento de la provincia, por recurso. Pasa el ratón por un valor para ver de dónde sale.")+"</div>";
@@ -317,6 +343,7 @@ function refreshProvPanel(){
       for(const b of blist)s+="<div class='prow'><span>"+BUILDINGS[b].icon+" "+BUILDINGS[b].label+"</span><b>"+(BUILDINGS[b].unique?"✓":lvlOf(p,b))+"</b></div>";
     }
   }
+  s+=reservesSection(p); // Reservas de grano local (categoría propia, en grano/mes como las tropas)
   const here=armiesIn(p.id);
   if(here.length){
     s+="<div class='bsec'>Ejércitos</div>";
@@ -645,53 +672,73 @@ function refreshArmyPanel(){
 function refreshArmyWin(){
   const el=document.getElementById("armyWin");
   const a=S.selArmy;
-  if(!a||a.nation!==S.player||!S.armies.includes(a)){el.className="";el.style.display="none";return}
+  if(!a||a.nation!==S.player||!S.armies.includes(a)){
+    el.className="";el.style.display="none";
+    if(S.recruitUnit||S.armyEdit){S.recruitUnit=null;S.armyEdit=false} // limpiar modos al perder la selección
+    refreshArmyEdit(null);
+    return;
+  }
   const P=S.provs[a.prov];
   const loc=a.path.length?"en marcha → "+S.provs[a.path[a.path.length-1]].name:"en "+(P?P.name:"—");
   let s="<div class='bsum'>";
-  s+="<div class='ph'><h4 style='font-size:15px;color:#fff;margin:0'>"+uiIcon('espadas')+" Ejército · "+fmt(armyPops(a))+" "+uiIcon('soldadesca')+"</h4></div>";
-  s+="<div class='tl' style='color:#9aa3ad'>"+loc+"</div>";
-  s+="<div class='prow'><span>⚔ "+armyAtk(a).toFixed(1)+" · 🛡 "+armyDef(a).toFixed(1)+"</span><b>"+armySpd(a)+" km/d</b></div>";
+  // cabecera: identidad izquierda, POPS soldados a la derecha
+  s+="<div class='ph' style='display:flex;justify-content:space-between;align-items:center'>"+
+     "<h4 style='font-size:15px;color:#fff;margin:0'>"+uiIcon('espadas')+" Ejército</h4>"+
+     "<b style='font-size:14px'>"+fmt(armyPops(a))+" "+uiIcon('soldadesca')+"</b></div>";
+  s+="<div class='tl' style='color:#9aa3ad'>"+loc+" · ⚔ "+armyAtk(a).toFixed(1)+" · 🛡 "+armyDef(a).toFixed(1)+" · "+armySpd(a)+" km/d</div>";
   if(a.path.length)s+="<div class='uline'><span class='sm' style='color:#c9a86a'>En marcha</span><button class='mini red' onclick='haltArmy()'>Detener</button></div>";
-  else if(a.muster&&S.hour<a.muster.until)s+="<div class='tl' style='color:#c9a86a'>⏳ Reuniendo levas…</div>";
-  else s+="<div class='tl' style='color:#7a828b'>Clic derecho en el mapa para mover.</div>";
-  // composición por tipo (con licenciar)
-  s+="<div class='bsec'>Composición</div>";
-  for(const k in a.units){
-    if(a.units[k]<0.5)continue;
-    const n=Math.round(a.units[k]);
-    s+="<div class='uline'><span>"+UNITS[k].label+" <span style='color:#9aa3ad'>×"+n+" · "+fmt(n*(UNITS[k].mano||0))+" "+uiIcon('soldadesca')+"</span></span>"+
-      "<span><button class='mini' onclick='disbandUnit("+a.id+",\""+k+"\",1)'>−1</button> "+
-      "<button class='mini red' onclick='disbandUnit("+a.id+",\""+k+"\",99)' title='Licenciar todas'>✕</button></span></div>";
+  else if(a.muster&&S.hour<a.muster.until)s+="<div class='tl' style='color:#c9a86a'>⏳ Reuniendo tropas…</div>";
+  // COMPOSICIÓN (tabla Tipo | Cantidad | Pops) + botón Editar
+  s+="<div class='bsec' style='display:flex;justify-content:space-between;align-items:center'>"+
+     "<span>Composición</span><button class='mini"+(S.armyEdit?" on":"")+"' onclick='toggleArmyEdit()'>✎ Editar</button></div>";
+  s+="<table class='ctab'><tr><th>Tipo</th><th>Cantidad</th><th>Pops</th></tr>";
+  let anyU=false;
+  for(const k in a.units){if(a.units[k]<0.5)continue;anyU=true;const n=Math.round(a.units[k]);
+    s+="<tr><td>"+UNITS[k].label+"</td><td>×"+n+"</td><td>"+fmt(n*(UNITS[k].mano||0))+"</td></tr>";}
+  if(!anyU)s+="<tr><td colspan='3' style='color:#7a828b'>Sin tropas</td></tr>";
+  s+="</table>";
+  // RECLUTAMIENTO: todas las unidades reclutables en el reino; clic → modo reclutar-desde-el-mapa
+  s+="<div class='bsec'>Reclutamiento</div>";
+  const rec=Object.keys(UNITS).filter(u=>S.provs.some(p=>recruitable(p,u)));
+  if(!rec.length)s+="<div class='tl' style='color:#7a828b'>Sin edificios para reclutar. Construye un Cuartel.</div>";
+  for(const u of rec){
+    const on=S.recruitUnit===u;
+    s+="<div class='uline'><button class='rbtn"+(on?" on":"")+"' onclick='setRecruitUnit(\""+u+"\")'>"+
+       (on?"✓ ":"")+UNITS[u].label+" <span style='color:#9aa3ad'>· "+fmt(UNITS[u].mano)+" "+uiIcon('soldadesca')+"</span></button>"+
+       (u==="miliciano"?"<span class='qlev'><button class='mini' onclick='raiseLevies("+a.id+",5)'>+5</button> <button class='mini' onclick='raiseLevies("+a.id+",10)'>+10</button></span>":"")+"</div>";
   }
-  // reclutar unidades disponibles en la provincia donde está
-  if(P&&P.owner===S.player&&!isOccupied(P)&&!P.wasteland){
-    s+="<div class='bsec'>Reclutar aquí</div>";
-    let any=false;
-    for(const u in UNITS){
-      const U=UNITS[u];let ok=true;for(const req in U.req)if((P.buildings[req]||0)<U.req[req])ok=false;
-      if(!ok)continue;any=true;
-      const dis=!canAfford(S.player,U.cost)||soldAvail(P)<U.mano;
-      s+="<div class='uline'><span class='sm'>"+U.label+" <span style='color:#7a828b'>("+fmtDur(recruitTime(P,u))+")</span></span>"+
-        "<button class='mini' "+(dis?"disabled":"")+" onclick='tryRecruit("+P.id+",\""+u+"\")'>+1</button></div>";
-    }
-    if(!any)s+="<div class='tl' style='color:#7a828b'>Construye un Cuartel aquí para reclutar.</div>";
-  }
-  // SUMINISTRO: slider forrajeo local ↔ nacional + consumo/mes
+  if(S.recruitUnit)s+="<div class='tl' style='color:#9fb878;font-size:11px'>Clic en el mapa en las provincias con <b>+</b> para reclutar (las tropas marchan a reunirse con este ejército).</div>";
+  // SUMINISTRO de grano (slider reserva local ↔ nacional + consumo/mes); detalle en la ⓘ
   const sup=a.supply==null?70:a.supply, foodMonth=armyFood(a)*730; // 730 ticks ≈ 1 mes de juego
-  s+="<div class='bsec'>Suministro de grano</div>";
+  s+="<div class='bsec'>Suministro de grano"+iInfo("Reparte de dónde saca el grano el ejército: la reserva NACIONAL gasta el Grano del tesoro del reino; la reserva LOCAL lo toma de la despensa de la provincia donde está y sus vecinas, repartido para no vaciar una sola (si aprieta, puede provocar hambruna local).")+"</div>";
   s+="<input class='supply' type='range' min='0' max='100' step='5' value='"+sup+"' oninput='setArmySupply("+a.id+",this.value)'>";
-  s+="<div class='prow' id='supLbl'><span>🌾 Forrajeo local <b>"+sup+"%</b></span><b>Nacional "+(100-sup)+"%</b></div>";
-  s+="<div class='prow'><span style='color:#9aa3ad'>Consumo (sus pops)</span><b>"+n1(foodMonth)+" "+resImg('comida')+"/mes</b></div>";
-  s+="<div class='tl' style='color:#7a828b;font-size:11px'>El forrajeo drena la despensa de la provincia y sus vecinas; lo nacional gasta el Grano del reino.</div>";
-  // levantar levas alrededor del ejército
-  s+="<div class='bsec'>Levantar levas</div>";
-  s+="<div class='uline'><span class='sm'>Alrededor del ejército</span><span>"+
-    "<button class='mini' onclick='raiseLevies("+a.id+",5)'>+5</button> "+
-    "<button class='mini' onclick='raiseLevies("+a.id+",10)'>+10</button> "+
-    "<button class='mini' onclick='raiseLevies("+a.id+",20)'>+20</button></span></div>";
+  s+="<div class='prow' id='supLbl'><span>Reserva local <b>"+sup+"%</b></span><b>Reserva nacional "+(100-sup)+"%</b></div>";
+  // consumo/mes dividido: IZQUIERDA lo que sostienen las provincias (con desglose al hover), DERECHA lo
+  // que sostienen las arcas nacionales. Alineado bajo los % de arriba. (Sin la palabra "Consumo".)
+  const localM=foodMonth*(sup/100), natM=foodMonth*(1-sup/100), fp=armyForage(a);
+  let ltip="De las reservas LOCALES: "+n1(localM)+" grano/mes\nForrajeado de la provincia que pisa y sus vecinas (a prorrata de la reserva de cada una):\n";
+  if(fp.length)for(const it of fp)ltip+="  · "+it.p.name+": "+n1(it.amt*730)+"/mes\n";
+  else ltip+="  · sin reservas locales alrededor";
+  s+="<div class='prow'>"+
+     "<b class='statv' id='supLoc' data-tip=\""+ta(ltip)+"\"><span class='n'>"+n1(localM)+"</span> "+resImg('comida')+"/mes</b>"+
+     "<b class='statv' data-tip=\""+ta("De las arcas NACIONALES: "+n1(natM)+" grano/mes\nSale del Grano del tesoro del reino.")+"\" id='supNat'><span class='n'>"+n1(natM)+"</span> "+resImg('comida')+"/mes</b></div>";
   s+="</div>";
   el.innerHTML=s;el.className="show";el.style.display="block";
+  refreshArmyEdit(a); // menú Editar (licenciar) a la derecha
+}
+// menú "Editar" a la derecha de la ventana de ejército: licenciar tropas por tipo
+function refreshArmyEdit(a){
+  const ed=document.getElementById("armyEdit");if(!ed)return;
+  if(!S.armyEdit||!a){ed.className="";ed.style.display="none";return}
+  let s="<div class='winh' style='font-size:13px'>✎ Licenciar</div>"+
+    "<div class='sm' style='color:#9aa3ad;margin-bottom:6px'>Devuelve la soldadesca a sus provincias de origen y baja el consumo.</div>";
+  let any=false;
+  for(const k in a.units){if(a.units[k]<0.5)continue;any=true;const n=Math.round(a.units[k]);
+    s+="<div class='uline'><span class='sm'>"+UNITS[k].label+" <span style='color:#9aa3ad'>×"+n+"</span></span>"+
+       "<span><button class='mini' onclick='disbandUnit("+a.id+",\""+k+"\",1)'>−1</button> "+
+       "<button class='mini red' onclick='disbandUnit("+a.id+",\""+k+"\",99)'>Todas</button></span></div>";}
+  if(!any)s+="<div class='sm' style='color:#7a828b'>Sin tropas.</div>";
+  ed.innerHTML=s;ed.className="show";ed.style.display="block";
 }
 function refreshSide(){
   refreshMetricsLog();

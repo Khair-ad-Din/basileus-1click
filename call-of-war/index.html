@@ -149,7 +149,25 @@
   #armyWin .mini{background:#343b43;border:1px solid #4a525b;color:#d8d4c8;border-radius:3px;cursor:pointer;padding:1px 7px;font-size:11px}
   #armyWin .mini:hover{background:#414a54}
   #armyWin .mini.red{border-color:#7a4a44;color:#e0a99f}
+  #armyWin .mini.on{background:#3f4b39;border-color:#9fb878;color:#e8e0c8}
   #armyWin .mini:disabled{opacity:.4;cursor:default}
+  #armyWin .ctab{width:100%;border-collapse:collapse;margin:2px 0 4px}
+  #armyWin .ctab th{text-align:left;font-size:var(--fs-s);color:var(--muted);font-weight:normal;border-bottom:1px solid #3a4047;padding:2px 4px}
+  #armyWin .ctab td{padding:2px 4px;font-size:var(--fs);border-bottom:1px solid #2f353c}
+  #armyWin .ctab td:nth-child(n+2),#armyWin .ctab th:nth-child(n+2){text-align:right}
+  #armyWin .rbtn{flex:1;text-align:left;background:#343b43;border:1px solid #4a525b;color:#d8d4c8;border-radius:3px;cursor:pointer;padding:3px 8px;font-size:var(--fs)}
+  #armyWin .rbtn:hover{background:#414a54}
+  #armyWin .rbtn.on{background:#3f4b39;border-color:#9fb878;color:#e8e0c8}
+  #armyWin .qlev{white-space:nowrap;margin-left:5px}
+  /* menú Editar (licenciar) a la derecha de la ventana de ejército */
+  #armyEdit{position:fixed;left:338px;bottom:8px;width:204px;max-height:calc(100vh - 118px);z-index:18;display:none;
+    background:linear-gradient(180deg,#2b3138,#22272d);border:1px solid #4a525b;border-radius:8px;
+    box-shadow:0 4px 18px rgba(0,0,0,.45);padding:10px 12px;overflow-y:auto;color:var(--txt);font-size:var(--fs)}
+  #armyEdit.show{display:block}
+  #armyEdit .uline{display:flex;justify-content:space-between;align-items:center;gap:6px;margin:3px 0}
+  #armyEdit .mini{background:#343b43;border:1px solid #4a525b;color:#d8d4c8;border-radius:3px;cursor:pointer;padding:1px 7px;font-size:11px}
+  #armyEdit .mini:hover{background:#414a54}
+  #armyEdit .mini.red{border-color:#7a4a44;color:#e0a99f}
   /* columna de botones cuadrados a la derecha del detalle (abren su ventana) */
   #provTabs{position:fixed;left:336px;bottom:8px;z-index:17;display:none;flex-direction:column;gap:6px}
   #provTabs.show{display:flex}
@@ -314,6 +332,7 @@
 <div id="provTabs"></div>
 <div id="provPanel"></div>
 <div id="armyWin"></div>
+<div id="armyEdit"></div>
 <div id="tip"></div>
 <div id="log"></div>
 

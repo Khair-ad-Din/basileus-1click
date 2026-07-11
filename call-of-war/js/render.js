@@ -1,8 +1,8 @@
 // render.js
-import { MW, MH, NATIONS, TERRAINS, TERRAIN_KEYS } from "./config.js";
+import { MW, MH, NATIONS, TERRAINS, TERRAIN_KEYS, UNITS } from "./config.js";
 import { S } from "./state.js";
 import { hashN, roadKey, hasRoad, kmBetween } from "./mapgen.js";
-import { armyCount, armyPops } from "./economy.js";
+import { armyCount, armyPops, recruitable, soldAvail, canAfford } from "./economy.js";
 // número compacto para el marcador del ejército (pops soldados): 850, 4.2k, 12k
 function popTag(v){return v>=1000?(v/1000).toFixed(v>=10000?0:1).replace(".0","")+"k":Math.round(v)}
 
@@ -526,6 +526,26 @@ function draw(){
     }
   }
   ctx.imageSmoothingEnabled=smoothWas;
+  // modo RECLUTAR DESDE EL MAPA: "+" en cada provincia apta para la unidad elegida, con su soldadesca
+  // debajo. Verde si se puede pagar y hay soldadesca; gris si no. Tamaño constante en pantalla (/zoom).
+  if(S.recruitUnit&&UNITS[S.recruitUnit]){
+    const u=S.recruitUnit,U=UNITS[u],z=S.zoom,r=9/z;
+    ctx.textAlign="center";ctx.textBaseline="middle";
+    for(const p of S.provs){
+      if(!recruitable(p,u))continue;
+      const ok=soldAvail(p)>=U.mano&&canAfford(S.player,U.cost);
+      ctx.beginPath();ctx.arc(p.x,p.y,r,0,7);
+      ctx.fillStyle=ok?"rgba(74,120,56,.95)":"rgba(58,64,71,.92)";ctx.fill();
+      ctx.lineWidth=1.5/z;ctx.strokeStyle=ok?"#cfe0a8":"#8a929b";ctx.stroke();
+      ctx.fillStyle="#fff";ctx.font="bold "+(12/z)+"px Arial";ctx.fillText("+",p.x,p.y+0.5/z);
+      // soldadesca disponible bajo el "+"
+      const sol=popTag(soldAvail(p)),fs=8.5/z;
+      ctx.font="bold "+fs+"px Arial";
+      const tw=ctx.measureText(sol).width;
+      ctx.fillStyle="rgba(20,24,28,.8)";ctx.fillRect(p.x-tw/2-2/z,p.y+r+1/z,tw+4/z,fs+2/z);
+      ctx.fillStyle=ok?"#dfe8c8":"#b7bdc4";ctx.fillText(sol,p.x,p.y+r+1/z+fs/2+1/z);
+    }
+  }
   requestAnimationFrame(draw);
 }
 

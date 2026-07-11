@@ -15,7 +15,7 @@ import {
   hex2rgb, provColor, paintAll, borderIsOuter, setBorderPx, borderIsWasteEdge, paintBorders, updateBordersAround, repaintProvince, roadCurve, drawRoads, fitCanvas, clampPan, armyPos, draw, drawArrow, drawEditorOverlay, NCOL, TCOL, WASTECOL, baseC, baseCtx, borderC, borderCtx, roadsC, canvas, baseData, borderData, clearSelOutline
 } from "./render.js";
 import {
-  canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, armyCount, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime
+  canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, armyCount, armyFood, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, recruitable
 } from "./economy.js";
 import {
   mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, rebuildProvinceData, kmBetween, roadKey, hasRoad, landPath, generateRoads
@@ -124,9 +124,17 @@ window.setArmySupply=function(id,val){
   const a=S.armies.find(x=>x.id===+id);if(!a)return;
   a.supply=Math.max(0,Math.min(100,Math.round(+val)));
   const el=document.getElementById("supLbl");
-  if(el)el.innerHTML="<span>🌾 Forrajeo local <b>"+a.supply+"%</b></span><b>Nacional "+(100-a.supply)+"%</b>";
+  if(el)el.innerHTML="<span>Reserva local <b>"+a.supply+"%</b></span><b>Reserva nacional "+(100-a.supply)+"%</b>";
+  // reparto del consumo en vivo (el desglose por provincia se refresca en el próximo tick)
+  const fm=armyFood(a)*730,f=a.supply/100,r1=v=>Math.round(v*10)/10;
+  const lo=document.querySelector("#supLoc .n"),na=document.querySelector("#supNat .n");
+  if(lo)lo.textContent=r1(fm*f);
+  if(na)na.textContent=r1(fm*(1-f));
 };
-window.selectArmyId=function(id){const a=S.armies.find(x=>x.id===id);if(a){S.selArmy=a;S.selProv=-1;refreshSide()}};
+// reclutar-desde-el-mapa: alterna el modo para la unidad u (clic de nuevo lo apaga); abrir Editar
+window.setRecruitUnit=function(u){S.recruitUnit=(S.recruitUnit===u?null:u);S.armyEdit=false;refreshSide()};
+window.toggleArmyEdit=function(){S.armyEdit=!S.armyEdit;S.recruitUnit=null;refreshSide()};
+window.selectArmyId=function(id){const a=S.armies.find(x=>x.id===id);if(a){S.selArmy=a;S.selProv=-1;S.recruitUnit=null;S.armyEdit=false;refreshSide()}};
 window.raiseLevies=function(id,n){const a=S.armies.find(x=>x.id===id);if(a){raiseLevies(a,n);refreshSide();refreshTop()}};
 window.disbandUnit=function(id,type,n){const a=S.armies.find(x=>x.id===id);if(a){disbandUnit(a,type,n);refreshSide();refreshTop()}};
 
@@ -578,6 +586,14 @@ window.addEventListener("mouseup",e=>{
   const r=canvas.getBoundingClientRect();
   if(e.target!==canvas)return;
   const wx=(e.clientX-r.left-S.panX)/S.zoom, wy=(e.clientY-r.top-S.panY)/S.zoom;
+  // modo RECLUTAR DESDE EL MAPA: clic en una provincia apta recluta allí (auto-rally al ejército
+  // seleccionado); se mantiene el modo para reclutar en varias. No cambia la selección.
+  if(S.recruitUnit){
+    const ix=wx|0,iy=wy|0;
+    const pid=(ix>=0&&iy>=0&&ix<MW&&iy<MH)?S.provIdx[iy*MW+ix]:-1;
+    if(pid>=0&&recruitable(S.provs[pid],S.recruitUnit))tryRecruit(pid,S.recruitUnit,S.selArmy?S.selArmy.prov:null);
+    return;
+  }
   // ejército propio bajo el cursor: hitbox ajustada al sprite pequeño (centrada en el cuerpo,
   // no en los pies) y solo sobre los propios, para no tapar el clic a la provincia
   let hit=null,hd=12*12;
