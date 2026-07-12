@@ -1,5 +1,5 @@
 // economy.js
-import { NPLAY, BUILDINGS, BUILD_JOBS, TERRAINS, UNITS, RES_KEYS, RES_LABEL, LOOT_FRAC, STRATA, EXTRA_GOODS } from "./config.js";
+import { NPLAY, BUILDINGS, BUILD_JOBS, TERRAINS, UNITS, RES_KEYS, RES_LABEL, LOOT_FRAC, STRATA, EXTRA_GOODS, RES_CAT, RES_RAW_CATS } from "./config.js";
 import { S } from "./state.js";
 
 // ---- Ocupación (estilo EU4): la provincia sigue siendo de iure de su dueño (p.owner) pero
@@ -80,20 +80,36 @@ const NEED_BASIC={comida:1.0, materiales:0.35, piedra:0.12, metal:0.12}; // cest
 // Multiplicadores calibrados para que la producción MEDIA de cada básico ≈1.1-1.2× la necesidad (mercados con
 // excedente estructural que llenan su stock → precio diferenciado) manteniendo FUERTE la especialización (bosque
 // exporta madera; montaña, piedra/hierro; llanura fértil, grano pero importa materiales). Así nace el comercio.
-const TERRAIN_PROD={ // producción campesina por terreno y básico (mult; 1.0=autoabastece esa necesidad)
-  vega:    {comida:1.4, materiales:0.5, piedra:0.4, metal:0.4},
-  pradera: {comida:1.3, materiales:0.6, piedra:0.55,metal:0.5},
-  llanura: {comida:1.15,materiales:0.8, piedra:0.7, metal:0.8},
-  colinas: {comida:1.0, materiales:1.0, piedra:1.7, metal:1.4},
-  bosque:  {comida:0.95,materiales:2.6, piedra:0.7, metal:0.9},
-  pantano: {comida:0.92,materiales:2.0, piedra:0.6, metal:0.8},
-  estepa:  {comida:0.97,materiales:0.6, piedra:1.0, metal:1.1},
-  desierto:{comida:0.9, materiales:0.35,piedra:1.6, metal:1.5},
-  montana: {comida:0.9, materiales:0.7, piedra:2.4, metal:2.6},
-  tundra:  {comida:0.9, materiales:1.1, piedra:0.8, metal:0.9},
+// VOCACIÓN DEL TERRENO POR CATEGORÍA (no por bien): con ~37 bienes, el terreno tiene un factor por CATEGORÍA de
+// materia prima (cereal/cultivo/ganado/bosque/extractivo/mar) y cada bien hereda el de la suya (ver RES_CAT). El
+// GRANO (cereal) queda suave (0.9-1.4, no matar de hambre); los industriales fuertes por zona → mueven el comercio.
+const TERRAIN_CAT={ // terreno → {categoría: multiplicador de producción}
+  vega:    {cereal:1.4, cultivo:1.3, ganado:0.8, bosque:0.5, extractivo:0.4},
+  pradera: {cereal:1.3, cultivo:0.9, ganado:1.5, bosque:0.6, extractivo:0.5},
+  llanura: {cereal:1.15,cultivo:1.0, ganado:1.0, bosque:0.8, extractivo:0.75},
+  colinas: {cereal:1.0, cultivo:1.2, ganado:1.0, bosque:1.0, extractivo:1.55},
+  bosque:  {cereal:0.95,cultivo:0.5, ganado:1.0, bosque:2.6, extractivo:0.8},
+  pantano: {cereal:0.92,cultivo:0.6, ganado:0.8, bosque:2.0, extractivo:0.7},
+  estepa:  {cereal:0.97,cultivo:0.5, ganado:1.5, bosque:0.6, extractivo:1.05},
+  desierto:{cereal:0.9, cultivo:0.5, ganado:0.6, bosque:0.35,extractivo:1.55},
+  montana: {cereal:0.9, cultivo:0.4, ganado:0.7, bosque:0.7, extractivo:2.5},
+  tundra:  {cereal:0.9, cultivo:0.2, ganado:0.7, bosque:1.1, extractivo:0.85},
 };
+const MAR_MUL=1.2, MAR_INLAND=0.15; // categoría 'mar' (pescado/sal/ámbar): solo rinde en la COSTA
 const SUBS_STORE_YEARS={comida:0.7}; // capacidad de la despensa de GRANO en años de consumo (× Almacén)
-function terrMul(p,k){const t=TERRAIN_PROD[p.terrain];return t&&t[k]!=null?t[k]:1} // vocación del terreno para el básico k
+function terrMul(p,k){ // vocación del terreno para el bien k, POR CATEGORÍA
+  const cat=RES_CAT[k]; if(!cat)return 1;
+  if(cat==="mar")return p.coastal?MAR_MUL:MAR_INLAND;
+  const t=TERRAIN_CAT[p.terrain]; return (t&&t[cat]!=null)?t[cat]:1;
+}
+function terrCatMul(p,cat){ // igual pero por categoría directa (para la ficha de provincia)
+  if(cat==="mar")return p.coastal?MAR_MUL:MAR_INLAND;
+  const t=TERRAIN_CAT[p.terrain]; return (t&&t[cat]!=null)?t[cat]:1;
+}
+const RESTYPE_RATE=0.35;                                  // producción de la ESPECIALIDAD (resType) por hab/año (× terreno)
+const BASIC_SET=new Set(["comida","materiales","piedra","metal"]); // los 4 básicos universales (los produce toda provincia)
+// ¿el bien g es una MATERIA PRIMA de especialidad? (categoría de campo, y no uno de los 4 básicos universales)
+function isRawSpecialty(g){return !!g&&!BASIC_SET.has(g)&&RES_RAW_CATS.indexOf(RES_CAT[g])>=0}
 function harvestMul(p){ // calidad de la cosecha de este año (determinista por provincia+año)
   const year=Math.floor(S.hour/YR_TICKS);
   let n=(p.id*73856093^year*19349663)|0;n=Math.imul(n^(n>>>13),1274126177);n^=n>>>16;
@@ -744,6 +760,13 @@ function economyTick(dt=1){
         if(buy>0){N.mkt[k]-=buy;const turn=buy*price;N.sWealth.burgues+=turn*BURGUES_MARGIN;N.sWealth.campesino-=turn*BURGUES_MARGIN;bSold[n][k]=(bSold[n][k]||0)+buy}
       }
     }
+    // --- ESPECIALIDAD (resType): la provincia produce SU materia prima (lana/uva/cobre/pescado…) por terreno →
+    // mercado del reino. Es la oferta ANCHA de los bienes nuevos (resType-driven): el campo la produce aunque no
+    // haya fábrica; las fábricas y otras provincias la compran (cadenas). El campesino cobra al venderla (al comprarla). ---
+    if(N&&isRawSpecialty(p.resType)){
+      const g=p.resType, prod=(p.pop||0)*RESTYPE_RATE/YR_TICKS*terrMul(p,g)*(p.morale/100)*dt;
+      if(prod>0)N.mkt[g]=(N.mkt[g]||0)+prod;
+    }
     p.famine=famine;
     if(!famine){const cap=storeCap(p,"comida");const fill=cap>0?p.store.comida/cap:0;p.pop=(p.pop||0)*(1+POP_GROWTH_BASE*(0.4+fill)*dt)}
     if(p.pops&&pop0>0){const f=(p.pop||0)/pop0;for(const k in p.pops)p.pops[k]*=f} // estratos siguen a la población
@@ -814,5 +837,5 @@ function economyTick(dt=1){
 export {
   canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, nationLedger, isOccupied, occupierOf, provLoot, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, recruitable, taxOf, moraleGrowth, MORALE_MIN, MORALE_HOSTILE, SOLD_FRAC, foodCons, foodBalance, foodCap, foodFill, harvestMul, subsProd, subsCons, subsBalance, storeCap, storeOf, SUBS_BASICS, specialistCap, buildJobs, freeLabor, staffing, employedIn, jobsOf, buildingYield, buildSlots, usedSlots, structPPF, JOBS_PER_LEVEL, NEED_PC, NEED_PRICE, FOOD_PRICE, economyTick,
   MKT_GOODS, MKT_TRADE, MKT_PRICE, ensureMarket, seedStrataWealth, flujoBase, repartoRates, taxRateOf, manorOf, canStaffIndustry, bOwnerOf, provEconomyByOwner, ESTATES_BUILD,
-  BASICS, TERRAIN_PROD, terrMul
+  BASICS, TERRAIN_CAT, terrMul, terrCatMul, RES_RAW_CATS
 };

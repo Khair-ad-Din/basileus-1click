@@ -242,6 +242,22 @@ BUILDINGS.vinedo.inputs={uva:0.7};
 BUILDINGS.sederia.inputs={sedacruda:0.4,tinte:0.1};
 // key de los bienes de comercio NUEVOS (todos), para que economy los añada al mercado.
 const EXTRA_GOODS=NEW_GOODS.map(g=>({key:g[0],price:g[4]}));
+// CATEGORÍA de cada bien. El terreno tiene un factor por CATEGORÍA (no por bien), y cada provincia produce su
+// materia prima (resType) al ritmo de la categoría de ese bien. Categorías de MATERIA PRIMA (las produce el
+// campo por terreno): cereal, cultivo, ganado, bosque, extractivo, mar. Las MANUFACTURAS salen de fábricas
+// (cadenas); comercio = entrepôt (especias); moneda = plata/oro (acuñación). Ver TERRAIN_CAT en economy.
+const RES_CAT={
+  comida:"cereal",
+  uva:"cultivo",aceituna:"cultivo",lino:"cultivo",algodon:"cultivo",cana:"cultivo",tinte:"cultivo",sedacruda:"cultivo",
+  lana:"ganado",ganado:"ganado",petroleo:"ganado",cera:"ganado",
+  materiales:"bosque",carbon:"bosque",pieles:"bosque",
+  piedra:"extractivo",metal:"extractivo",cobre:"extractivo",estano:"extractivo",hulla:"extractivo",alumbre:"extractivo",
+  pescado:"mar",sal:"mar",ambar:"mar",
+  pano:"manufactura",lienzo:"manufactura",seda:"manufactura",fustan:"manufactura",aceite:"manufactura",
+  azucar:"manufactura",acero:"manufactura",bronce:"manufactura",armas:"manufactura",vino:"manufactura",cuero:"manufactura",
+  raros:"comercio", plata:"moneda",oro:"moneda",dinero:"moneda",
+};
+const RES_RAW_CATS=["cereal","cultivo","ganado","bosque","extractivo","mar"]; // categorías que produce el CAMPO por terreno
 
 function newBuildings(){const o={};for(const b in BUILDINGS)o[b]=0;return o}
 // up = MANTENIMIENTO por unidad y MES (dinero/comida/recurso). Las levas son baratísimas de sostener
@@ -327,5 +343,5 @@ export {
   GH_PER_SEC, START_DATE, MESES, WAR_LOCK_HOURS, LOOT_FRAC, GOLD_PER_WS, WS_DUCHY_BASE, WS_DUCHY_PER, WS_BATTLE,
   LEVY_RAISE_HOURS, SIEGE_BASE_H, GARR_MIN, GARR_FORT, GARR_CITADEL,
   MW, MH, NATIONS, NPLAY, NEUTRAL, RES_KEYS, RES_STRAT, RES_TRADE, RES_LABEL, RES_SHORT, RES_ICON, RES_DESC, START_STOCK, BUILDINGS, BUILD_JOBS, BUILD_CATS, RES_BUILDING, newBuildings, UNITS, TERRAINS, TERRAIN_KEYS, terrainFx,
-  STRATA, STRATA_INFO, STRATA_SEED, RES_ART, EXTRA_GOODS
+  STRATA, STRATA_INFO, STRATA_SEED, RES_ART, EXTRA_GOODS, RES_CAT, RES_RAW_CATS
 };
