@@ -13,6 +13,14 @@ function provLoot(p){const e=provEconomy(p);return Math.max(0,e.res.dinero||0)*L
  * La población es ahora el motor: paga impuestos, aporta la soldadesca (el cupo
  * movilizable) y crece. Ver [[basileus-pop-economy-vision]]. */
 const SOLD_FRAC=0.02;      // techo de soldadesca = 2% de la población (movilización máxima realista)
+// ---- Mecánicas propias de estratos (Fase D) ----
+// Clero = legitimidad (moral extra donde su peso supera la base ~2%); Nobleza = clase militar
+// (más soldadesca donde su peso supera la base). Efectos por DESVIACIÓN sobre el 2% de referencia,
+// así el clero urbano (catedrales) da moral y la nobleza rural (señoríos) da leva. Mods pequeños.
+const STRATA_BASE=0.02;    // peso de referencia de clero/nobleza (≈2% del reino)
+const CLERO_MORALE=0.5;    // puntos de moral/mes extra por cada +2% de clero sobre la base
+const NOBLE_LEVY=0.6;      // +% de techo de soldadesca por cada +2% de nobleza sobre la base
+function stratFrac(p,k){return (p.pops&&p.pop>0)?Math.max(0,((p.pops[k]||0)/p.pop-STRATA_BASE)/STRATA_BASE):0}
 // Impuestos = MOTOR de los ducados (realista: las arcas medievales vivían del impuesto, no de las
 // minas). Antes la producción base de las ciudades daba "dinero gratis" y eclipsaba al impuesto;
 // ahora las ciudades producen manufacturas y el ducado sale del impuesto + comercio + minas.
@@ -36,6 +44,7 @@ function soldCap(p){
   if(!p||p.wasteland||p.owner>=NPLAY)return 0;
   let bonus=1;
   for(const b in BUILDINGS){const fx=BUILDINGS[b].fx;if(fx.mano)bonus+=fx.mano*lvlOf(p,b)}
+  bonus+=NOBLE_LEVY*stratFrac(p,"nobleza"); // Fase D: la nobleza (clase militar) amplía la leva
   return (p.pop||0)*SOLD_FRAC*bonus;
 }
 function soldAvail(p){return p.sold!=null?p.sold:soldCap(p)} // stock actual (o el techo si aún no se sembró)
@@ -286,6 +295,7 @@ const MORALE_MIN=15;        // suelo de moral (una provincia hostil no cae por d
 const MORALE_HOSTILE=2.0;   // moral/mes que drena cada provincia vecina enemiga en guerra
 function moraleGrowth(p){   // crecimiento de moral/mes por los edificios de moral de ESTA provincia
   let g=0;for(const b in BUILDINGS){const fx=BUILDINGS[b].fx;if(fx.moral)g+=fx.moral*lvlOf(p,b)}
+  g+=CLERO_MORALE*stratFrac(p,"clero"); // Fase D: el clero legitima → moral extra donde abunda (catedrales)
   return g;
 }
 function provEconomy(p){
