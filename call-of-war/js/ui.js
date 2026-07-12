@@ -1,7 +1,7 @@
 // ui.js
 import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, RES_DESC, RES_ICON, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, WAR_LOCK_HOURS, terrainFx, STRATA, STRATA_INFO } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildingYield, buildJobs, buildMax, buildSlots, canAfford, costFor, employedIn, foodBalance, foodCap, foodCons, foodFill, harvestMul, subsProd, subsCons, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationEconomy, nationLedger, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, MKT_GOODS, MKT_PRICE } from "./economy.js";
+import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildingYield, buildJobs, buildMax, buildSlots, canAfford, costFor, employedIn, foodBalance, foodCap, foodCons, foodFill, harvestMul, subsProd, subsCons, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationEconomy, nationLedger, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, MKT_GOODS, MKT_TRADE, MKT_PRICE } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
 import { canvas, clampPan } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
@@ -973,7 +973,7 @@ function refreshEstates(){
   h+="<div style='margin-top:12px;border-top:1px solid #2a2f36;padding-top:8px'>"+
      "<div style='font-size:12px;color:var(--title);margin-bottom:4px'>🏪 Mercado nacional</div>"+
      "<div style='display:flex;font-size:10px;color:#7a828b;padding:0 1px 2px'><span style='flex:1'></span><span style='width:60px;text-align:right'>stock</span><span style='width:80px;text-align:right'>comercio/mes</span><span style='width:72px;text-align:right'>estado</span></div>";
-  for(const g of MKT_GOODS){
+  for(const g of MKT_TRADE){
     const mi=info[g]||{};
     const tag=mi.short?"<span style='color:var(--neg)'>escaso</span>":"<span style='color:var(--pos)'>abastecido</span>";
     // precio dinámico: rojo si está por encima del de referencia (escasez), verde si por debajo (barato)

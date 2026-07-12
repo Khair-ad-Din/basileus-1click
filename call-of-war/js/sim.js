@@ -1,7 +1,7 @@
 // sim.js
 import { BUILDINGS, GARR_CITADEL, GARR_FORT, GARR_MIN, GOLD_PER_WS, LEVY_RAISE_HOURS, NATIONS, NEUTRAL, NPLAY, RES_BUILDING, RES_KEYS, SIEGE_BASE_H, START_STOCK, TERRAINS, UNITS, WAR_LOCK_HOURS, WS_BATTLE, WS_DUCHY_BASE, WS_DUCHY_PER } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyDef, armyHp, armySpd, buildBlock, buildJobs, buildMax, canAfford, canStaffIndustry, costFor, economyTick, foodFill, storeCap, SUBS_BASICS, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor, seedStrataWealth } from "./economy.js";
+import { armyAtk, armyCount, armyDef, armyHp, armySpd, bOwnerOf, buildBlock, buildJobs, buildMax, buildSlots, canAfford, canStaffIndustry, costFor, economyTick, ESTATES_BUILD, foodFill, storeCap, SUBS_BASICS, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor, usedSlots, seedStrataWealth } from "./economy.js";
 import { buildDuchies, hasRoad, roadLvl, isDuchyCap, kmBetween, roadKey } from "./mapgen.js";
 import { drawRoads, paintBorders, repaintProvince } from "./render.js";
 import { saveGame } from "./save.js";
@@ -10,6 +10,10 @@ import { log, refreshBuildBar, refreshSide, refreshTop } from "./ui.js";
 // El núcleo económico/demográfico del tick vive en economy.js (economyTick), sin DOM, para
 // compartirlo con el arnés de análisis. Aquí quedan lo militar, la construcción y el movimiento.
 
+function seedEstateBld(p,b,estate){ // E2: siembra 1 nivel de b propiedad de estate, si cabe y no existe ya
+  if(lvlOf(p,b)>=1||usedSlots(p)>=buildSlots(p))return;
+  p.buildings[b]=(p.buildings[b]||0)+1;(p.bOwner||(p.bOwner={}))[b]=estate;
+}
 function setupNations(){
   S.nations=NATIONS.map((n,i)=>({idx:i,res:Object.fromEntries(RES_KEYS.map(k=>[k,START_STOCK[k]||0])),
     ai:true,capital:-1,alive:!n.neutral,lastAI:0,startProvs:0,
@@ -20,8 +24,15 @@ function setupNations(){
   for(const p of S.provs)if(!p.wasteland){
     // fábrica del resType SOLO donde la provincia pueda dotarla (los núcleos poblados); las provincias
     // demasiado pequeñas quedan agrícolas y no arruinan a los reinos extensos con fábricas ociosas.
-    if(p.owner<NPLAY){p.sold=soldCap(p);const b=RES_BUILDING[p.resType];if(b&&canStaffIndustry(p,b))p.buildings[b]=1;}
-    p.store={};for(const k of SUBS_BASICS)p.store[k]=storeCap(p,k)*0.6; // reservas locales iniciales por bien básico
+    if(p.owner<NPLAY){
+      p.sold=soldCap(p);p.bOwner=p.bOwner||{};
+      const b=RES_BUILDING[p.resType];if(b&&canStaffIndustry(p,b))p.buildings[b]=1;   // fábrica de la CORONA (resType)
+      // E2: base inicial por estamento (lever de nivelado). Urbano: el burgués tiene su comercio (INGRESO)
+      // y el clero su templo (moral + COSTE); rural: la nobleza su cuartel (leva + COSTE). Todo tunable.
+      if(p.urban){seedEstateBld(p,"mercado","burgues");seedEstateBld(p,"templo","clero");}
+      else seedEstateBld(p,"cuartel","nobleza");
+    }
+    p.store={};for(const k of SUBS_BASICS)p.store[k]=storeCap(p,k)*0.6; // despensa de grano inicial
   }
   // capitales históricas (marcadas por las ciudades del mapa) y tropas iniciales
   for(let n=0;n<NPLAY;n++){
@@ -339,16 +350,67 @@ function advanceSiege(p,by,atkList){
     if(by===S.player||p.owner===S.player)log("Cae el fuerte de "+p.name+" tras el asedio.");
   }
 }
+/* ---- Construcción autónoma de los ESTAMENTOS (E2) ----
+ * Cada estamento levanta SU tipo de edificio en las provincias donde tiene presencia, pagándolo de su
+ * riqueza (compra los materiales a precio nominal). Compiten por el mismo hueco de obra que el rey (una
+ * obra por provincia). Clero → iglesias + viñedos; Nobleza → industria BASE + militar; Burgués →
+ * industria de LUJO + comercio/infraestructura. El dueño se fija al completar la obra (hourTick). */
+const ESTATE_BUILDS={
+  clero:["catedral","templo","vinedo","universidad"],
+  nobleza:["fortaleza","cuartel","granja","aserradero","cantera","mina","minaPlata","minaOro"],
+  burgues:["telar","sederia","especiar","salina","lonja","mercado","gremio","puerto","almacen"],
+};
+// precio nominal de los insumos de obra (ducados/unidad) para que el estamento valore el coste y lo pague de su bolsillo
+const BUILD_MAT_PRICE={dinero:1,materiales:1,piedra:1,metal:2,comida:0.8,pano:2.2,vino:2.2,sal:1.6,seda:5,raros:4,petroleo:2};
+const ESTATE_BUILD_KEEP=4; // colchón: solo construyen si su riqueza supera KEEP× el coste (invierten el excedente, no el principal)
+function estateCostDinero(cost){let t=0;for(const k in cost)t+=cost[k]*(BUILD_MAT_PRICE[k]||1);return t}
+function pickEstateBuild(p,e,N){ // primer edificio del repertorio del estamento que sea construible y asequible aquí
+  for(const b of ESTATE_BUILDS[e]){
+    if(lvlOf(p,b)>0&&bOwnerOf(p,b)!==e)continue;          // ya existe y es de otro (o de la corona) → no lo toco
+    if(lvlOf(p,b)>=buildMax(p,b))continue;
+    const B=BUILDINGS[b];
+    if(B.coastal&&!p.coastal)continue;
+    if(B.urban&&!p.urban)continue;
+    if(B.resReq&&p.resType!==B.resReq)continue;
+    if(usedSlots(p)>=buildSlots(p))continue;             // sin hueco
+    if(B.req){let ok=true;for(const r in B.req)if(lvlOf(p,r)<B.req[r]){ok=false;break}if(!ok)continue}
+    const fx=B.fx,economic=fx.prodAdd||fx.goldAdd||fx.prodMul; // productivos: solo donde se pueda dotar
+    if(economic&&freeLabor(p)<buildJobs(p)+JOBS_PER_LEVEL)continue;
+    // solo invierten el EXCEDENTE: guardan un colchón (KEEP× el coste) para seguir comiendo y no arruinarse
+    if(N.sWealth[e]<estateCostDinero(costFor(p,b))*ESTATE_BUILD_KEEP)continue;
+    return b;
+  }
+  return null;
+}
+function estateBuild(){
+  for(const p of S.provs){
+    if(p.owner>=NPLAY||p.wasteland||isOccupied(p)||p.buildQueue.length)continue; // provincia libre de obra
+    if(usedSlots(p)>=buildSlots(p)||!p.pops)continue;
+    const N=S.nations[p.owner];if(!N||!N.sWealth)continue;
+    // el estamento con MÁS presencia (población) en la provincia intenta primero
+    const order=ESTATES_BUILD.slice().sort((a,b)=>(p.pops[b]||0)-(p.pops[a]||0));
+    for(const e of order){
+      if(!(p.pops[e]>0))continue;                        // sin presencia, no construye aquí
+      const b=pickEstateBuild(p,e,N);
+      if(!b)continue;
+      N.sWealth[e]-=estateCostDinero(costFor(p,b));      // paga la obra de su riqueza
+      p.buildQueue.push({b,hoursLeft:timeFor(p,b),owner:e});
+      break;                                             // una obra por provincia
+    }
+  }
+}
 function hourTick(){
   S.hour++;
   economyTick(); // secciones 0/1/1b: movilizados, economía+necesidades por nación, comida/población/soldadesca (sin DOM)
+  if(S.hour%24===0)estateBuild(); // E2: los estamentos levantan su tipo de edificio con su riqueza (1 vez/día)
   // 2. construcción
   for(const p of S.provs){
     if(p.buildQueue.length){
       const q=p.buildQueue[0];
       if(--q.hoursLeft<=0){
         p.buildings[q.b]++;p.buildQueue.shift();
-        if(p.owner===S.player)log(BUILDINGS[q.b].label+" nivel "+p.buildings[q.b]+" terminada en "+p.name+".");
+        if(q.owner){(p.bOwner||(p.bOwner={}))[q.b]=q.owner} // E2: fija el dueño (estamento) al completar la obra
+        if(p.owner===S.player&&!q.owner)log(BUILDINGS[q.b].label+" nivel "+p.buildings[q.b]+" terminada en "+p.name+".");
       }
     }
     if(p.recruitQueue.length){

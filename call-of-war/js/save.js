@@ -76,8 +76,8 @@ function saveGame(){
   try{
     const s={v:4,t:Date.now(),hour:S.hour,player:S.player,armyIdSeq:S.armyIdSeq,
       wars:[...S.wars],truces:[...S.truces],roads:[...S.roads],roadQueue:S.roadQueue,reports:S.reports,
-      nations:S.nations.map(x=>({res:x.res,ai:x.ai,capital:x.capital,alive:x.alive,startProvs:x.startProvs,sWealth:x.sWealth,mkt:x.mkt,taxRate:x.taxRate})),
-      provs:S.provs.map(p=>[p.owner,Math.round(p.morale*10)/10,p.buildings,p.buildQueue,p.recruitQueue,Math.round(p.pop||0),Math.round(p.sold||0),roundStore(p.store),p.occupier==null?-1:p.occupier,p.siege||null]),
+      nations:S.nations.map(x=>({res:x.res,ai:x.ai,capital:x.capital,alive:x.alive,startProvs:x.startProvs,sWealth:x.sWealth,sRes:x.sRes,mkt:x.mkt,taxRate:x.taxRate})),
+      provs:S.provs.map(p=>[p.owner,Math.round(p.morale*10)/10,p.buildings,p.buildQueue,p.recruitQueue,Math.round(p.pop||0),Math.round(p.sold||0),roundStore(p.store),p.occupier==null?-1:p.occupier,p.siege||null,p.bOwner||null]),
       armies:S.armies.map(a=>({id:a.id,nation:a.nation,prov:a.prov,units:a.units,src:a.src,path:a.path,legDone:a.legDone,legTotal:a.legTotal,supply:a.supply})),
       mapCheck:S.provs.length+"|"+S.provs[0].name};
     localStorage.setItem("basileus_save",JSON.stringify(s));
@@ -109,6 +109,7 @@ function continueGame(){
     if(d[7]!=null)p.store=(typeof d[7]==="object")?d[7]:{comida:d[7]};  // reservas locales por bien (v3: era un escalar de comida)
     p.occupier=d[8]!=null?d[8]:-1; // control militar (ocupación EU4)
     p.siege=d[9]||null;            // asedio en curso {by,need,prog}
+    p.bOwner=d[10]||{};            // E2: dueño de cada edificio por estamento (vacío = todo corona)
     seedStrata(p);                 // Fase A: re-derivar estratos con la población cargada
   });
   syncDuchyOcc(); // recomputar occBy de cada ducado a partir de la ocupación cargada
