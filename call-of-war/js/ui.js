@@ -7,6 +7,12 @@ import { canvas, clampPan } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
 import { armiesIn, atWar, duchyValue, fortGarrison, occupiedDuchiesBy, tryBuild, tryRecruit, tryRoad, warscore } from "./sim.js";
 
+// Metadata de las CATEGORÍAS de bienes (orden, icono, etiqueta), reutilizada por el Mercado, la Tesorería y
+// el panel del reino para agrupar los bienes por categoría. 'moneda' (Ducados) va aparte (su propia pestaña).
+const RESCAT_META=[["cereal","🌾","Cereal"],["cultivo","🍇","Cultivo"],["ganado","🐑","Ganadería"],
+  ["bosque","🪵","Bosque"],["extractivo","⛏","Minería"],["mar","🐟","Mar"],
+  ["manufactura","🏭","Manufacturas"],["comercio","🌶","Comercio lejano"]];
+
 function log(msg){
   const el=document.getElementById("log");
   const d=document.createElement("div");
@@ -556,13 +562,17 @@ function tsyInv(items){ // pestaña INVENTARIO: el resto de recursos, en balance
     const byRes=tsyAgg(inv,"res");
     h+="<div class='trow thead'><span>Recurso</span><span>Stock · balance/mes</span></div>";
     let any=false;
-    for(const k of RES_KEYS){
-      if(k==="dinero")continue;
+    const rowOf=k=>{
       const net=(byRes.find(r=>r.key===k)||{amt:0}).amt,stock=R[k]||0;
-      if(Math.abs(net)<0.005&&stock<0.5)continue;
+      if(Math.abs(net)<0.005&&stock<0.5)return"";
       any=true;
-      h+="<div class='trow click' onclick=\"treasuryDrill('"+k+"')\"><span>"+resImg(k)+" "+RES_LABEL[k]+" <span class='tarrow'>›</span></span>"+
+      return "<div class='trow click' onclick=\"treasuryDrill('"+k+"')\"><span>"+resImg(k)+" "+RES_LABEL[k]+" <span class='tarrow'>›</span></span>"+
         "<b><span class='tstock'>"+fmt(stock)+"</span> <span class='"+(net<0?"neg":"pos")+"'>"+(net>=0?"+":"")+n1(net)+"</span></b></div>";
+    };
+    // agrupado POR CATEGORÍA (cereal, cultivo, ganadería, bosque, minería, mar, manufacturas, comercio)
+    for(const[cat,ico,lab]of RESCAT_META){
+      const rows=RES_KEYS.filter(k=>k!=="dinero"&&RES_CAT[k]===cat).map(rowOf).filter(Boolean).join("");
+      if(rows)h+="<div class='tsec'>"+ico+" "+lab+"</div>"+rows;
     }
     if(!any)h+="<div class='trow tdim'>Sin recursos ni movimientos.</div>";
   }else if(path.length===1){
@@ -626,10 +636,18 @@ function refreshMetricsLog(){
   let h="<div class='mlog'><span class='sh' style='background:"+N.color+"'></span>"+
     "<div><b>"+N.name+"</b><div style='color:#9aa3ad;font-size:11px'>"+ne.provs+" provincias · "+uiIcon('poblacion')+" "+fmtPop(realmPop)+"<br>"+ne.troops+" tropas</div></div></div>";
   h+="<h3>Tesorería del reino <span style='color:#7a828b;font-weight:normal'>/mes</span></h3>";
-  const ks=Object.keys(ne.res).filter(k=>Math.abs(ne.res[k])>0.05).sort((a,b)=>ne.res[b]-ne.res[a]);
-  if(!ks.length)h+="<div class='kpi'><span class='dim' style='color:#7a828b'>Sin balance neto.</span></div>";
-  for(const k of ks){const v=ne.res[k];
-    h+="<div class='kpi'><span>"+resImg(k)+" "+RES_LABEL[k]+"</span><span class='v "+(v<0?"neg":"pos")+"'>"+(v>=0?"+":"")+n1(v)+"</span></div>";}
+  const bal=ne.res;
+  const kpiRow=(k,v)=>"<div class='kpi'><span>"+resImg(k)+" "+RES_LABEL[k]+"</span><span class='v "+(v<0?"neg":"pos")+"'>"+(v>=0?"+":"")+n1(v)+"</span></div>";
+  let anyBal=false;
+  if(Math.abs(bal.dinero||0)>0.05){h+=kpiRow("dinero",bal.dinero);anyBal=true;} // Ducados primero
+  for(const[cat,ico,lab]of RESCAT_META){ // el resto AGRUPADO por categoría
+    const ks=RES_KEYS.filter(k=>k!=="dinero"&&RES_CAT[k]===cat&&Math.abs(bal[k]||0)>0.05).sort((a,b)=>bal[b]-bal[a]);
+    if(!ks.length)continue;
+    anyBal=true;
+    h+="<div class='kpicat'>"+ico+" "+lab+"</div>";
+    for(const k of ks)h+=kpiRow(k,bal[k]);
+  }
+  if(!anyBal)h+="<div class='kpi'><span class='dim' style='color:#7a828b'>Sin balance neto.</span></div>";
   const mine=S.armies.filter(a=>a.nation===S.player);
   h+="<h3>Ejércitos desplegados <span style='color:#7a828b;font-weight:normal'>"+mine.length+"</span></h3>";
   if(!mine.length)h+="<div class='kpi'><span style='color:#7a828b'>Ninguno. Recluta en ⚔ Ejército.</span></div>";
