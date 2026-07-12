@@ -1,5 +1,5 @@
 // ui.js
-import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, RES_DESC, RES_ICON, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, WAR_LOCK_HOURS, terrainFx, STRATA, STRATA_INFO } from "./config.js";
+import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, RES_DESC, RES_ICON, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, WAR_LOCK_HOURS, terrainFx, STRATA, STRATA_INFO, RES_ART } from "./config.js";
 import { S } from "./state.js";
 import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildingYield, buildJobs, buildMax, buildSlots, canAfford, costFor, employedIn, foodBalance, foodCap, foodCons, foodFill, harvestMul, subsProd, subsCons, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationEconomy, nationLedger, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, MKT_GOODS, MKT_TRADE, MKT_PRICE, BASICS, terrMul } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
@@ -116,15 +116,15 @@ function fmtDur(h){ // horas de juego -> texto legible
 function uiIcon(name,big){return "<img class='uic"+(big?" big":"")+"' src='assets/ui/"+name+".png' alt=''>"}
 // icono de recurso: sprite de assets/res para los 11 bienes de stock; emoji para plata/oro (sin sprite)
 function resImg(k){
-  return RES_KEYS.includes(k)
+  return RES_ART.has(k) // ¿tiene sprite .png? si no, se pinta con su emoji (bienes nuevos)
     ?"<img class='ric' src='assets/res/"+k+".png' alt='"+(RES_LABEL[k]||k)+"' title='"+(RES_LABEL[k]||k)+"'>"
-    :(RES_ICON[k]||"");
+    :"<span class='ric ricEmoji' title='"+(RES_LABEL[k]||k)+"'>"+(RES_ICON[k]||"")+"</span>";
 }
 function buildResBar(){
   const bar=document.getElementById("resbar");
   if(bar.dataset.built)return;
   // cada bien: sprite + stock actual + balance mensual (+/-) inline
-  const cell=(k,cls)=>"<span class='res "+cls+"'><img class='ric' src='assets/res/"+k+".png' alt='"+RES_LABEL[k]+"' title='"+RES_LABEL[k]+"'>"+
+  const cell=(k,cls)=>"<span class='res "+cls+"'>"+resImg(k)+
     "<b id='r_"+k+"'>0</b><small class='rd' id='d_"+k+"'></small></span>";
   let h=RES_STRAT.map(k=>cell(k,"strat")).join("");
   h+="<span class='sep'></span>";

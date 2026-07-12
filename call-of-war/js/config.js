@@ -153,6 +153,94 @@ const RES_BUILDING={comida:"granja",materiales:"aserradero",piedra:"cantera",met
   petroleo:"yeguada",raros:"especiar",pano:"telar",vino:"vinedo",sal:"salina",seda:"sederia",
   plata:"minaPlata",oro:"minaOro",dinero:"mercado"};
 const BUILD_CATS=[["eco","Economía"],["mil","Militar"],["inf","Infraestructura"],["uni","Obras únicas"]];
+
+/* ===================== RECURSOS HISTÓRICOS AMPLIADOS (bienes nuevos + cadenas) =====================
+ * Ampliación a ~37 bienes con distribución HISTÓRICA (zonas en mapgen) y CADENAS de producción (la fábrica
+ * de un bien derivado consume su materia prima del mercado: lana→paño, uva→vino, cobre+estaño+carbón→bronce,
+ * hierro+carbón→acero→armas, etc.). Iconos EMOJI (ver RES_ART: qué bienes tienen sprite .png y cuáles no).
+ * Los ESTRATÉGICOS (metales, combustibles, armas, alumbre) los stockea la corona (RES_KEYS → resbar); los de
+ * consumo (textiles, alimentos, lujos) viven solo en el MERCADO. Todos comercian (ver MKT_GOODS en economy). */
+// key, etiqueta, abrev, icono(emoji), precio ref, estratégico?(corona lo stockea), descripción
+const NEW_GOODS=[
+  ["cobre","Cobre","Cob","🟠",3.0,true,"Metal para el bronce y la moneda. De Falun (Suecia), el Tirol, Eslovaquia y Hungría."],
+  ["estano","Estaño","Est","🔩",4.0,true,"Aliado del cobre para el bronce. Casi monopolio de Cornualles y Devon."],
+  ["carbon","Carbón vegetal","Cav","⚫",1.4,true,"Combustible de la metalurgia (acero, bronce, vidrio). Se hace en las carboneras del bosque."],
+  ["hulla","Hulla","Hul","⬛",1.0,true,"Carbón mineral: calefacción, forja, sal blanca y cal. De Newcastle, Lieja, Gales y Silesia."],
+  ["acero","Acero","Ace","⚙️",6.0,true,"Hierro afinado con carbón vegetal: la materia de las buenas armas. Estiria, Milán, Toledo, Solingen."],
+  ["bronce","Bronce","Bro","🔔",6.0,true,"Aleación de cobre y estaño: campanas y, sobre todo, cañones. Núremberg, Malinas, Milán."],
+  ["armas","Armas","Arm","⚔️",9.0,true,"Espadas, arneses y artillería de las grandes armerías. Necesita acero."],
+  ["alumbre","Alumbre","Alu","⚗️",4.5,true,"Mordiente imprescindible para fijar los tintes del paño. Focea (Anatolia) y Tolfa (Lacio)."],
+  ["lana","Lana","Lan","🐑",1.4,false,"Vellón de oveja, materia del paño. Inglaterra (Cotswolds), Castilla (merino), Aragón."],
+  ["lino","Lino","Lin","🌿",1.2,false,"Fibra vegetal, materia del lienzo. Norte de Francia, Flandes, Alemania, Báltico, Egipto."],
+  ["lienzo","Lienzo","Lie","🧺",2.2,false,"Tejido de lino de uso diario. Westfalia, Champaña, Suabia, Egipto."],
+  ["sedacruda","Seda cruda","SCr","🧶",3.5,false,"Capullos de gusano, materia de la seda. Calabria, Granada, Grecia, Levante, Caspio."],
+  ["algodon","Algodón","Alg","☁️",1.6,false,"Fibra del fustán. Levante, Anatolia, Egipto, Sicilia."],
+  ["fustan","Fustán","Fus","🪡",2.2,false,"Tejido barato de algodón y lino. Augsburgo, Ulm, Milán."],
+  ["tinte","Tinte","Tin","🎨",3.0,false,"Pastel (azul) y grana (rojo) para teñir paño y seda. Toulouse, Turingia, Mediterráneo."],
+  ["uva","Uva","Uva","🍇",0.8,false,"Fruto de la vid, materia del vino. Iberia, Francia, Italia, Rin, Grecia, Hungría."],
+  ["aceituna","Aceituna","Ait","🫒",0.9,false,"Fruto del olivo, materia del aceite. Todo el Mediterráneo."],
+  ["aceite","Aceite","Aei","🫙",2.4,false,"Aceite de oliva: cocina, lámparas y jabón. Andalucía, Puglia, Grecia, Levante, Magreb."],
+  ["pescado","Pescado","Pes","🐟",1.5,false,"Bacalao y arenque salados, alimento de vigilia. Mar del Norte, Noruega, Báltico."],
+  ["cana","Caña","Can","🎋",0.9,false,"Caña de azúcar, materia del azúcar. Chipre, Sicilia, Valencia, Levante, Egipto."],
+  ["azucar","Azúcar","Azu","🍬",5.0,false,"Dulce de lujo de los ingenios. Chipre, Sicilia, Valencia, Madeira."],
+  ["pieles","Pieles","Pie","🦫",4.5,false,"Marta, armiño y ardilla: lujo del norte. Rusia (Nóvgorod), Escandinavia, Báltico."],
+  ["cuero","Cuero","Cue","👞",2.0,false,"Piel curtida para calzado y arneses. Córdoba (cordobán), Marruecos, Balcanes, Hungría."],
+  ["ganado","Ganado","Gan","🐄",1.2,false,"Reses en pie, materia del cuero y la carne. Hungría, Balcanes, Irlanda, Dinamarca, Magreb."],
+  ["cera","Cera","Cer","🕯️",2.5,false,"Cera de abeja para las velas de iglesia y los sellos. Rusia, Polonia, Báltico, Magreb."],
+  ["ambar","Ámbar","Amb","🟡",5.0,false,"Resina fósil para rosarios y joyas. Costa del Báltico (Prusia)."],
+];
+for(const[k,label,short,icon,price,strat,desc]of NEW_GOODS){
+  RES_LABEL[k]=label; RES_SHORT[k]=short; RES_ICON[k]=icon; RES_DESC[k]=desc;
+  if(strat){RES_KEYS.push(k); RES_STRAT.push(k); START_STOCK[k]=0;}
+}
+// Bienes con SPRITE .png (assets/res/); los demás se pintan con su emoji (RES_ICON). El resbar y resImg lo usan.
+const RES_ART=new Set(["dinero","comida","materiales","piedra","metal","petroleo","raros","pano","vino","sal","seda"]);
+// Fábricas de los bienes nuevos. inputs = CADENA: la fábrica consume esos bienes del mercado por nivel (ver economy).
+// key, etiqueta, icono, bien que produce, inputs(cadena) | null, empleos, ¿coste con piedra?
+const NEW_BLDGS=[
+  // --- extractores de materia prima (sin cadena) ---
+  ["minaCobre","Mina de cobre","🟠","cobre",null,600],
+  ["minaEstano","Mina de estaño","🔩","estano",null,600],
+  ["minaHulla","Mina de hulla","⬛","hulla",null,550],
+  ["alumbrera","Alumbrera","⚗️","alumbre",null,500],
+  ["majada","Majada","🐑","lana",null,450],
+  ["linar","Linar","🌿","lino",null,500],
+  ["morera","Criadero de seda","🧶","sedacruda",null,450],
+  ["algodonal","Algodonal","☁️","algodon",null,500],
+  ["tintoreria","Tintorería","🎨","tinte",null,400],
+  ["majuelo","Majuelo","🍇","uva",null,600],
+  ["olivar","Olivar","🫒","aceituna",null,600],
+  ["canaveral","Cañaveral","🎋","cana",null,550],
+  ["pesqueria","Pesquería","🐟","pescado",null,500],
+  ["cazadero","Coto de caza","🦫","pieles",null,350],
+  ["dehesa","Dehesa","🐄","ganado",null,450],
+  ["colmenar","Colmenar","🕯️","cera",null,300],
+  ["ambarera","Ambarera","🟡","ambar",null,300],
+  // --- manufacturas (CADENAS: consumen su materia) ---
+  ["carbonera","Carbonera","⚫","carbon",{materiales:0.5},400],
+  ["aceria","Acería","⚙️","acero",{metal:0.5,carbon:0.4},500],
+  ["fundibronce","Fundición de bronce","🔔","bronce",{cobre:0.4,estano:0.2,carbon:0.3},500],
+  ["armeria","Armería","⚔️","armas",{acero:0.6},450],
+  ["telarLino","Telar de lino","🧺","lienzo",{lino:0.6},500],
+  ["fustaneria","Fustanería","🪡","fustan",{algodon:0.4,lino:0.3},500],
+  ["almazara","Almazara","🫙","aceite",{aceituna:0.7},500],
+  ["ingenio","Ingenio azucarero","🍬","azucar",{cana:0.7},550],
+  ["curtiduria","Curtiduría","👞","cuero",{ganado:0.5},450],
+];
+for(const[k,label,icon,prod,inputs,jobs]of NEW_BLDGS){
+  const B={label,cat:"eco",icon,max:3,time:2880,cost:{materiales:500,dinero:300},
+    fx:{prodAdd:{[prod]:0.6}},up:{dinero:3},
+    desc:label+": produce "+RES_LABEL[prod]+(inputs?" (consume del mercado "+Object.keys(inputs).map(x=>RES_LABEL[x]).join(" + ")+")":".")};
+  if(inputs)B.inputs=inputs; // CADENA de producción (la consume economy)
+  BUILDINGS[k]=B; BUILD_JOBS[k]=jobs; RES_BUILDING[prod]=k;
+}
+// Cadenas en las fábricas de lujo EXISTENTES: el paño necesita lana (+alumbre), el vino uva, la seda seda cruda (+tinte).
+BUILDINGS.telar.inputs={lana:0.5,alumbre:0.05};
+BUILDINGS.vinedo.inputs={uva:0.7};
+BUILDINGS.sederia.inputs={sedacruda:0.4,tinte:0.1};
+// key de los bienes de comercio NUEVOS (todos), para que economy los añada al mercado.
+const EXTRA_GOODS=NEW_GOODS.map(g=>({key:g[0],price:g[4]}));
+
 function newBuildings(){const o={};for(const b in BUILDINGS)o[b]=0;return o}
 // up = MANTENIMIENTO por unidad y MES (dinero/comida/recurso). Las levas son baratísimas de sostener
 // (campesinos armados) pero su coste real es la POBLACIÓN: la soldadesca sale de los pops y las bajas
@@ -237,5 +325,5 @@ export {
   GH_PER_SEC, START_DATE, MESES, WAR_LOCK_HOURS, LOOT_FRAC, GOLD_PER_WS, WS_DUCHY_BASE, WS_DUCHY_PER, WS_BATTLE,
   LEVY_RAISE_HOURS, SIEGE_BASE_H, GARR_MIN, GARR_FORT, GARR_CITADEL,
   MW, MH, NATIONS, NPLAY, NEUTRAL, RES_KEYS, RES_STRAT, RES_TRADE, RES_LABEL, RES_SHORT, RES_ICON, RES_DESC, START_STOCK, BUILDINGS, BUILD_JOBS, BUILD_CATS, RES_BUILDING, newBuildings, UNITS, TERRAINS, TERRAIN_KEYS, terrainFx,
-  STRATA, STRATA_INFO, STRATA_SEED
+  STRATA, STRATA_INFO, STRATA_SEED, RES_ART, EXTRA_GOODS
 };

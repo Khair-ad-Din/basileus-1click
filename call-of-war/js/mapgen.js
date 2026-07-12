@@ -511,47 +511,74 @@ function inZones(zones,lon,lat){for(const[la0,la1,lo0,lo1]of zones)if(lat>=la0&&
 // históricas, caballos en las llanuras ganaderas. Fuera de esas zonas la provincia es agrícola pura
 // (resType=null). Así se acaba el "vino en Rusia": la distribución es histórica y por eso los bienes escasean
 // donde no se producen → nace el comercio. (Ver [[basileus-pop-economy-vision]].)
-const RES_ZONES={
-  // VINO: Iberia, S/O de Francia, Italia, Rin-Mosela, Panonia/Balcanes, Egeo/Creta, Levante costero
-  vino:[[36,43.5,-9,3.5],[43,49,-2.5,6.5],[37,46.5,7,18.5],[47.8,51.5,6,9.2],[44.5,48.5,15.5,23],[34.5,41.5,19,28],[31,37,32,37.5]],
-  // SEDA: Norte de Italia (Lucca/Florencia), Calabria/Sicilia, Granada/Valencia, Grecia/Egeo, Levante, Caspio
-  seda:[[42.8,46,8.5,13.2],[36.8,40,14.5,17.2],[36.3,40,-5.5,0.3],[36.5,41.5,20,29.5],[31,37,33.5,38.5],[36,42.5,46,53]],
-  // ESPECIAS (raros): NO se producen aquí; llegan a los ENTREPÔTS — Venecia, Génova, Alejandría, Levante, Bursa, Mar Negro
-  raros:[[45,46.4,11.8,13.8],[43.3,45,7.8,10.2],[29,32,28,32.8],[31,36.2,33.8,38.5],[38,41.6,26,31],[40,46,32.5,41.5]],
-  // SAL: Atlántico (Bourgneuf/Setúbal), Mediterráneo (Ibiza/Trapani/Chipre), Centroeuropa (Salzburgo/Wieliczka), Adriático, Crimea, Cheshire
-  sal:[[37,47.5,-10,-1],[34,40,-1.5,15.5],[46.5,51,12,21.5],[43,46.5,12,16.8],[43.5,47.5,31,39],[52,54.8,-3.3,-1.6],[31,37,32,37.5]],
-  // CABALLOS (petroleo): llanura panónica, Polonia-Lituania, Anatolia (Capadocia), Andalucía, Magreb (berberisco), estepa póntica
-  petroleo:[[44.5,48.8,15,23],[49,56,17,29.5],[36.5,40.5,30.5,37.5],[36,39.8,-7.5,-1],[28,36,-9.5,11.5],[43.5,50,28,47]],
+// Catálogo de ZONAS históricas de producción por bien: z = cajas [latMin,latMax,lonMin,lonMax]; terr = terrenos
+// permitidos (o null = cualquier tierra); coast = solo costa; urban = manufactura de ciudad (se prefiere en urbes).
+const RES_SPEC={
+  // ---- bienes de comercio (materia prima y lujos del campo) ----
+  vino:{z:[[36,43.5,-9,3.5],[43,49,-2.5,6.5],[37,46.5,7,18.5],[47.8,51.5,6,9.2],[44.5,48.5,15.5,23],[34.5,41.5,19,28],[31,37,32,37.5]],terr:["colinas","llanura","vega","pradera"]},
+  uva:{z:[[36,43.5,-9,3.5],[43,49,-2.5,6.5],[37,46.5,7,18.5],[47.8,51.5,6,9.2],[44.5,48.5,15.5,23],[34.5,41.5,19,28]],terr:["colinas","llanura","vega","pradera"]},
+  seda:{z:[[42.8,46,8.5,13.2],[36.8,40,14.5,17.2],[36.3,40,-5.5,0.3],[36.5,41.5,20,29.5],[31,37,33.5,38.5],[36,42.5,46,53]],urban:true},
+  sedacruda:{z:[[36.8,40,14.5,17.2],[36.3,40,-5.5,0.3],[36.5,41.5,20,29.5],[31,37,33.5,38.5],[36,42.5,46,53]],terr:["colinas","vega","llanura"]},
+  raros:{z:[[45,46.4,11.8,13.8],[43.3,45,7.8,10.2],[29,32,28,32.8],[31,36.2,33.8,38.5],[38,41.6,26,31],[40,46,32.5,41.5]],urban:true}, // especias: entrepôts
+  sal:{z:[[37,47.5,-10,-1],[34,40,-1.5,15.5],[46.5,51,12,21.5],[43,46.5,12,16.8],[43.5,47.5,31,39],[52,54.8,-3.3,-1.6],[31,37,32,37.5]],terr:null},
+  petroleo:{z:[[44.5,48.8,15,23],[49,56,17,29.5],[36.5,40.5,30.5,37.5],[36,39.8,-7.5,-1],[28,36,-9.5,11.5],[43.5,50,28,47]],terr:["llanura","pradera","estepa","vega"]}, // caballos
+  aceituna:{z:[[36,39.5,-7,-1],[38,44.5,11,18.5],[36,40.5,20,27],[31,37,33.5,37.5],[31,37,-9,11.5],[37,40,25,28]],terr:["colinas","llanura","vega"]},
+  cana:{z:[[34.4,35.6,32.3,34.6],[36.8,38.2,12.5,15.6],[38.4,40,-0.8,0.6],[31,35.5,33.8,37],[29,31.5,29.5,32.5]],terr:["vega","llanura"]},
+  lana:{z:[[49.8,55.5,-5.6,1.7],[39.5,43.5,-7,-0.5],[40,42.5,-1,1.5]],terr:["colinas","pradera","estepa","llanura","montana"]},
+  ganado:{z:[[44.5,48.5,15,23],[42,46.5,17,26],[51.5,55.5,-11,-5.5],[54,57.5,7.5,13],[28,36,-9.5,11.5]],terr:["pradera","llanura","estepa","vega"]},
+  lino:{z:[[46,50.5,-1.5,5.5],[49.5,52.5,2,6],[48,52.5,6.5,13.5],[52.5,57.5,17,27],[29,31.5,29,32.5]],terr:["vega","llanura","pradera"]},
+  algodon:{z:[[32.5,37.5,34.5,38.5],[36.5,40.5,26.5,37],[29,31.5,29,32.5],[36.8,38.2,12.5,15.6]],terr:["vega","llanura","desierto","colinas"]},
+  tinte:{z:[[42.8,44.5,0.5,2.8],[50,52,10,12.5],[37,40.5,-4.5,0.5],[37,39.5,21.5,24.5]],terr:["llanura","vega","pradera","colinas"]},
+  pescado:{z:[[50.5,59,-5,10],[57.5,66.5,3,13],[53.5,60.5,9,27],[38,42,25,30]],coast:true},
+  pieles:{z:[[51.5,64,26,52],[57.5,66.5,9,28],[53.5,60,19,31]],terr:["bosque","tundra"]},
+  cera:{z:[[51.5,63,26,52],[49.5,55.5,14,25],[53.5,58.5,19,29],[30,36,-6,11]],terr:["bosque","llanura","pradera","colinas"]},
+  ambar:{z:[[53.5,56.5,17.5,22.5]],coast:true},
+  cobre:{z:[[59,62,14,17.5],[46.2,48,10,13],[47.5,49.6,17,22]],terr:["montana","colinas"]},
+  estano:{z:[[49.8,51.2,-6,-3.2]],terr:["montana","colinas"]},
+  hulla:{z:[[54,56,-2.2,-0.8],[50,51.3,4.5,6.5],[51,53,-4.5,-3],[50,51.6,15.5,19.5],[51,52.2,6,8.2]],terr:["montana","colinas","llanura"]},
+  alumbre:{z:[[38,39.6,26,28.2],[41.6,42.6,11.4,12.5]],terr:["montana","colinas","desierto"]},
+  // ---- manufacturas de ciudad (se prefieren en urbes; su fábrica compra la materia del mercado) ----
+  pano:{z:[[49.3,52.6,1.3,5.7],[42.8,46,8.3,13.2],[49.8,55.5,-5.6,1.7],[41,44.6,-1.2,4.6]],urban:true},
+  lienzo:{z:[[50.5,52.6,6.8,9.2],[47,49.5,3,5.5],[47.5,49.2,9.3,11.3],[29,31.5,29,32.5]],urban:true},
+  fustan:{z:[[47.8,48.9,10.2,11.4],[48,48.9,9.5,10.4],[45,46.2,8.3,9.7]],urban:true},
+  aceite:{z:[[36,39.5,-7,-1],[38,44.5,11,18.5],[36,40.5,20,27],[31,37,33.5,37.5],[31,37,-9,11.5]],urban:false,terr:["colinas","llanura","vega"]},
+  azucar:{z:[[34.4,35.6,32.3,34.6],[36.8,38.2,12.5,15.6],[38.4,40,-0.8,0.6]],urban:true},
+  cuero:{z:[[37,39.5,-6.5,-2.5],[30,35.5,-9.5,-2.5],[42,46.5,17.5,24.5],[45,48,16,22.5]],urban:true},
+  acero:{z:[[47,48,14,15.5],[45,46,8.5,10],[39.5,41,-4.5,-3.5],[50.8,51.5,6.5,7.5]],urban:true},
+  bronce:{z:[[49,50,10.8,11.6],[50.8,51.5,4.2,5],[45,46,8.5,9.6]],urban:true},
+  armas:{z:[[45,46,8.5,10.5],[45.3,45.9,10,10.6],[39.5,41,-4.5,-3.5],[50.8,51.4,6.8,7.5]],urban:true},
+  carbon:{z:[[45,66,-6,55]],terr:["bosque"]}, // carboneras: cualquier bosque de Europa
 };
-// PAÑO: manufactura textil URBANA de las comarcas laneras — Flandes, Florencia/N.Italia, Inglaterra, Languedoc/Cataluña
-const PANO_ZONES=[[49.3,52.6,1.3,5.7],[42.8,46,8.3,13.2],[49.8,55.5,-5.6,1.7],[41,44.6,-1.2,4.6]];
+function resTerrOK(spec,p){
+  if(spec.coast)return !!p.coastal;
+  if(!spec.terr)return true;
+  return spec.terr.indexOf(p.terrain)>=0;
+}
 function assignResources(){
   for(const p of S.provs){
     p.resType=null;
     if(p.wasteland)continue;
     const[lon,lat]=pxToLonLat(p.x,p.y);
-    // Ciudades: paño en las comarcas textiles; si no, el lujo que su región produzca (o nada).
-    if(p.urban){
-      if(inZones(PANO_ZONES,lon,lat)){p.resType="pano";continue}
-      const opts=[];for(const g in RES_ZONES)if(inZones(RES_ZONES[g],lon,lat))opts.push(g);
-      p.resType=opts.length?opts[(S.rand()*opts.length)|0]:null;
-      continue;
-    }
     const t=p.terrain;
-    // Yacimientos de plata/oro (zonas mineras históricas)
+    // Yacimientos de plata/oro (zonas mineras históricas) — prioridad
     if(t==="montana"||t==="colinas"||t==="bosque"){
       if(inZones(GOLD_ZONES,lon,lat)&&S.rand()<0.40){p.resType="oro";continue}
       if(inZones(SILVER_ZONES,lon,lat)&&S.rand()<0.48){p.resType="plata";continue}
     }
-    // Especial de comercio según la ZONA histórica en la que cae la provincia (con un filtro de terreno mínimo).
-    const opts=[];
-    for(const g in RES_ZONES){
-      if(!inZones(RES_ZONES[g],lon,lat))continue;
-      if((g==="vino"||g==="seda")&&(t==="tundra"||t==="desierto"||t==="pantano"))continue; // la vid/morera no cuaja
-      if(g==="petroleo"&&!(t==="llanura"||t==="pradera"||t==="estepa"||t==="vega"))continue; // caballos = pastos llanos
-      opts.push(g);
+    // candidatos: bienes cuya ZONA histórica contiene la provincia y cuyo terreno/costa encaja
+    const urban=[],rural=[];
+    for(const g in RES_SPEC){const s=RES_SPEC[g];
+      if(!inZones(s.z,lon,lat)||!resTerrOK(s,p))continue;
+      (s.urban?urban:rural).push(g);
     }
-    if(opts.length&&S.rand()<0.55)p.resType=opts[(S.rand()*opts.length)|0]; // ~55% de las provincias EN zona llevan el bien
+    // Ciudades: prefieren las manufacturas de su región (paño, seda, armas…); si no, una materia local
+    if(p.urban){
+      const pool=urban.length?urban:rural;
+      if(pool.length)p.resType=pool[(S.rand()*pool.length)|0];
+      continue;
+    }
+    // Campo: la materia prima de su zona (~55% de las provincias en zona la llevan; el resto, agrícolas puras)
+    if(rural.length&&S.rand()<0.55)p.resType=rural[(S.rand()*rural.length)|0];
   }
 }
 /* ============================== Población =============================

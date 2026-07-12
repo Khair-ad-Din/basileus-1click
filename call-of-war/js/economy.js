@@ -1,5 +1,5 @@
 // economy.js
-import { NPLAY, BUILDINGS, BUILD_JOBS, TERRAINS, UNITS, RES_KEYS, RES_LABEL, LOOT_FRAC, STRATA } from "./config.js";
+import { NPLAY, BUILDINGS, BUILD_JOBS, TERRAINS, UNITS, RES_KEYS, RES_LABEL, LOOT_FRAC, STRATA, EXTRA_GOODS } from "./config.js";
 import { S } from "./state.js";
 
 // ---- Ocupación (estilo EU4): la provincia sigue siendo de iure de su dueño (p.owner) pero
@@ -130,7 +130,8 @@ const FOOD_PRICE=4.0;                                          // ducados por un
  * (S.nations[n].mkt). La producción de bienes de comercio se ESPEJA al mercado (la corona conserva
  * su copia como hasta ahora); en la próxima pasada se unificará (quitar NEED_PC de la corona y
  * encaminar la producción real al mercado). Precios FIJOS. Todo tunable (mods pequeños). */
-const MKT_GOODS=["pano","vino","sal","seda","raros","petroleo"];  // bienes de comercio (lujos + CABALLOS); se espejan al mercado desde los edificios
+// bienes de comercio: lujos + caballos + los ~26 NUEVOS (recursos históricos, ver EXTRA_GOODS en config).
+const MKT_GOODS=["pano","vino","sal","seda","raros","petroleo",...EXTRA_GOODS.map(g=>g.key)];
 // E1: el GRANO también se mercadea. Oferta = excedente campesino (overflow de la despensa); demanda =
 // las élites que NO cultivan (burgués/clero/nobleza) COMEN comprando grano del mercado. El campesino
 // come lo suyo (subsistencia), no compra. MKT_TRADE = todos los bienes que se compran/venden y ponen precio.
@@ -138,15 +139,24 @@ const MKT_GOODS=["pano","vino","sal","seda","raros","petroleo"];  // bienes de c
 const MKT_TRADE=[...BASICS,...MKT_GOODS];  // básicos (grano/madera/piedra/hierro) + lujos
 const NONGRAIN=["materiales","piedra","metal"]; // básicos no-grano: stock+precio nacional como los lujos (comercian por arbitraje)
 const MKT_PRICE={comida:0.8,materiales:1.0,piedra:1.0,metal:2.0,pano:2.2,vino:2.2,sal:1.6,seda:5.0,raros:4.0,petroleo:3.0}; // ducados/unidad (referencia); caballos caros
+for(const g of EXTRA_GOODS)MKT_PRICE[g.key]=g.price; // precios de referencia de los bienes nuevos (config)
+// MANUFACTURAS: bienes cuya fábrica tiene CADENA (inputs). Su vendedor es el industrial (burgués), que cobra la
+// venta al consumidor (no solo el margen); así recupera lo que pagó por la materia prima. Ver economyTick.
+const MANUF=new Set();
+for(const b in BUILDINGS){const B=BUILDINGS[b];if(B.inputs&&B.fx&&B.fx.prodAdd)for(const g in B.fx.prodAdd)MANUF.add(g)}
 const NPC=1e-7;                                                 // escala "por habitante y tick"
 // Necesidad por hab/tick y estrato. La COMIDA es un staple: las élites comen ≈1/año (=1/YR_TICKS), como
 // todo el mundo, pero comprándola en el mercado. Los lujos, mucho menos (los altos, más y más fino).
 const EAT=1/YR_TICKS; // ración de grano por hab y tick (mismo que la subsistencia campesina)
+// Consumo por hab/tick y estrato. Bienes de MASAS (los consume toda la población: sal, paño, vino, aceite,
+// pescado, lienzo, cuero, hulla) y de ÉLITE (solo los altos: seda, especias, azúcar, pieles, ámbar, armas).
+// Los bienes INTERMEDIOS (lana, uva, aceituna, cobre, carbón…) NO se consumen aquí: su demanda la crea la
+// CADENA de producción (las fábricas los compran del mercado, ver el consumo de insumos en economyTick).
 const LUX_NEED={
-  campesino:{pano:1.2*NPC,vino:1.0*NPC,sal:2.4*NPC},                                                  // el campesino come su propio grano (no compra comida)
-  burgues:  {comida:EAT,pano:3.0*NPC,vino:3.0*NPC,sal:2.8*NPC,seda:0.8*NPC,raros:0.6*NPC,petroleo:1.2*NPC}, // caballos para el transporte mercantil
-  clero:    {comida:EAT,pano:3.0*NPC,vino:4.0*NPC,sal:2.8*NPC,seda:1.0*NPC,raros:1.0*NPC,petroleo:0.6*NPC},
-  nobleza:  {comida:EAT,pano:4.0*NPC,vino:5.0*NPC,sal:3.0*NPC,seda:2.0*NPC,raros:2.0*NPC,petroleo:3.0*NPC}, // la nobleza monta y arma la caballería
+  campesino:{pano:1.2*NPC,vino:1.0*NPC,sal:2.4*NPC,aceite:1.6*NPC,pescado:1.4*NPC,lienzo:1.2*NPC,cuero:0.7*NPC,hulla:1.6*NPC},
+  burgues:  {comida:EAT,pano:3.0*NPC,vino:3.0*NPC,sal:2.8*NPC,seda:0.8*NPC,raros:0.6*NPC,petroleo:1.2*NPC,aceite:2.2*NPC,pescado:1.6*NPC,lienzo:1.6*NPC,fustan:1.4*NPC,cuero:1.2*NPC,hulla:1.8*NPC,azucar:0.4*NPC,cera:0.5*NPC},
+  clero:    {comida:EAT,pano:3.0*NPC,vino:4.0*NPC,sal:2.8*NPC,seda:1.0*NPC,raros:1.0*NPC,petroleo:0.6*NPC,aceite:2.6*NPC,pescado:2.0*NPC,lienzo:1.6*NPC,cuero:1.0*NPC,hulla:1.6*NPC,azucar:0.7*NPC,cera:2.2*NPC}, // el clero quema mucha cera (velas)
+  nobleza:  {comida:EAT,pano:4.0*NPC,vino:5.0*NPC,sal:3.0*NPC,seda:2.0*NPC,raros:2.0*NPC,petroleo:3.0*NPC,aceite:3.0*NPC,pescado:1.8*NPC,cuero:1.6*NPC,hulla:2.0*NPC,azucar:1.2*NPC,pieles:1.6*NPC,ambar:0.6*NPC,armas:1.2*NPC,bronce:0.5*NPC,cera:1.0*NPC}, // arma y viste a su séquito
 };
 // Ingreso base de dinero por hab/tick y estrato. Campesino/burgués ≈ su cesta (viven al día);
 // clero (diezmos) y nobleza (rentas de la tierra) MUY por encima de su consumo → son la ÉLITE que
@@ -569,6 +579,7 @@ function economyTick(dt=1){
   const troops=new Float64Array(NPLAY),nationPop=new Float64Array(NPLAY);
   const nationStrata=Array.from({length:NPLAY},()=>{const o={};for(const k of STRATA)o[k]=0;return o}); // pop por estrato y nación (Fase B)
   const basicDem=Array.from({length:NPLAY},()=>({})); // demanda de básicos no-grano por nación (para el precio dinámico)
+  const factDem=Array.from({length:NPLAY},()=>({})); // demanda de INSUMOS de las fábricas (cadenas de producción)
   const armyUp=Array.from({length:NPLAY},()=>({})); // mantenimiento del ejército por nación y recurso
   for(const a of S.armies){if(a.nation>=NPLAY)continue;
     for(const k in a.units){troops[a.nation]+=a.units[k];const u=UNITS[k].up||{};
@@ -587,6 +598,10 @@ function economyTick(dt=1){
     nationPop[n]+=p.pop||0;
     if(p.pops){const ns=nationStrata[n];for(const k of STRATA)ns[k]+=p.pops[k]||0} // Fase B: agregado de estratos
     for(const k of NONGRAIN)basicDem[n][k]=(basicDem[n][k]||0)+subsCons(p,k); // demanda de básicos (para el precio del mercado)
+    // CADENAS: demanda de insumos de las fábricas de esta provincia (la compran del mercado del reino, ver abajo)
+    {const morF=p.morale/100, terrF=TERRAINS[p.terrain].prod, stF=staffing(p), mulF=1+(provProdMul(p)-1)*stF;
+     for(const b in p.buildings){const lvl=p.buildings[b]||0;if(!lvl)continue;const B=BUILDINGS[b];if(!B.inputs)continue;
+       for(const k in B.inputs)factDem[n][k]=(factDem[n][k]||0)+B.inputs[k]*lvl*terrF*morF*stF*mulF;}}
     const N=S.nations[n];ensureMarket(N);const R=N.res;
     const byOwner=provEconomyByOwner(p),cr=byOwner.corona||{};
     R.dinero+=flujoBase(p)*repartoRates(p,taxRateOf(p.owner)).corona*dt; // parte de la corona del reparto feudal
@@ -636,6 +651,7 @@ function economyTick(dt=1){
       let stock=N.mkt[g]||0,rev=0,demand=0,sold=0;
       for(const k of STRATA)demand+=(LUX_NEED[k][g]||0)*str[k]*dt;    // demanda total del bien este tick (élites)
       if(basicDem[n][g])demand+=basicDem[n][g]*dt;                    // básicos: demanda de subsistencia/construcción del campesinado (da precio dinámico)
+      if(factDem[n][g])demand+=factDem[n][g]*dt;                      // CADENAS: demanda de insumos de las fábricas (da precio a la materia prima)
       // precio dinámico: del llenado del inventario respecto a su tope (demanda×días). Vacío→caro, lleno→barato.
       const cap=(demand/dt)*24*capDays(g);
       const fill=cap>0?Math.min(1,stock/cap):0.5;                    // 0.5 = referencia (precio base) si no hay demanda
@@ -649,11 +665,16 @@ function economyTick(dt=1){
         const buy=Math.min(need,stock,(W[k]||0)/price);             // limitado por deseo, stock y bolsillo (al precio actual)
         if(buy>0){W[k]-=buy*price;stock-=buy;rev+=buy*price;sold+=buy}
       }
-      W.burgues+=rev*BURGUES_MARGIN;                                 // los burgueses (comerciantes) se quedan un margen
-      // E2: el VENDEDOR cobra el resto. La COMIDA la vende el campesino (su excedente) → su bolsillo; así
-      // el ciclo cierra (el grano no se regala) y el campesino tiene ingreso por vender. Los lujos, de
-      // momento, siguen sin vendedor con bolsillo (capa espejada); se les dará dueño con la producción real.
+      // CADENAS: las FÁBRICAS compran su materia prima del mercado. El industrial (burgués) paga; el productor de
+      // la materia (campesino) cobra su parte. Así la lana/uva/cobre… tienen demanda real → comercian y ponen precio.
+      const fneed=(factDem[n][g]||0)*dt;
+      if(fneed>0){const fbuy=Math.min(fneed,stock,(W.burgues||0)/price);
+        if(fbuy>0){const t=fbuy*price;stock-=fbuy;W.burgues-=t*(1-BURGUES_MARGIN);W.campesino+=t*(1-BURGUES_MARGIN);sold+=fbuy}}
+      W.burgues+=rev*BURGUES_MARGIN;                                 // los burgueses (comerciantes) se quedan un margen de la venta al consumidor
+      // El VENDEDOR cobra el resto: la COMIDA y las materias primas del campo → campesino; las MANUFACTURAS → el
+      // industrial (burgués) que las fabricó (así recupera lo que pagó por la materia prima). Cierra la cadena.
       if(g==="comida")W.campesino+=rev*(1-BURGUES_MARGIN);
+      else if(MANUF.has(g))W.burgues+=rev*(1-BURGUES_MARGIN);
       revTotal+=rev;
       N.mkt[g]=cap>0?Math.min(stock,cap):stock;                      // sobreoferta topada; los bienes escasos quedan bajos
       // info para el panel (flujo/mes, escasez y precio): el mercado trabaja y el precio se mueve con la oferta
