@@ -1006,8 +1006,11 @@ function refreshEstates(){
     // precio dinámico: rojo si está por encima del de referencia (escasez), verde si por debajo (barato)
     const price=mi.price!=null?mi.price:MKT_PRICE[g];
     const pcol=price>MKT_PRICE[g]*1.05?"var(--neg)":(price<MKT_PRICE[g]*0.95?"var(--pos)":"#7a828b");
+    // Bloque 3: comercio internacional del bien (exporta el superávit sobrante / importa el déficit sobrante)
+    const intl=mi.exp>1?" <span style='color:var(--pos)' title='Exporta al mercado internacional (superávit)'>🌍↗"+nf(mi.exp)+"</span>":
+      (mi.imp>1?" <span style='color:#d6a15a' title='Importa del mercado internacional (déficit)'>🌍↙"+nf(mi.imp)+"</span>":"");
     h+="<div style='display:flex;align-items:center;font-size:12px;padding:2px 1px'>"+
-       "<span style='flex:1'>"+(RES_ICON[g]||"")+" "+RES_LABEL[g]+" <span style='color:"+pcol+"' title='precio ref. "+MKT_PRICE[g]+"🪙'>"+(Math.round(price*10)/10)+"🪙</span></span>"+
+       "<span style='flex:1'>"+(RES_ICON[g]||"")+" "+RES_LABEL[g]+" <span style='color:"+pcol+"' title='precio ref. "+MKT_PRICE[g]+"🪙'>"+(Math.round(price*10)/10)+"🪙</span>"+intl+"</span>"+
        "<span style='color:var(--txt);width:60px;text-align:right'>"+nf(mkt[g]||0)+"</span>"+
        "<span style='color:#9aa3ad;width:80px;text-align:right'>"+nf(mi.sold||0)+"</span>"+
        "<span style='width:72px;text-align:right'>"+tag+"</span>"+

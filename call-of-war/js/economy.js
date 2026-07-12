@@ -713,14 +713,35 @@ function economyTick(dt=1){
     if(p.owner<NPLAY){const sc=soldCap(p),s=p.sold!=null?p.sold:sc;p.sold=s+(sc-s)*regen}
   }
   // BLOQUE 1: COMPENSACIÓN nacional de los básicos no-grano. El superávit y el déficit del reino se casan;
-  // el volumen casado es comercio interno (el burgués cobra su margen; el campesino lo paga). Lo no casado
-  // (superávit sobrante) queda para EXPORTAR (Bloque 3, futuro); el déficit sobrante queda sin cubrir.
+  // el volumen casado es comercio INTERNO (el burgués cobra su margen; el campesino lo paga). Lo NO casado
+  // (superávit/déficit sobrante) se guarda y se lleva al MERCADO INTERNACIONAL (Bloque 3, abajo).
+  const lSup=Array.from({length:NPLAY},()=>({})), lDef=Array.from({length:NPLAY},()=>({}));
   for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(!N||!N.alive)continue;ensureMarket(N);if(!N.mktInfo)N.mktInfo={};
     for(const k of NONGRAIN){
       const sup=bSup[n][k]||0, def=bDef[n][k]||0, vol=Math.min(sup,def);
       const price=N.mktPrice[k]||MKT_PRICE[k]||1;
       if(vol>0){const turn=vol*price;N.sWealth.burgues+=turn*BURGUES_MARGIN;N.sWealth.campesino-=turn*BURGUES_MARGIN}
-      N.mktInfo[k]={dem:def/dt*730,sold:vol/dt*730,short:def>sup*1.02,price}; // para el panel de mercado
+      lSup[n][k]=sup-vol; lDef[n][k]=def-vol;                                  // sobrante para el mercado internacional
+      N.mktInfo[k]={dem:def/dt*730,sold:vol/dt*730,short:def>sup*1.02,price,exp:0,imp:0}; // exp/imp se completan abajo
+    }
+  }
+  // BLOQUE 3 — MERCADO INTERNACIONAL de básicos no-grano. El superávit sobrante GLOBAL cubre el déficit
+  // sobrante GLOBAL (reparto proporcional): unos reinos EXPORTAN y otros IMPORTAN. El campesino exportador
+  // COBRA su venta (nuevo ingreso: premia la vocación exportadora del terreno) y el importador la PAGA; los
+  // burgueses de AMBAS puntas de la ruta (los mercaderes) se reparten el margen del volumen cruzado — ESTE es
+  // el volumen que sostiene al burgués. Precio de referencia internacional PLANO (MKT_PRICE) en v1 [futuro:
+  // precio mundial dinámico por escasez global]. Dinero CONSERVADO. Solo mueve sWealth: el Tesoro de la corona
+  // NO se toca (reconciliación intacta) y NO hay alcabala internacional en v1 (igual que la compensación interna).
+  for(const k of NONGRAIN){
+    let TS=0,TD=0; for(let n=0;n<NPLAY;n++)if(S.nations[n]&&S.nations[n].alive){TS+=lSup[n][k]||0;TD+=lDef[n][k]||0}
+    const xvol=Math.min(TS,TD);
+    if(xvol<=1e-9||TS<=0||TD<=0)continue;
+    const P=MKT_PRICE[k]||1, half=BURGUES_MARGIN/2;
+    for(let n=0;n<NPLAY;n++){
+      const N=S.nations[n]; if(!N||!N.alive)continue;
+      const ex=(lSup[n][k]||0)*xvol/TS, im=(lDef[n][k]||0)*xvol/TD;
+      if(ex>1e-12){N.sWealth.campesino+=ex*P*(1-BURGUES_MARGIN); N.sWealth.burgues+=ex*P*half; if(N.mktInfo[k])N.mktInfo[k].exp=ex/dt*730}
+      if(im>1e-12){N.sWealth.campesino-=im*P;                    N.sWealth.burgues+=im*P*half; if(N.mktInfo[k])N.mktInfo[k].imp=im/dt*730}
     }
   }
 }
