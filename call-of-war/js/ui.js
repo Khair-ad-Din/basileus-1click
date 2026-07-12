@@ -1,5 +1,5 @@
 // ui.js
-import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, RES_DESC, RES_ICON, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, WAR_LOCK_HOURS, terrainFx, STRATA, STRATA_INFO, RES_ART } from "./config.js";
+import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, RES_DESC, RES_ICON, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, WAR_LOCK_HOURS, terrainFx, STRATA, STRATA_INFO, RES_ART, RES_CAT } from "./config.js";
 import { S } from "./state.js";
 import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildingYield, buildJobs, buildMax, buildSlots, canAfford, costFor, employedIn, foodBalance, foodCap, foodCons, foodFill, harvestMul, subsProd, subsCons, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationEconomy, nationLedger, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, MKT_GOODS, MKT_TRADE, MKT_PRICE, BASICS, terrMul, terrCatMul, RES_RAW_CATS } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
@@ -1051,11 +1051,17 @@ function refreshMercado(){
       "<span style='width:60px;text-align:right'>"+expTxt+"</span>"+
       "<span style='width:60px;text-align:right'>"+impTxt+"</span></div>";
   };
-  h+="<div style='margin-top:12px'><div style='font-size:12px;color:var(--title);margin-bottom:2px'>🌾 Básicos</div>"+th;
-  for(const g of BASICS)h+=rowFor(g);
-  h+="</div><div style='margin-top:10px'><div style='font-size:12px;color:var(--title);margin-bottom:2px'>💎 Lujos</div>"+th;
-  for(const g of MKT_GOODS)h+=rowFor(g);
-  h+="</div>";
+  // agrupado POR CATEGORÍA (cereal, cultivo, ganadería, bosque, minería, mar, manufacturas, comercio)
+  const MKT_CATS=[["cereal","🌾","Cereal"],["cultivo","🍇","Cultivo"],["ganado","🐑","Ganadería"],
+    ["bosque","🪵","Bosque"],["extractivo","⛏","Minería"],["mar","🐟","Mar"],
+    ["manufactura","🏭","Manufacturas"],["comercio","🌶","Comercio lejano"]];
+  for(const[cat,ico,lab]of MKT_CATS){
+    const goods=MKT_TRADE.filter(g=>RES_CAT[g]===cat);
+    if(!goods.length)continue;
+    h+="<div style='margin-top:11px'><div style='font-size:12px;color:var(--title);margin-bottom:2px'>"+ico+" "+lab+"</div>"+th;
+    for(const g of goods)h+=rowFor(g);
+    h+="</div>";
+  }
   h+="<div style='display:flex;font-size:10px;color:#7a828b;gap:14px;flex-wrap:wrap;margin-top:10px;justify-content:center'>"+
     "<span>precio en 🪙 (color: rojo caro / verde barato vs. referencia)</span><span>demanda/interno en unidades/mes</span>"+
     "<span><span style='color:var(--pos)'>↗</span> exporta a otros reinos · <span style='color:#d6a15a'>↙</span> importa (u/mes)</span></div>";
