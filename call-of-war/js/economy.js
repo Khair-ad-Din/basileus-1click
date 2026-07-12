@@ -77,17 +77,20 @@ const NEED_BASIC={comida:1.0, materiales:0.35, piedra:0.12, metal:0.12}; // cest
 // internacional aún (Bloque 3), un país de terreno pobre no puede importarlo → no debe colapsar por hambre.
 // La ESPECIALIZACIÓN fuerte va en los básicos industriales (madera/piedra/hierro), que no matan de hambre y
 // son los que mueven el comercio. (Cuando exista la importación internacional, el grano podrá endurecerse.)
+// Multiplicadores calibrados para que la producción MEDIA de cada básico ≈1.1-1.2× la necesidad (mercados con
+// excedente estructural que llenan su stock → precio diferenciado) manteniendo FUERTE la especialización (bosque
+// exporta madera; montaña, piedra/hierro; llanura fértil, grano pero importa materiales). Así nace el comercio.
 const TERRAIN_PROD={ // producción campesina por terreno y básico (mult; 1.0=autoabastece esa necesidad)
-  vega:    {comida:1.4, materiales:0.6, piedra:0.4, metal:0.3},
-  pradera: {comida:1.3, materiales:0.7, piedra:0.5, metal:0.4},
-  llanura: {comida:1.15,materiales:0.8, piedra:0.7, metal:0.6},
-  colinas: {comida:1.0, materiales:0.9, piedra:1.2, metal:1.0},
-  bosque:  {comida:0.95,materiales:1.9, piedra:0.6, metal:0.7},
-  pantano: {comida:0.92,materiales:1.4, piedra:0.5, metal:0.6},
-  estepa:  {comida:0.97,materiales:0.5, piedra:0.8, metal:0.8},
-  desierto:{comida:0.9, materiales:0.3, piedra:1.2, metal:1.1},
-  montana: {comida:0.9, materiales:0.6, piedra:1.7, metal:1.9},
-  tundra:  {comida:0.9, materiales:0.9, piedra:0.7, metal:0.7},
+  vega:    {comida:1.4, materiales:0.5, piedra:0.4, metal:0.4},
+  pradera: {comida:1.3, materiales:0.6, piedra:0.55,metal:0.5},
+  llanura: {comida:1.15,materiales:0.8, piedra:0.7, metal:0.8},
+  colinas: {comida:1.0, materiales:1.0, piedra:1.7, metal:1.4},
+  bosque:  {comida:0.95,materiales:2.6, piedra:0.7, metal:0.9},
+  pantano: {comida:0.92,materiales:2.0, piedra:0.6, metal:0.8},
+  estepa:  {comida:0.97,materiales:0.6, piedra:1.0, metal:1.1},
+  desierto:{comida:0.9, materiales:0.35,piedra:1.6, metal:1.5},
+  montana: {comida:0.9, materiales:0.7, piedra:2.4, metal:2.6},
+  tundra:  {comida:0.9, materiales:1.1, piedra:0.8, metal:0.9},
 };
 const SUBS_STORE_YEARS={comida:0.7}; // capacidad de la despensa de GRANO en años de consumo (× Almacén)
 function terrMul(p,k){const t=TERRAIN_PROD[p.terrain];return t&&t[k]!=null?t[k]:1} // vocación del terreno para el básico k
@@ -133,6 +136,7 @@ const MKT_GOODS=["pano","vino","sal","seda","raros"];           // LUJOS de come
 // come lo suyo (subsistencia), no compra. MKT_TRADE = todos los bienes que se compran/venden y ponen precio.
 // Bloque 1: los 4 BÁSICOS también se mercadean (el campesino vende superávit / compra déficit por terreno).
 const MKT_TRADE=[...BASICS,...MKT_GOODS];  // básicos (grano/madera/piedra/hierro) + lujos
+const NONGRAIN=["materiales","piedra","metal"]; // básicos no-grano: stock+precio nacional como los lujos (comercian por arbitraje)
 const MKT_PRICE={comida:0.8,materiales:1.0,piedra:1.0,metal:2.0,pano:2.2,vino:2.2,sal:1.6,seda:5.0,raros:4.0}; // ducados/unidad (referencia)
 const NPC=1e-7;                                                 // escala "por habitante y tick"
 // Necesidad por hab/tick y estrato. La COMIDA es un staple: las élites comen ≈1/año (=1/YR_TICKS), como
@@ -167,6 +171,8 @@ function targetBurgFrac(p){   // fracción objetivo de burgueses sobre la clase 
   return Math.min(0.6,f);
 }
 const MKT_CAP_DAYS=120;   // tope de inventario del mercado = tantos días de demanda (acota la sobreoferta sin destruir bienes cada tick)
+const BASIC_CAP_DAYS=15;  // básicos = bienes de FLUJO: buffer CORTO (el precio responde rápido al superávit/déficit, no tarda meses)
+function capDays(g){return NONGRAIN.indexOf(g)>=0?BASIC_CAP_DAYS:MKT_CAP_DAYS}
 // ---- Precios DINÁMICOS por oferta/demanda ----
 // El precio de cada bien en el mercado de un reino ya no es fijo: sube cuando el inventario está bajo
 // respecto a la demanda (escasez) y baja cuando hay excedente. MKT_PRICE es el precio de REFERENCIA
@@ -176,6 +182,14 @@ const PRICE_ADJ=0.02;     // velocidad de ajuste del precio por tick (EMA lenta:
 const PRICE_K=1.2;        // amplitud: mercado vacío → +PRICE_K sobre el precio ref; lleno → −PRICE_K
 const PRICE_MIN=0.6;      // suelo del multiplicador de precio (excedente barato)
 const PRICE_MAX=2.2;      // techo del multiplicador de precio (escasez cara)
+// ---- Comercio ENTRE mercados nacionales (arbitraje; Bloque 3) ----
+// No hay "mercado internacional" como entidad: son transacciones entre los mercados de los reinos. El
+// burgués compra el bien donde su precio está BAJO (país con excedente) y lo vende donde está ALTO (país
+// con déficit): mueve stock del mercado barato al caro → los precios CONVERGEN. El burgués se lleva el
+// diferencial (comprar barato/vender caro). Global sin distancia en v1 (futuro: coste por distancia/ruta).
+const TRADE_RATE=0.05;        // fracción del stock exportable que se mueve por tick (convergencia gradual)
+const TRADE_MIN_SPREAD=0.06;  // diferencial mínimo (sobre el precio ref) para que el arbitraje sea rentable
+const TRADE_COST=0.0;         // coste de transporte (0 = frictionless; futuro: por distancia entre reinos)
 function ensureMarket(N){ // inicializa el estado de mercado/riqueza de una nación si falta
   if(!N.sWealth){N.sWealth={};for(const k of STRATA)N.sWealth[k]=0}
   if(!N.mkt)N.mkt={};
@@ -549,6 +563,7 @@ function economyTick(dt=1){
   // diario de sim.js (crecimiento pop-driven por edificios; ver moraleGrowth/moraleTarget).
   const troops=new Float64Array(NPLAY),nationPop=new Float64Array(NPLAY);
   const nationStrata=Array.from({length:NPLAY},()=>{const o={};for(const k of STRATA)o[k]=0;return o}); // pop por estrato y nación (Fase B)
+  const basicDem=Array.from({length:NPLAY},()=>({})); // demanda de básicos no-grano por nación (para el precio dinámico)
   const armyUp=Array.from({length:NPLAY},()=>({})); // mantenimiento del ejército por nación y recurso
   for(const a of S.armies){if(a.nation>=NPLAY)continue;
     for(const k in a.units){troops[a.nation]+=a.units[k];const u=UNITS[k].up||{};
@@ -566,6 +581,7 @@ function economyTick(dt=1){
     }
     nationPop[n]+=p.pop||0;
     if(p.pops){const ns=nationStrata[n];for(const k of STRATA)ns[k]+=p.pops[k]||0} // Fase B: agregado de estratos
+    for(const k of NONGRAIN)basicDem[n][k]=(basicDem[n][k]||0)+subsCons(p,k); // demanda de básicos (para el precio del mercado)
     const N=S.nations[n];ensureMarket(N);const R=N.res;
     const byOwner=provEconomyByOwner(p),cr=byOwner.corona||{};
     R.dinero+=flujoBase(p)*repartoRates(p,taxRateOf(p.owner)).corona*dt; // parte de la corona del reparto feudal
@@ -613,9 +629,10 @@ function economyTick(dt=1){
     let revTotal=0;
     for(const g of MKT_TRADE){                                        // lujos + COMIDA (las élites compran grano para comer)
       let stock=N.mkt[g]||0,rev=0,demand=0,sold=0;
-      for(const k of STRATA)demand+=(LUX_NEED[k][g]||0)*str[k]*dt;    // demanda total del bien este tick
+      for(const k of STRATA)demand+=(LUX_NEED[k][g]||0)*str[k]*dt;    // demanda total del bien este tick (élites)
+      if(basicDem[n][g])demand+=basicDem[n][g]*dt;                    // básicos: demanda de subsistencia/construcción del campesinado (da precio dinámico)
       // precio dinámico: del llenado del inventario respecto a su tope (demanda×días). Vacío→caro, lleno→barato.
-      const cap=(demand/dt)*24*MKT_CAP_DAYS;
+      const cap=(demand/dt)*24*capDays(g);
       const fill=cap>0?Math.min(1,stock/cap):0.5;                    // 0.5 = referencia (precio base) si no hay demanda
       const targetMul=Math.max(PRICE_MIN,Math.min(PRICE_MAX,1+PRICE_K*(1-2*fill)));
       let price=N.mktPrice[g]!=null?N.mktPrice[g]:MKT_PRICE[g];
@@ -663,13 +680,12 @@ function economyTick(dt=1){
       if(avail>0){const take=Math.min(localNeed,avail);for(const q of pool)q.store.comida-=take*(q.store.comida/avail)}
     }
   }
-  // Pasada B (BLOQUE 1): el campesino produce los 4 BÁSICOS según su TERRENO y comercia sus superávits/
-  // déficits en el mercado nacional. El GRANO tiene despensa (colchón) y hambruna; se vende el excedente y
-  // se compra el déficit del pool nacional de grano. Los demás básicos (madera/piedra/hierro) son flujo puro:
-  // se acumula el superávit y el déficit del reino y se COMPENSAN tras el bucle. En cada compraventa el
-  // BURGUÉS se lleva su margen (su INGRESO por el volumen) y el campesino lo paga. Crecimiento y soldadesca igual.
-  const NONGRAIN=["materiales","piedra","metal"];
-  const bSup=Array.from({length:NPLAY},()=>({})), bDef=Array.from({length:NPLAY},()=>({}));
+  // Pasada B: el campesino produce los 4 BÁSICOS según su TERRENO y comercia su superávit/déficit en el
+  // mercado NACIONAL de cada bien (stock + precio dinámico, como los lujos). El GRANO tiene además despensa
+  // (colchón) y hambruna. Cada bien básico se acumula como STOCK del reino (N.mkt[k]): el excedente lo
+  // llena, el déficit lo compra (el burgués cobra su margen; el campesino lo paga). Los desequilibrios ENTRE
+  // reinos los resuelve luego el arbitraje (Bloque 3), que mueve stock del mercado barato al caro.
+  const bSold=Array.from({length:NPLAY},()=>({})); // básico comprado del mercado por déficit local (para el panel)
   const regen=Math.min(1,SOLD_REGEN*dt);
   for(const p of S.provs){
     if(p.wasteland)continue;
@@ -693,8 +709,15 @@ function economyTick(dt=1){
         if(cons>0&&deficit/cons>FAMINE_DEF){p.pop=Math.max(0,(p.pop||0)-deficit*STARVE_RATE);famine=true} // no pudo importar grano → hambruna
       }
     }
-    // --- MADERA/PIEDRA/HIERRO: acumular superávit/déficit del reino (se compensan tras el bucle) ---
-    if(N)for(const k of NONGRAIN){const net=subsBalance(p,k)*dt;if(net>=0)bSup[n][k]=(bSup[n][k]||0)+net;else bDef[n][k]=(bDef[n][k]||0)-net}
+    // --- MADERA/PIEDRA/HIERRO: excedente → stock del mercado nacional; déficit → comprar del stock ---
+    if(N)for(const k of NONGRAIN){
+      const net=subsBalance(p,k)*dt;
+      if(net>=0){N.mkt[k]=(N.mkt[k]||0)+net}                                     // excedente campesino → mercado del reino
+      else{                                                                      // déficit: comprar del stock (lo no cubierto es inerte; los básicos no matan de hambre)
+        const price=N.mktPrice[k]||MKT_PRICE[k]||1, buy=Math.min(-net,N.mkt[k]||0);
+        if(buy>0){N.mkt[k]-=buy;const turn=buy*price;N.sWealth.burgues+=turn*BURGUES_MARGIN;N.sWealth.campesino-=turn*BURGUES_MARGIN;bSold[n][k]=(bSold[n][k]||0)+buy}
+      }
+    }
     p.famine=famine;
     if(!famine){const cap=storeCap(p,"comida");const fill=cap>0?p.store.comida/cap:0;p.pop=(p.pop||0)*(1+POP_GROWTH_BASE*(0.4+fill)*dt)}
     if(p.pops&&pop0>0){const f=(p.pop||0)/pop0;for(const k in p.pops)p.pops[k]*=f} // estratos siguen a la población
@@ -712,36 +735,42 @@ function economyTick(dt=1){
     }
     if(p.owner<NPLAY){const sc=soldCap(p),s=p.sold!=null?p.sold:sc;p.sold=s+(sc-s)*regen}
   }
-  // BLOQUE 1: COMPENSACIÓN nacional de los básicos no-grano. El superávit y el déficit del reino se casan;
-  // el volumen casado es comercio INTERNO (el burgués cobra su margen; el campesino lo paga). Lo NO casado
-  // (superávit/déficit sobrante) se guarda y se lleva al MERCADO INTERNACIONAL (Bloque 3, abajo).
-  const lSup=Array.from({length:NPLAY},()=>({})), lDef=Array.from({length:NPLAY},()=>({}));
+  // Mantenimiento de los mercados de BÁSICOS no-grano: topar el stock (evita sobreacumulación) y refrescar el
+  // panel (demanda, comprado del mercado por los déficit locales, escasez, precio). El comercio ENTRE reinos
+  // (arbitraje) va justo debajo y añade exp/imp.
   for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(!N||!N.alive)continue;ensureMarket(N);if(!N.mktInfo)N.mktInfo={};
     for(const k of NONGRAIN){
-      const sup=bSup[n][k]||0, def=bDef[n][k]||0, vol=Math.min(sup,def);
-      const price=N.mktPrice[k]||MKT_PRICE[k]||1;
-      if(vol>0){const turn=vol*price;N.sWealth.burgues+=turn*BURGUES_MARGIN;N.sWealth.campesino-=turn*BURGUES_MARGIN}
-      lSup[n][k]=sup-vol; lDef[n][k]=def-vol;                                  // sobrante para el mercado internacional
-      N.mktInfo[k]={dem:def/dt*730,sold:vol/dt*730,short:def>sup*1.02,price,exp:0,imp:0}; // exp/imp se completan abajo
+      const dem=basicDem[n][k]||0, cap=dem*24*BASIC_CAP_DAYS;                   // tope de inventario = días de demanda (buffer corto)
+      if(cap>0&&N.mkt[k]>cap)N.mkt[k]=cap;
+      const price=N.mktPrice[k]||MKT_PRICE[k]||1, stock=N.mkt[k]||0;
+      N.mktInfo[k]={dem:dem*730,sold:(bSold[n][k]||0)/dt*730,short:cap>0&&stock<cap*0.15,price,exp:0,imp:0};
     }
   }
-  // BLOQUE 3 — MERCADO INTERNACIONAL de básicos no-grano. El superávit sobrante GLOBAL cubre el déficit
-  // sobrante GLOBAL (reparto proporcional): unos reinos EXPORTAN y otros IMPORTAN. El campesino exportador
-  // COBRA su venta (nuevo ingreso: premia la vocación exportadora del terreno) y el importador la PAGA; los
-  // burgueses de AMBAS puntas de la ruta (los mercaderes) se reparten el margen del volumen cruzado — ESTE es
-  // el volumen que sostiene al burgués. Precio de referencia internacional PLANO (MKT_PRICE) en v1 [futuro:
-  // precio mundial dinámico por escasez global]. Dinero CONSERVADO. Solo mueve sWealth: el Tesoro de la corona
-  // NO se toca (reconciliación intacta) y NO hay alcabala internacional en v1 (igual que la compensación interna).
-  for(const k of NONGRAIN){
-    let TS=0,TD=0; for(let n=0;n<NPLAY;n++)if(S.nations[n]&&S.nations[n].alive){TS+=lSup[n][k]||0;TD+=lDef[n][k]||0}
-    const xvol=Math.min(TS,TD);
-    if(xvol<=1e-9||TS<=0||TD<=0)continue;
-    const P=MKT_PRICE[k]||1, half=BURGUES_MARGIN/2;
-    for(let n=0;n<NPLAY;n++){
-      const N=S.nations[n]; if(!N||!N.alive)continue;
-      const ex=(lSup[n][k]||0)*xvol/TS, im=(lDef[n][k]||0)*xvol/TD;
-      if(ex>1e-12){N.sWealth.campesino+=ex*P*(1-BURGUES_MARGIN); N.sWealth.burgues+=ex*P*half; if(N.mktInfo[k])N.mktInfo[k].exp=ex/dt*730}
-      if(im>1e-12){N.sWealth.campesino-=im*P;                    N.sWealth.burgues+=im*P*half; if(N.mktInfo[k])N.mktInfo[k].imp=im/dt*730}
+  // BLOQUE 3 — COMERCIO ENTRE MERCADOS NACIONALES (arbitraje). Para cada bien (básicos + comida + lujos), el
+  // burgués compra donde el precio está BAJO (país con excedente/stock alto) y lo vende donde está ALTO (país
+  // con déficit/stock bajo): mueve stock del mercado barato al caro, y los precios CONVERGEN. NO hay "mercado
+  // internacional" como entidad: son transacciones entre los mercados de los reinos, movidas por los burgueses,
+  // que se quedan el DIFERENCIAL (comprar barato/vender caro). Global sin distancia en v1 (futuro: coste por
+  // distancia/ruta). Solo mueve mkt+sWealth: el Tesoro de la corona NO se toca (reconciliación intacta).
+  for(const g of MKT_TRADE){
+    const ref=MKT_PRICE[g]||1, node=[];
+    for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(!N||!N.alive)continue;ensureMarket(N);if(!N.mktInfo[g])N.mktInfo[g]={price:N.mktPrice[g]||ref};
+      node.push({N,p:N.mktPrice[g]!=null?N.mktPrice[g]:ref,s:N.mkt[g]||0});}
+    if(node.length<2)continue;
+    node.sort((a,b)=>a.p-b.p);                                                  // ascendente por precio: baratos primero
+    let lo=0,hi=node.length-1;
+    while(lo<hi){
+      const A=node[lo],B=node[hi];                                             // A barato (vende su excedente), B caro (compra)
+      if(B.p-A.p<TRADE_MIN_SPREAD*ref)break;                                   // diferencial ya cerrado → sin arbitraje rentable
+      const q=(A.s||0)*TRADE_RATE*dt;                                          // A exporta una fracción de su stock (convergencia gradual)
+      if(q>1e-9){
+        A.N.mkt[g]=Math.max(0,(A.N.mkt[g]||0)-q); B.N.mkt[g]=(B.N.mkt[g]||0)+q; // el stock viaja del mercado barato al caro
+        const half=q*(B.p-A.p)*(1-TRADE_COST)*0.5;                            // el mercader de cada punta se lleva medio diferencial
+        A.N.sWealth.burgues+=half; B.N.sWealth.burgues+=half;
+        A.N.mktInfo[g].exp=(A.N.mktInfo[g].exp||0)+q/dt*730;                   // exporta (panel)
+        B.N.mktInfo[g].imp=(B.N.mktInfo[g].imp||0)+q/dt*730;                   // importa (panel)
+      }
+      lo++;hi--;                                                               // cada reino comercia con su opuesto; converge en varios ticks
     }
   }
 }
