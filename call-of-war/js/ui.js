@@ -976,15 +976,18 @@ function refreshEstates(){
   for(const g of MKT_GOODS){
     const mi=info[g]||{};
     const tag=mi.short?"<span style='color:var(--neg)'>escaso</span>":"<span style='color:var(--pos)'>abastecido</span>";
+    // precio dinámico: rojo si está por encima del de referencia (escasez), verde si por debajo (barato)
+    const price=mi.price!=null?mi.price:MKT_PRICE[g];
+    const pcol=price>MKT_PRICE[g]*1.05?"var(--neg)":(price<MKT_PRICE[g]*0.95?"var(--pos)":"#7a828b");
     h+="<div style='display:flex;align-items:center;font-size:12px;padding:2px 1px'>"+
-       "<span style='flex:1'>"+(RES_ICON[g]||"")+" "+RES_LABEL[g]+" <span style='color:#7a828b'>"+MKT_PRICE[g]+"🪙</span></span>"+
+       "<span style='flex:1'>"+(RES_ICON[g]||"")+" "+RES_LABEL[g]+" <span style='color:"+pcol+"' title='precio ref. "+MKT_PRICE[g]+"🪙'>"+(Math.round(price*10)/10)+"🪙</span></span>"+
        "<span style='color:var(--txt);width:60px;text-align:right'>"+nf(mkt[g]||0)+"</span>"+
        "<span style='color:#9aa3ad;width:80px;text-align:right'>"+nf(mi.sold||0)+"</span>"+
        "<span style='width:72px;text-align:right'>"+tag+"</span>"+
        "</div>";
   }
   h+="</div>";
-  h+="<p style='color:#7a828b;font-size:11px;margin-top:10px;text-align:center'>Los estratos ganan dinero por su rol y compran sus lujos aquí (precios fijos, primera versión).</p>";
+  h+="<p style='color:#7a828b;font-size:11px;margin-top:10px;text-align:center'>Los estratos ganan por su rol y compran sus lujos aquí. El precio sube con la escasez y baja con el excedente.</p>";
   body.innerHTML=h;
 }
 export {

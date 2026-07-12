@@ -144,9 +144,19 @@ function targetBurgFrac(p){   // fracción objetivo de burgueses sobre la clase 
   return Math.min(0.6,f);
 }
 const MKT_CAP_DAYS=120;   // tope de inventario del mercado = tantos días de demanda (acota la sobreoferta sin destruir bienes cada tick)
+// ---- Precios DINÁMICOS por oferta/demanda ----
+// El precio de cada bien en el mercado de un reino ya no es fijo: sube cuando el inventario está bajo
+// respecto a la demanda (escasez) y baja cuando hay excedente. MKT_PRICE es el precio de REFERENCIA
+// (mercado medio lleno). Así los bienes que un reino PRODUCE se abaratan y los que le FALTAN se
+// encarecen (presión comercial realista), y el panel deja de estar congelado. Mods pequeños y suaves.
+const PRICE_ADJ=0.02;     // velocidad de ajuste del precio por tick (EMA lenta: ~1-2 días de vida media)
+const PRICE_K=1.2;        // amplitud: mercado vacío → +PRICE_K sobre el precio ref; lleno → −PRICE_K
+const PRICE_MIN=0.6;      // suelo del multiplicador de precio (excedente barato)
+const PRICE_MAX=2.2;      // techo del multiplicador de precio (escasez cara)
 function ensureMarket(N){ // inicializa el estado de mercado/riqueza de una nación si falta
   if(!N.sWealth){N.sWealth={};for(const k of STRATA)N.sWealth[k]=0}
   if(!N.mkt)N.mkt={};
+  if(!N.mktPrice){N.mktPrice={};for(const g of MKT_GOODS)N.mktPrice[g]=MKT_PRICE[g]} // precio actual por bien (arranca en el de referencia)
 }
 // Riqueza INICIAL por habitante y estrato: la nobleza y el clero nacen RICOS (tierras, tesoro
 // eclesiástico) y los campesinos pobres. Fija la jerarquía de riqueza desde el arranque (~mitad
@@ -550,19 +560,25 @@ function economyTick(dt=1){
     let revTotal=0;
     for(const g of MKT_GOODS){
       let stock=N.mkt[g]||0,rev=0,demand=0,sold=0;
+      for(const k of STRATA)demand+=(LUX_NEED[k][g]||0)*str[k]*dt;    // demanda total del bien este tick
+      // precio dinámico: del llenado del inventario respecto a su tope (demanda×días). Vacío→caro, lleno→barato.
+      const cap=(demand/dt)*24*MKT_CAP_DAYS;
+      const fill=cap>0?Math.min(1,stock/cap):0.5;                    // 0.5 = referencia (precio base) si no hay demanda
+      const targetMul=Math.max(PRICE_MIN,Math.min(PRICE_MAX,1+PRICE_K*(1-2*fill)));
+      let price=N.mktPrice[g]!=null?N.mktPrice[g]:MKT_PRICE[g];
+      price+=(MKT_PRICE[g]*targetMul-price)*Math.min(1,PRICE_ADJ*dt); // desliza hacia el objetivo (EMA)
+      N.mktPrice[g]=price;
       for(const k of STRATA){
         const need=(LUX_NEED[k][g]||0)*str[k]*dt;
-        demand+=need;
         if(need<=0)continue;
-        const buy=Math.min(need,stock,(W[k]||0)/MKT_PRICE[g]);       // limitado por deseo, stock y bolsillo
-        if(buy>0){W[k]-=buy*MKT_PRICE[g];stock-=buy;rev+=buy*MKT_PRICE[g];sold+=buy}
+        const buy=Math.min(need,stock,(W[k]||0)/price);             // limitado por deseo, stock y bolsillo (al precio actual)
+        if(buy>0){W[k]-=buy*price;stock-=buy;rev+=buy*price;sold+=buy}
       }
       W.burgues+=rev*BURGUES_MARGIN;                                 // los burgueses se quedan un margen (el resto = costes)
       revTotal+=rev;
-      const cap=(demand/dt)*24*MKT_CAP_DAYS;                         // tope = MKT_CAP_DAYS de demanda diaria
       N.mkt[g]=cap>0?Math.min(stock,cap):stock;                      // sobreoferta topada; los bienes escasos quedan bajos
-      // info para el panel (flujo/mes y escasez): demuestra que el mercado trabaja aunque el stock esté en equilibrio
-      N.mktInfo[g]={dem:demand/dt*730,sold:sold/dt*730,short:sold<demand*0.98};
+      // info para el panel (flujo/mes, escasez y precio): el mercado trabaja y el precio se mueve con la oferta
+      N.mktInfo[g]={dem:demand/dt*730,sold:sold/dt*730,short:sold<demand*0.98,price};
     }
     N.res.dinero+=revTotal*ALCABALA;                                 // ALCABALA: la corona cobra del comercio (compensa el ×3 urbano perdido)
     N.alcabalaRate=revTotal/dt*ALCABALA;                             // por tick, para reconciliar el display de Tesorería
