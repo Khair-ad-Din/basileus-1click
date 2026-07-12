@@ -1,7 +1,7 @@
 // save.js
 import { GH_PER_SEC, MH, MW, NATIONS, NEUTRAL, TERRAIN_KEYS, newBuildings } from "./config.js";
 import { S } from "./state.js";
-import { assignPopulation, assignResources, assignTerrain, isolateWastePockets, mulberry32, rebuildProvinceData } from "./mapgen.js";
+import { assignPopulation, assignResources, assignTerrain, isolateWastePockets, mulberry32, rebuildProvinceData, seedStrata } from "./mapgen.js";
 import { canvas, clampPan, drawRoads, paintAll } from "./render.js";
 import { hourTick, syncDuchyOcc } from "./sim.js";
 import { buildRealmMenu, fmtDur, log, refreshSide, refreshTop } from "./ui.js";
@@ -109,6 +109,7 @@ function continueGame(){
     if(d[7]!=null)p.store=(typeof d[7]==="object")?d[7]:{comida:d[7]};  // reservas locales por bien (v3: era un escalar de comida)
     p.occupier=d[8]!=null?d[8]:-1; // control militar (ocupación EU4)
     p.siege=d[9]||null;            // asedio en curso {by,need,prog}
+    seedStrata(p);                 // Fase A: re-derivar estratos con la población cargada
   });
   syncDuchyOcc(); // recomputar occBy de cada ducado a partir de la ocupación cargada
   S.armies=s.armies;

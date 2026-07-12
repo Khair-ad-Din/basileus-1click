@@ -214,8 +214,28 @@ const GARR_MIN=2;              // guarnición mínima (milicianos-equiv) de TODA
 const GARR_FORT=2;             // guarnición extra por nivel de Castillo
 const GARR_CITADEL=3;          // guarnición extra de la Ciudadela
 
+// ---- Estratos sociales (Fase A: tipos de pop) ----
+// Cada provincia reparte su población en estos estratos (p.pops[k]) y cada estrato tiene su propia
+// riqueza (p.wealth[k], dinero del estrato). Campesinos y burgueses trabajan/comercian; clero y
+// nobleza tendrán mecánicas propias más adelante. Orden = de base a cúspide.
+const STRATA=["campesino","burgues","clero","nobleza"];
+const STRATA_INFO={
+  campesino:{label:"Campesinos",icon:"🌾"},
+  burgues:{label:"Burgueses",icon:"🏪"},
+  clero:{label:"Clero",icon:"⛪"},
+  nobleza:{label:"Nobleza",icon:"👑"},
+};
+// Reparto inicial de la población por provincia (rural vs ciudad); tunable, cada bloque suma 1.
+// Clero y nobleza ≈2% del reino cada uno de media: la NOBLEZA se concentra en el campo (señoríos)
+// y el CLERO en la ciudad (cabildos/catedrales), de ahí los sesgos rural↔urbano.
+const STRATA_SEED={
+  rural:{campesino:0.913,burgues:0.05,clero:0.014,nobleza:0.023},
+  urban:{campesino:0.565,burgues:0.38,clero:0.045,nobleza:0.010},
+};
+
 export {
   GH_PER_SEC, START_DATE, MESES, WAR_LOCK_HOURS, LOOT_FRAC, GOLD_PER_WS, WS_DUCHY_BASE, WS_DUCHY_PER, WS_BATTLE,
   LEVY_RAISE_HOURS, SIEGE_BASE_H, GARR_MIN, GARR_FORT, GARR_CITADEL,
-  MW, MH, NATIONS, NPLAY, NEUTRAL, RES_KEYS, RES_STRAT, RES_TRADE, RES_LABEL, RES_SHORT, RES_ICON, RES_DESC, START_STOCK, BUILDINGS, BUILD_JOBS, BUILD_CATS, RES_BUILDING, newBuildings, UNITS, TERRAINS, TERRAIN_KEYS, terrainFx
+  MW, MH, NATIONS, NPLAY, NEUTRAL, RES_KEYS, RES_STRAT, RES_TRADE, RES_LABEL, RES_SHORT, RES_ICON, RES_DESC, START_STOCK, BUILDINGS, BUILD_JOBS, BUILD_CATS, RES_BUILDING, newBuildings, UNITS, TERRAINS, TERRAIN_KEYS, terrainFx,
+  STRATA, STRATA_INFO, STRATA_SEED
 };

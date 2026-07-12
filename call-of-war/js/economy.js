@@ -459,6 +459,7 @@ function economyTick(dt=1){
   for(const p of S.provs){
     if(p.wasteland)continue;
     if(!p.store)p.store={};
+    const pop0=p.pop||0; // Fase A: para reescalar los estratos con el cambio de población
     let famine=false;
     for(const k of SUBS_BASICS){
       const cap=storeCap(p,k);
@@ -478,6 +479,7 @@ function economyTick(dt=1){
     }
     p.famine=famine;
     if(!famine){const cap=storeCap(p,"comida");const fill=cap>0?p.store.comida/cap:0;p.pop=(p.pop||0)*(1+POP_GROWTH_BASE*(0.4+fill)*dt)}
+    if(p.pops&&pop0>0){const f=(p.pop||0)/pop0;for(const k in p.pops)p.pops[k]*=f} // estratos siguen a la población
     if(p.owner<NPLAY){const sc=soldCap(p),s=p.sold!=null?p.sold:sc;p.sold=s+(sc-s)*regen}
   }
 }

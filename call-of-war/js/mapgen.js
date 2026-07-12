@@ -1,5 +1,5 @@
 // mapgen.js
-import { MW, MH, NATIONS, NPLAY, NEUTRAL, TERRAINS, TERRAIN_KEYS, newBuildings } from "./config.js";
+import { MW, MH, NATIONS, NPLAY, NEUTRAL, TERRAINS, TERRAIN_KEYS, newBuildings, STRATA, STRATA_SEED } from "./config.js";
 import { S } from "./state.js";
 
 function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
@@ -655,6 +655,15 @@ function assignPopulation(){
     }
     p.pop=Math.max(0,Math.round(pop));
   }
+  for(const p of S.provs)seedStrata(p); // Fase A: reparte la población en estratos
+}
+// Reparte p.pop en estratos (p.pops) según ciudad/campo e inicializa la riqueza por estrato
+// (p.wealth) si aún no existe. Determinista; los estratos se recalibran proporcionalmente en el
+// tick demográfico. La riqueza NO se resiembra (la acumulará el mercado en la Fase B).
+function seedStrata(p){
+  const pop=p.pop||0, f=(p.urban?STRATA_SEED.urban:STRATA_SEED.rural);
+  p.pops={}; for(const k of STRATA)p.pops[k]=pop*(f[k]||0);
+  if(!p.wealth){p.wealth={}; for(const k of STRATA)p.wealth[k]=0}
 }
 function rebuildProvinceData(){
   S.adj=S.provs.map(()=>new Set());
@@ -862,5 +871,5 @@ function kmBetween(a,b){
 }
 
 export {
-  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, rebuildProvinceData, buildDuchies, isDuchyCap, kmBetween, roadKey, hasRoad, roadLvl, landPath, generateRoads
+  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, seedStrata, rebuildProvinceData, buildDuchies, isDuchyCap, kmBetween, roadKey, hasRoad, roadLvl, landPath, generateRoads
 };

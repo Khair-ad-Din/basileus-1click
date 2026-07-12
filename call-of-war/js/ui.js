@@ -1,5 +1,5 @@
 // ui.js
-import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, RES_DESC, RES_ICON, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, WAR_LOCK_HOURS, terrainFx } from "./config.js";
+import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, RES_DESC, RES_ICON, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, WAR_LOCK_HOURS, terrainFx, STRATA, STRATA_INFO } from "./config.js";
 import { S } from "./state.js";
 import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildingYield, buildJobs, buildMax, buildSlots, canAfford, costFor, employedIn, foodBalance, foodCap, foodCons, foodFill, harvestMul, subsProd, subsCons, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationEconomy, nationLedger, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
@@ -588,7 +588,7 @@ function buildRealmMenu(){
     {img:"btn_corte",dis:1},
     {img:"btn_tesoreria",on:"openTreasury()"},
     {img:"btn_leyes",dis:1},
-    {img:"btn_estamentos",dis:1}
+    {img:"btn_estamentos",on:"openEstates()"}
   ];
   el.innerHTML="<div class='rmEscudo' title='"+N.name+"'><span class='rmEscCol' style='background:"+N.color+"'></span>"+
       "<img src='assets/ui/escudo.png' alt='"+N.name+"'></div>"+
@@ -934,6 +934,43 @@ function showNationPicker(){
   document.getElementById("startOverlay").style.display="flex";
 }
 
+// ---- Estamentos (Fase A: composición social del reino, solo lectura) ----
+// Suma los estratos de las provincias propias (no ocupadas) y los muestra con recuento, % y barra.
+// La riqueza por estrato y el mercado llegan en la Fase B (por ahora la riqueza es 0).
+function refreshEstates(){
+  const ov=document.getElementById("estatesOverlay");
+  if(!ov||ov.style.display!=="flex")return;
+  const body=document.getElementById("estatesBody");
+  if(S.player<0){body.innerHTML="<p style='text-align:center;color:#9aa3ad'>Estás en modo observador. Toma el mando de una nación (desde el <b>Registro</b>) para ver sus estamentos.</p>";return}
+  const N=NATIONS[S.player];
+  const cnt={},wl={};let pop=0;for(const k of STRATA){cnt[k]=0;wl[k]=0}
+  for(const p of S.provs){
+    if(p.owner!==S.player||p.wasteland||isOccupied(p))continue;
+    pop+=p.pop||0;
+    if(p.pops)for(const k of STRATA)cnt[k]+=p.pops[k]||0;
+    if(p.wealth)for(const k of STRATA)wl[k]+=p.wealth[k]||0;
+  }
+  const nf=v=>Math.round(v).toLocaleString("es-ES");
+  let h="<div class='tsyhead'><span class='chip' style='background:"+N.color+"'></span> "+N.name+" · "+nf(pop)+" hab.</div>";
+  h+="<div style='margin-top:10px'>";
+  for(const k of STRATA){
+    const info=STRATA_INFO[k],c=cnt[k],pct=pop>0?100*c/pop:0;
+    h+="<div style='margin-bottom:9px'>"+
+       "<div style='display:flex;align-items:center;gap:7px;font-size:13px'>"+
+         "<span style='font-size:16px'>"+info.icon+"</span>"+
+         "<b style='flex:1'>"+info.label+"</b>"+
+         "<span style='color:var(--txt)'>"+nf(c)+"</span>"+
+         "<span style='color:#9aa3ad;width:46px;text-align:right'>"+pct.toFixed(1)+"%</span>"+
+       "</div>"+
+       "<div style='height:6px;background:#2a2f36;border-radius:3px;margin-top:3px;overflow:hidden'>"+
+         "<div style='height:100%;width:"+pct.toFixed(1)+"%;background:"+N.color+"'></div>"+
+       "</div>"+
+       "</div>";
+  }
+  h+="</div>";
+  h+="<p style='color:#7a828b;font-size:11px;margin-top:12px;text-align:center'>La riqueza por estrato y el mercado llegan en la próxima fase.</p>";
+  body.innerHTML=h;
+}
 export {
-  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, buildRealmMenu, refreshMetricsLog, refreshArmyPanel, refreshTreasury
+  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, buildRealmMenu, refreshMetricsLog, refreshArmyPanel, refreshTreasury, refreshEstates
 };
