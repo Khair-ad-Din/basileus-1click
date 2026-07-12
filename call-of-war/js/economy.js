@@ -62,30 +62,44 @@ function soldAvail(p){return p.sold!=null?p.sold:soldCap(p)} // stock actual (o 
  * compran para comer (trigo) y construir (materiales). Ver E1/E2 en [[basileus-pop-economy-vision]]. */
 const YR_TICKS=8760;             // ticks (horas de juego) por año
 const HARVEST_AMP=0.33;          // variación anual de cosecha (±33%)
-// La única subsistencia ALMACENADA por provincia es el GRANO (despensa, colchón anti-hambruna): tiene
-// sentido histórico y mecánico. Los demás básicos (madera/piedra/hierro) ya NO se acopian localmente
-// (eran estado inerte); son FLUJO al mercado nacional — los produce el resType campesino + los edificios
-// y los compran los estamentos para comer (trigo) y construir (madera/piedra/hierro). Ver E1/E2.
-const SUBS_BASICS=["comida"];    // único bien con reserva local (la despensa)
-const SUBS_ORGANIC={comida:1};   // bienes afectados por el desastre de cosecha (harvestMul)
-const SUBS_CONS={comida:1/YR_TICKS}; // consumo de grano por hab y tick (≈1/hab/año, escala histórica)
-const SUBS_PROD={comida:1/YR_TICKS}; // producción base de grano por hab y tick (×fertilidad×granja×cosecha en subsProd)
-const SUBS_STORE_YEARS={comida:0.7}; // capacidad de la despensa en años de consumo (× Almacén)
-// rendimiento alimentario del terreno: ~1 = autosuficiente; >1 da excedente (crece). Suelo 1.0:
-// el terreno pobre no crece pero tampoco muere de hambre; la hambruna llega por una mala racha de
-// cosechas (harvestMul) cuando la reserva de comida está baja.
-const FOOD_FERT={vega:1.4,pradera:1.25,llanura:1.1,colinas:1.05,bosque:1.02,pantano:1.0,
-  estepa:1.02,desierto:1.0,montana:1.0,tundra:1.0};
+// ---- BLOQUE 1: vocación productiva del TERRENO por bien básico ----
+// El campesino produce los 4 BÁSICOS (grano/madera/piedra/hierro) según su TERRENO, y NECESITA la misma
+// cesta que todos. Ningún terreno es bueno en todo → cada provincia VENDE sus superávits y COMPRA sus
+// déficits en el mercado nacional (ese volumen es el ingreso del burgués por margen). Multiplicador 1.0 =
+// autoabastece justo esa necesidad; >1 excedente (vende); <1 déficit (compra). Solo el GRANO tiene despensa
+// (colchón anti-hambruna); los demás básicos son flujo puro. La afinidad de recurso (resType) se reserva
+// para los especiales históricos (plata/oro/sal/seda por zona), no para los básicos (los manda el terreno).
+const BASICS=["comida","materiales","piedra","metal"]; // cesta básica que produce y necesita el campesino
+const SUBS_BASICS=["comida"];    // único básico con DESPENSA local (colchón anti-hambruna); el resto es flujo
+const SUBS_ORGANIC={comida:1};   // bienes afectados por el desastre de cosecha (harvestMul): el grano
+const NEED_BASIC={comida:1.0, materiales:0.35, piedra:0.12, metal:0.12}; // cesta por hab/AÑO (igual para todos)
+// El GRANO es casi autosuficiente por terreno (0.8-1.4): es el staple de supervivencia y, SIN mercado
+// internacional aún (Bloque 3), un país de terreno pobre no puede importarlo → no debe colapsar por hambre.
+// La ESPECIALIZACIÓN fuerte va en los básicos industriales (madera/piedra/hierro), que no matan de hambre y
+// son los que mueven el comercio. (Cuando exista la importación internacional, el grano podrá endurecerse.)
+const TERRAIN_PROD={ // producción campesina por terreno y básico (mult; 1.0=autoabastece esa necesidad)
+  vega:    {comida:1.4, materiales:0.6, piedra:0.4, metal:0.3},
+  pradera: {comida:1.3, materiales:0.7, piedra:0.5, metal:0.4},
+  llanura: {comida:1.15,materiales:0.8, piedra:0.7, metal:0.6},
+  colinas: {comida:1.0, materiales:0.9, piedra:1.2, metal:1.0},
+  bosque:  {comida:0.95,materiales:1.9, piedra:0.6, metal:0.7},
+  pantano: {comida:0.92,materiales:1.4, piedra:0.5, metal:0.6},
+  estepa:  {comida:0.97,materiales:0.5, piedra:0.8, metal:0.8},
+  desierto:{comida:0.9, materiales:0.3, piedra:1.2, metal:1.1},
+  montana: {comida:0.9, materiales:0.6, piedra:1.7, metal:1.9},
+  tundra:  {comida:0.9, materiales:0.9, piedra:0.7, metal:0.7},
+};
+const SUBS_STORE_YEARS={comida:0.7}; // capacidad de la despensa de GRANO en años de consumo (× Almacén)
+function terrMul(p,k){const t=TERRAIN_PROD[p.terrain];return t&&t[k]!=null?t[k]:1} // vocación del terreno para el básico k
 function harvestMul(p){ // calidad de la cosecha de este año (determinista por provincia+año)
   const year=Math.floor(S.hour/YR_TICKS);
   let n=(p.id*73856093^year*19349663)|0;n=Math.imul(n^(n>>>13),1274126177);n^=n>>>16;
   return 1+HARVEST_AMP*((n>>>0)/4294967296*2-1);
 }
-function subsCons(p,k){return (p.pop||0)*(SUBS_CONS[k]||0)}              // consumo del bien k por tick
-function subsProd(p,k){                                                  // producción del bien k por tick
-  let v=(p.pop||0)*(SUBS_PROD[k]||0);
-  if(k==="comida")v*=(FOOD_FERT[p.terrain]||1)*(1+0.4*lvlOf(p,"granja")); // fertilidad + granja mejoran la comida
-  if(SUBS_ORGANIC[k])v*=harvestMul(p);                                  // desastre de cosecha en los orgánicos
+function subsCons(p,k){return (p.pop||0)*(NEED_BASIC[k]||0)/YR_TICKS}    // consumo del básico k por tick (cesta universal)
+function subsProd(p,k){                                                  // producción del básico k por tick (según terreno)
+  let v=(p.pop||0)*(NEED_BASIC[k]||0)/YR_TICKS*terrMul(p,k);
+  if(k==="comida")v*=(1+0.4*lvlOf(p,"granja"))*harvestMul(p);           // la granja y la cosecha (desastre) afectan al grano
   return v;
 }
 function subsBalance(p,k){return subsProd(p,k)-subsCons(p,k)}           // >0 excedente, <0 déficit (por tick)
@@ -117,8 +131,9 @@ const MKT_GOODS=["pano","vino","sal","seda","raros"];           // LUJOS de come
 // E1: el GRANO también se mercadea. Oferta = excedente campesino (overflow de la despensa); demanda =
 // las élites que NO cultivan (burgués/clero/nobleza) COMEN comprando grano del mercado. El campesino
 // come lo suyo (subsistencia), no compra. MKT_TRADE = todos los bienes que se compran/venden y ponen precio.
-const MKT_TRADE=["comida",...MKT_GOODS];
-const MKT_PRICE={comida:0.8,pano:2.2,vino:2.2,sal:1.6,seda:5.0,raros:4.0}; // ducados/unidad (referencia). Comida = staple barato (todos comen mucho; en excedente cae al suelo)
+// Bloque 1: los 4 BÁSICOS también se mercadean (el campesino vende superávit / compra déficit por terreno).
+const MKT_TRADE=[...BASICS,...MKT_GOODS];  // básicos (grano/madera/piedra/hierro) + lujos
+const MKT_PRICE={comida:0.8,materiales:1.0,piedra:1.0,metal:2.0,pano:2.2,vino:2.2,sal:1.6,seda:5.0,raros:4.0}; // ducados/unidad (referencia)
 const NPC=1e-7;                                                 // escala "por habitante y tick"
 // Necesidad por hab/tick y estrato. La COMIDA es un staple: las élites comen ≈1/año (=1/YR_TICKS), como
 // todo el mundo, pero comprándola en el mercado. Los lujos, mucho menos (los altos, más y más fino).
@@ -223,7 +238,7 @@ const JOBS_PER_LEVEL=550;   // puestos de trabajo que exige cada nivel de edific
 const SPEC_BASE=0.06;       // fracción de la población especializable (siempre hay algo de artesanía)
 const SPEC_K=0.6;           // + capacidad de especialistas por excedente agrícola estructural
 const SPEC_MAX=0.35;        // tope de especialistas (urbanización máxima medieval)
-function structPPF(p){return (FOOD_FERT[p.terrain]||1)*(1+0.4*lvlOf(p,"granja"))} // comida/campesino (sin cosecha)
+function structPPF(p){return terrMul(p,"comida")*(1+0.4*lvlOf(p,"granja"))} // capacidad de grano/campesino del terreno (sin cosecha)
 function specialistCap(p){  // cuántos pops puede sostener la provincia fuera del campo
   const f=Math.max(0.02,Math.min(SPEC_MAX,SPEC_BASE+SPEC_K*(structPPF(p)-1)));
   return (p.pop||0)*f;
@@ -648,30 +663,38 @@ function economyTick(dt=1){
       if(avail>0){const take=Math.min(localNeed,avail);for(const q of pool)q.store.comida-=take*(q.store.comida/avail)}
     }
   }
-  // Pasada B: subsistencia LOCAL de GRANO (despensa por provincia p.store.comida), hambruna, crecimiento
-  // ligado al llenado de la despensa y regeneración de la soldadesca. Los demás básicos ya no se acopian.
+  // Pasada B (BLOQUE 1): el campesino produce los 4 BÁSICOS según su TERRENO y comercia sus superávits/
+  // déficits en el mercado nacional. El GRANO tiene despensa (colchón) y hambruna; se vende el excedente y
+  // se compra el déficit del pool nacional de grano. Los demás básicos (madera/piedra/hierro) son flujo puro:
+  // se acumula el superávit y el déficit del reino y se COMPENSAN tras el bucle. En cada compraventa el
+  // BURGUÉS se lleva su margen (su INGRESO por el volumen) y el campesino lo paga. Crecimiento y soldadesca igual.
+  const NONGRAIN=["materiales","piedra","metal"];
+  const bSup=Array.from({length:NPLAY},()=>({})), bDef=Array.from({length:NPLAY},()=>({}));
   const regen=Math.min(1,SOLD_REGEN*dt);
   for(const p of S.provs){
     if(p.wasteland)continue;
     if(!p.store)p.store={};
     const pop0=p.pop||0; // Fase A: para reescalar los estratos con el cambio de población
+    const n=p.owner, N=(n<NPLAY)?S.nations[n]:null; if(N)ensureMarket(N);
     let famine=false;
+    // --- GRANO: despensa + venta de excedente + compra de déficit del mercado nacional + hambruna ---
     {
       const cap=storeCap(p,"comida");
       if(p.store.comida==null)p.store.comida=cap*0.6;
       p.store.comida+=subsBalance(p,"comida")*dt;
-      if(p.store.comida>cap){ // despensa llena: el EXCEDENTE campesino se vende en el mercado nacional (E1)
-        const over=p.store.comida-cap;p.store.comida=cap;
-        if(p.owner<NPLAY){const N=S.nations[p.owner];ensureMarket(N);N.mkt.comida=(N.mkt.comida||0)+over}
-      }
+      if(p.store.comida>cap){const over=p.store.comida-cap;p.store.comida=cap;if(N)N.mkt.comida=(N.mkt.comida||0)+over} // excedente → mercado
       if(p.store.comida<0){
         let deficit=-p.store.comida;p.store.comida=0;
-        // el reino socorre comprando grano (relieve automático; el socorro/requisa dirigido por el jugador es futuro)
-        if(p.owner<NPLAY){const R=S.nations[p.owner].res;const relief=Math.min(deficit,(R.dinero||0)/FOOD_PRICE);if(relief>0){R.dinero-=relief*FOOD_PRICE;deficit-=relief}}
+        if(N){ // comprar grano del mercado nacional (lo que otras provincias vendieron); el burgués cobra su margen
+          const price=N.mktPrice.comida||MKT_PRICE.comida, buy=Math.min(deficit,N.mkt.comida||0);
+          if(buy>0){N.mkt.comida-=buy;deficit-=buy;const turn=buy*price;N.sWealth.burgues+=turn*BURGUES_MARGIN;N.sWealth.campesino-=turn*BURGUES_MARGIN}
+        }
         const cons=subsCons(p,"comida")*dt;
-        if(cons>0&&deficit/cons>FAMINE_DEF){p.pop=Math.max(0,(p.pop||0)-deficit*STARVE_RATE);famine=true}
+        if(cons>0&&deficit/cons>FAMINE_DEF){p.pop=Math.max(0,(p.pop||0)-deficit*STARVE_RATE);famine=true} // no pudo importar grano → hambruna
       }
     }
+    // --- MADERA/PIEDRA/HIERRO: acumular superávit/déficit del reino (se compensan tras el bucle) ---
+    if(N)for(const k of NONGRAIN){const net=subsBalance(p,k)*dt;if(net>=0)bSup[n][k]=(bSup[n][k]||0)+net;else bDef[n][k]=(bDef[n][k]||0)-net}
     p.famine=famine;
     if(!famine){const cap=storeCap(p,"comida");const fill=cap>0?p.store.comida/cap:0;p.pop=(p.pop||0)*(1+POP_GROWTH_BASE*(0.4+fill)*dt)}
     if(p.pops&&pop0>0){const f=(p.pop||0)/pop0;for(const k in p.pops)p.pops[k]*=f} // estratos siguen a la población
@@ -688,6 +711,17 @@ function economyTick(dt=1){
       }
     }
     if(p.owner<NPLAY){const sc=soldCap(p),s=p.sold!=null?p.sold:sc;p.sold=s+(sc-s)*regen}
+  }
+  // BLOQUE 1: COMPENSACIÓN nacional de los básicos no-grano. El superávit y el déficit del reino se casan;
+  // el volumen casado es comercio interno (el burgués cobra su margen; el campesino lo paga). Lo no casado
+  // (superávit sobrante) queda para EXPORTAR (Bloque 3, futuro); el déficit sobrante queda sin cubrir.
+  for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(!N||!N.alive)continue;ensureMarket(N);if(!N.mktInfo)N.mktInfo={};
+    for(const k of NONGRAIN){
+      const sup=bSup[n][k]||0, def=bDef[n][k]||0, vol=Math.min(sup,def);
+      const price=N.mktPrice[k]||MKT_PRICE[k]||1;
+      if(vol>0){const turn=vol*price;N.sWealth.burgues+=turn*BURGUES_MARGIN;N.sWealth.campesino-=turn*BURGUES_MARGIN}
+      N.mktInfo[k]={dem:def/dt*730,sold:vol/dt*730,short:def>sup*1.02,price}; // para el panel de mercado
+    }
   }
 }
 
