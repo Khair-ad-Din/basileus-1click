@@ -121,6 +121,17 @@ const BURGUES_MARGIN=0.10;   // los burgueses (comerciantes) se quedan solo este
 // Tope de riqueza acumulada por habitante, POR ESTRATO (estabiliza y fija la jerarquía de riqueza:
 // campesinos pobres, burgueses acomodados, clero y nobleza ricos). El exceso se consume/reinvierte.
 const WEALTH_CAP={campesino:0.02,burgues:0.04,clero:2.0,nobleza:3.0};
+// ---- Movilidad social (Fase C): ascensos/descensos campesino<->burgués ----
+// Modelo "fracción objetivo + deriva": cada provincia tiende a una composición según su DESARROLLO
+// (urbanización + edificios de comercio); los pops migran lento hacia ella. El ASCENSO se modula por
+// la PROSPERIDAD de los burgueses del reino (si prosperan, atraen; si penan, no); el DESCENSO es libre.
+const PROMO_RATE=0.0010;      // fracción de la brecha corregida por tick (lento, stackeable)
+const PROSP_REF=0.02;         // riqueza/hab de burgués de referencia (prosperidad = actual/REF, ~1 al inicio)
+function targetBurgFrac(p){   // fracción objetivo de burgueses sobre la clase baja (resto = campesinos)
+  let f=p.urban?0.35:0.03;
+  for(const b of ["mercado","gremio","lonja","puerto"])f+=0.03*lvlOf(p,b); // el comercio atrae burguesía
+  return Math.min(0.6,f);
+}
 const MKT_DECAY=0.985;    // los excedentes no vendidos del mercado se disipan por tick (perecen/salen)
 function ensureMarket(N){ // inicializa el estado de mercado/riqueza de una nación si falta
   if(!N.sWealth){N.sWealth={};for(const k of STRATA)N.sWealth[k]=0}
@@ -497,6 +508,7 @@ function economyTick(dt=1){
       N.mkt[g]=stock*MKT_DECAY;                                      // el excedente no vendido se disipa
     }
     for(const k of STRATA){const cap=(WEALTH_CAP[k]||0.1)*str[k];if(W[k]>cap)W[k]=cap;if(W[k]<0)W[k]=0}
+    N.prosp=str.burgues>0?Math.min(1.5,(W.burgues/str.burgues)/PROSP_REF):1; // prosperidad burguesa (Fase C)
   }
   // Comida del EJÉRCITO (pop-driven): cada ejército consume grano por sus pops. El slider a.supply
   // reparte entre FORRAJEO local (la provincia que pisa + sus vecinas, proporcional a la reserva de
@@ -546,6 +558,18 @@ function economyTick(dt=1){
     p.famine=famine;
     if(!famine){const cap=storeCap(p,"comida");const fill=cap>0?p.store.comida/cap:0;p.pop=(p.pop||0)*(1+POP_GROWTH_BASE*(0.4+fill)*dt)}
     if(p.pops&&pop0>0){const f=(p.pop||0)/pop0;for(const k in p.pops)p.pops[k]*=f} // estratos siguen a la población
+    // Fase C: movilidad campesino<->burgués hacia la fracción objetivo de la provincia
+    if(p.pops&&p.owner<NPLAY){
+      const base=(p.pops.campesino||0)+(p.pops.burgues||0);
+      if(base>0){
+        const gap=targetBurgFrac(p)*base-(p.pops.burgues||0);
+        const prosp=S.nations[p.owner].prosp;
+        let move=gap*PROMO_RATE*dt;
+        if(move>0)move*=(prosp==null?1:Math.max(0,prosp)); // el ascenso exige burguesía próspera; el descenso es libre
+        move=Math.max(-p.pops.burgues,Math.min(p.pops.campesino,move));
+        p.pops.burgues+=move;p.pops.campesino-=move;
+      }
+    }
     if(p.owner<NPLAY){const sc=soldCap(p),s=p.sold!=null?p.sold:sc;p.sold=s+(sc-s)*regen}
   }
 }
