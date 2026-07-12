@@ -25,19 +25,24 @@
   .dim{color:var(--dim)}
   .ttl{color:var(--title)}
   html,body{width:100%;height:100%;overflow:hidden;background:#1c2127;color:var(--txt)}
-  #topbar{position:fixed;top:0;left:0;right:0;height:46px;background:#262b31;border-bottom:2px solid #3a4047;
-    display:flex;align-items:center;gap:14px;padding:0 12px;z-index:20;font-size:13px}
+  /* barra de RECURSOS (arriba): solo el stock de la corona, con 2ª fila reservada para que crezcan los bienes */
+  #topbar{position:fixed;top:0;left:0;right:0;height:78px;background:#262b31;border-bottom:2px solid #3a4047;
+    display:flex;align-items:center;padding:5px 12px;z-index:20;font-size:13px}
+  /* barra INFERIOR: fecha, velocidad y botonera (movidas desde arriba para dejar sitio a los recursos) */
+  #bottombar{position:fixed;bottom:0;left:0;right:0;height:42px;background:#262b31;border-top:2px solid #3a4047;
+    display:flex;align-items:center;gap:6px;padding:0 12px;z-index:20;font-size:13px}
+  #bottombar .bbSpacer{flex:1 1 auto}
   .res{display:flex;align-items:center;gap:4px;white-space:nowrap}
   .res b{color:#fff}
   .reslab{color:#9aa3ad;font-size:11px}
   .chip{width:14px;height:14px;border-radius:3px;border:1px solid #000;display:inline-block}
-  #dateBox{margin-left:auto;color:#c9c2ae;white-space:nowrap}
+  #dateBox{color:#c9c2ae;white-space:nowrap;font-size:13px}
   .spdBtn,.uiBtn{background:#343b43;border:1px solid #4a525b;color:#d8d4c8;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px}
   .spdBtn.active{background:#5d7a4e;border-color:#7fa56b;color:#fff}
   .uiBtn:hover,.spdBtn:hover{background:#414a54}
-  #canvasWrap{position:absolute;top:46px;left:0;right:0;bottom:0;background:#27384a;overflow:hidden}
+  #canvasWrap{position:absolute;top:78px;left:0;right:0;bottom:42px;background:#27384a;overflow:hidden}
   #map{display:block;cursor:grab}
-  #side{position:fixed;top:56px;right:10px;width:300px;max-height:calc(100% - 76px);overflow-y:auto;
+  #side{position:fixed;top:88px;right:10px;width:300px;max-height:calc(100% - 150px);overflow-y:auto;
     background:rgba(33,38,44,.96);border:1px solid #3a4047;border-radius:6px;padding:12px;z-index:15;font-size:var(--fs);color:var(--txt);display:none}
   #side h2{font-size:var(--fs-t);margin-bottom:6px;color:#fff}
   #side h3{font-size:var(--fs-t);margin:10px 0 4px;color:var(--title);border-bottom:1px solid #3a4047;padding-bottom:2px}
@@ -47,8 +52,8 @@
   .bbtn:disabled{background:#3a4047;border-color:#4a525b;color:#7a828b;cursor:not-allowed}
   .bbtn.red{background:#6a3a3a;border-color:#8a5050}
   .bbtn:hover:not(:disabled){filter:brightness(1.15)}
-  #log{position:fixed;left:10px;bottom:238px;width:360px;z-index:14;font-size:12px;pointer-events:none}
-  #terrLegend,#popLegend,#resLegend{position:fixed;right:10px;bottom:238px;width:310px;z-index:14;font-size:11px;
+  #log{position:fixed;left:10px;bottom:282px;width:360px;z-index:14;font-size:12px;pointer-events:none}
+  #terrLegend,#popLegend,#resLegend{position:fixed;right:10px;bottom:282px;width:310px;z-index:14;font-size:11px;
     background:rgba(33,38,44,.96);border:1px solid #3a4047;border-radius:6px;padding:10px;color:#d8d4c8}
   #log div{background:rgba(20,24,28,.78);padding:3px 8px;border-radius:4px;margin-top:3px;color:#cfc9ba}
   .overlay{position:fixed;inset:0;background:rgba(12,15,18,.88);z-index:50;display:flex;align-items:center;justify-content:center}
@@ -100,17 +105,15 @@
   .tcrumbc{color:#e8e0c8}
   #loadMsg{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:60;
     background:#1c2127;color:#c9c2ae;font-size:18px}
-  /* barra de recursos (topbar) — SIEMPRE una sola fila; los botones nunca se encogen ni se ocultan,
-     la barra de recursos absorbe el ajuste (scroll interno sin barra visible si el ancho aprieta) */
-  #topbar{flex-wrap:nowrap;height:48px;padding:5px 10px;gap:6px}
-  #topbar>button,#topbar>#dateBox,#topbar>.mapdd,#topbar>.spdBtn,#topbar>.uiBtn{flex:0 0 auto}
-  #resbar{display:flex;align-items:center;gap:7px;flex-wrap:nowrap;flex:0 1 auto;min-width:0;overflow-x:auto;overflow-y:hidden}
-  #resbar::-webkit-scrollbar{height:0}
+  /* barra de recursos: la corona stockea muchos bienes → hasta 2 FILAS (la 2ª reservada); si no caben, scroll */
+  #resbar{display:flex;align-items:center;gap:5px 8px;flex-wrap:wrap;flex:1 1 auto;min-width:0;max-height:68px;overflow-y:auto;align-content:center}
+  #resbar::-webkit-scrollbar{width:0}
   #resbar .res{flex:0 0 auto}
-  /* dropdown de vistas de mapa (un solo botón) */
+  #bottombar>button,#bottombar>.mapdd,#bottombar>.spdBtn,#bottombar>.uiBtn{flex:0 0 auto}
+  /* dropdown de vistas de mapa — se abre HACIA ARRIBA (el botón está en la barra inferior) */
   .mapdd{position:relative;display:inline-block}
-  .mapdd-list{position:absolute;top:100%;left:0;margin-top:3px;background:#262b31;border:1px solid #4a525b;
-    border-radius:6px;z-index:30;min-width:118px;box-shadow:0 6px 16px rgba(0,0,0,.5);overflow:hidden}
+  .mapdd-list{position:absolute;bottom:100%;left:0;margin-bottom:5px;background:#262b31;border:1px solid #4a525b;
+    border-radius:6px;z-index:30;min-width:118px;box-shadow:0 -6px 16px rgba(0,0,0,.5);overflow:hidden}
   .mapdd-list div{padding:7px 12px;font-size:13px;color:#d8d4c8;cursor:pointer;white-space:nowrap}
   .mapdd-list div:hover{background:#3a424a;color:#fff}
   .res{display:flex;align-items:center;gap:3px;white-space:nowrap;font-size:13px}
@@ -131,7 +134,7 @@
   .rd{font-size:10.5px;margin-left:1px;font-weight:normal}  /* +/- mensual junto al stock */
   .res .sep{width:1px;height:18px;background:#3a4047;margin:0 2px}
   /* índice de categorías (pestañas por fuera de la ventana de construcción, arriba) */
-  #buildtabs{position:fixed;left:396px;bottom:298px;z-index:17;display:none;gap:5px;align-items:flex-end}
+  #buildtabs{position:fixed;left:396px;bottom:342px;z-index:17;display:none;gap:5px;align-items:flex-end}
   #buildtabs.show{display:flex}
   .btab{background:#262b31;border:1px solid #3f464e;border-bottom:none;color:#c9c2ae;font-size:12px;
     padding:5px 13px;border-radius:7px 7px 0 0;cursor:pointer;user-select:none}
@@ -139,12 +142,12 @@
   .btab.on{background:linear-gradient(180deg,#3a424a,#2b3138);color:#fff;border-color:#7fa56b;
     box-shadow:0 -2px 8px rgba(0,0,0,.25)}
   /* Ficha de provincia (estilo EU4): DETALLE abajo-izq + columna de botones cuadrados + ventana activa */
-  #provPanel{position:fixed;left:8px;bottom:8px;width:322px;max-height:calc(100vh - 118px);z-index:17;display:none;
+  #provPanel{position:fixed;left:8px;bottom:52px;width:322px;max-height:calc(100vh - 150px);z-index:17;display:none;
     background:linear-gradient(180deg,#2b3138,#22272d);border:1px solid #3f464e;border-radius:8px;
     box-shadow:0 4px 18px rgba(0,0,0,.45);padding:10px 12px;overflow-y:auto;color:var(--txt);font-size:var(--fs)}
   #provPanel.show{display:block}
   /* ventana de EJÉRCITO (abajo-izquierda; excluyente con la ficha de provincia) */
-  #armyWin{position:fixed;left:8px;bottom:8px;width:322px;max-height:calc(100vh - 118px);z-index:18;display:none;
+  #armyWin{position:fixed;left:8px;bottom:52px;width:322px;max-height:calc(100vh - 150px);z-index:18;display:none;
     background:linear-gradient(180deg,#2b3138,#22272d);border:1px solid #4a525b;border-radius:8px;
     box-shadow:0 4px 18px rgba(0,0,0,.45);padding:10px 12px;overflow-y:auto;color:var(--txt);font-size:var(--fs)}
   #armyWin.show{display:block}
@@ -164,7 +167,7 @@
   #armyWin .rbtn.on{background:#3f4b39;border-color:#9fb878;color:#e8e0c8}
   #armyWin .qlev{white-space:nowrap;margin-left:5px}
   /* menú Editar (licenciar) a la derecha de la ventana de ejército */
-  #armyEdit{position:fixed;left:338px;bottom:8px;width:204px;max-height:calc(100vh - 118px);z-index:18;display:none;
+  #armyEdit{position:fixed;left:338px;bottom:52px;width:204px;max-height:calc(100vh - 150px);z-index:18;display:none;
     background:linear-gradient(180deg,#2b3138,#22272d);border:1px solid #4a525b;border-radius:8px;
     box-shadow:0 4px 18px rgba(0,0,0,.45);padding:10px 12px;overflow-y:auto;color:var(--txt);font-size:var(--fs)}
   #armyEdit.show{display:block}
@@ -173,7 +176,7 @@
   #armyEdit .mini:hover{background:#414a54}
   #armyEdit .mini.red{border-color:#7a4a44;color:#e0a99f}
   /* columna de botones cuadrados a la derecha del detalle (abren su ventana) */
-  #provTabs{position:fixed;left:336px;bottom:8px;z-index:17;display:none;flex-direction:column;gap:6px}
+  #provTabs{position:fixed;left:336px;bottom:52px;z-index:17;display:none;flex-direction:column;gap:6px}
   #provTabs.show{display:flex}
   .ptab{width:50px;height:50px;background:linear-gradient(180deg,#2f353d,#23282e);border:1px solid #454d56;
     border-radius:8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -183,7 +186,7 @@
   .ptab .ic{font-size:19px;line-height:1}
   .ptab .lb{font-size:8.5px;letter-spacing:.2px}
   /* ventana activa: construcción (tiles en fila) / caminos / ejércitos (lista) */
-  #provWin{position:fixed;left:392px;right:8px;bottom:8px;height:240px;z-index:16;display:none;
+  #provWin{position:fixed;left:392px;right:8px;bottom:52px;height:240px;z-index:16;display:none;
     background:linear-gradient(180deg,#2b3138,#22272d);border:1px solid #3f464e;border-radius:8px;
     box-shadow:0 4px 18px rgba(0,0,0,.45);padding:8px 12px;overflow:auto;color:var(--txt);font-size:var(--fs)}
   #provWin.show{display:block}
@@ -251,7 +254,7 @@
   .btile .uni{flex:0 0 auto;font-size:var(--fs-s);color:var(--title);font-weight:bold}
   /* menú del reino (arriba-izquierda, estilo EU4/5: escudo + botonera) */
   /* menú del reino: escudo (con color de nación detrás) + botones-placa (texto horneado) */
-  #realmMenu{position:fixed;top:52px;left:10px;z-index:16;display:none}
+  #realmMenu{position:fixed;top:84px;left:10px;z-index:16;display:none}
   #realmMenu.show{display:flex;flex-direction:row;align-items:center;gap:6px}
   .rmEscudo{position:relative;width:104px;height:86px;flex:0 0 auto}
   .rmEscudo img{position:relative;width:100%;height:100%;object-fit:contain;display:block;z-index:1;
@@ -280,7 +283,7 @@
   #side .armrow.sel{background:#3a463a;border:1px solid #6a7f4e;padding:2px 4px}
   #side .armrow .comp{font-size:10px;color:#9aa3ad}
   /* panel de ejército y reclutamiento (flotante, NO modal: deja jugar el mapa) */
-  #armyPanel{position:fixed;top:134px;left:10px;z-index:17;display:none;width:300px;max-height:calc(100% - 350px);
+  #armyPanel{position:fixed;top:166px;left:10px;z-index:17;display:none;width:300px;max-height:calc(100% - 382px);
     overflow-y:auto;background:linear-gradient(180deg,#2b3138,#22272d);border:1px solid #454d56;border-radius:8px;
     box-shadow:0 6px 22px rgba(0,0,0,.5);padding:12px 14px}
   #armyPanel.show{display:block}
@@ -309,11 +312,14 @@
 
 <div id="topbar">
   <span id="resbar"></span>
+</div>
+<div id="bottombar">
   <span id="dateBox"></span>
   <button class="spdBtn" data-s="0">II</button>
   <button class="spdBtn active" data-s="1" title="Tiempo real: 1 hora = 1 mes de juego">1x</button>
   <button class="spdBtn" data-s="60" title="1 mes de juego por minuto">60x</button>
   <button class="spdBtn" data-s="720" title="1 año de juego por minuto">720x</button>
+  <span class="bbSpacer"></span>
   <button class="uiBtn" id="dipBtn">Diplomacia</button>
   <button class="uiBtn" id="reportsBtn" title="Crónica de guerras, batallas y paces">📜 Informes Reales</button>
   <button class="uiBtn" id="ledgerBtn">Registro</button>
