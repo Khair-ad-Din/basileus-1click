@@ -338,15 +338,15 @@ function drawGraph(){
   c.clearRect(0,0,MW,MH);
   if(!S.adj||!S.adj.length)return;
   c.lineWidth=0.7;
-  // conexiones terrestres
-  c.strokeStyle="rgba(240,240,255,0.16)";c.beginPath();
+  // conexiones terrestres (opacidad subida un poco para que se vean sobre el terreno)
+  c.strokeStyle="rgba(240,240,255,0.30)";c.beginPath();
   for(let p=0;p<S.provs.length;p++){
     const P=S.provs[p];if(P.wasteland)continue;
     for(const a of S.adj[p]){if(a<p||S.provs[a].wasteland)continue;c.moveTo(P.x,P.y);c.lineTo(S.provs[a].x,S.provs[a].y)}
   }
   c.stroke();
   // conexiones marítimas (punteadas, más tenues)
-  c.strokeStyle="rgba(120,200,255,0.20)";c.setLineDash([2,3]);c.beginPath();
+  c.strokeStyle="rgba(120,200,255,0.34)";c.setLineDash([2,3]);c.beginPath();
   for(let p=0;p<S.provs.length;p++){
     const P=S.provs[p];if(P.wasteland)continue;
     for(const a of S.seaAdj[p]){if(a<p||S.provs[a].wasteland)continue;c.moveTo(P.x,P.y);c.lineTo(S.provs[a].x,S.provs[a].y)}
