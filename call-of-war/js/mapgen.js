@@ -505,41 +505,53 @@ const GOLD_ZONES=[
   [45.4,47.6,22.3,25.7]  // Transilvania (Baia Mare, Roșia Montană)
 ];
 function inZones(zones,lon,lat){for(const[la0,la1,lo0,lo1]of zones)if(lat>=la0&&lat<=la1&&lon>=lo0&&lon<=lo1)return true;return false}
-// El TERRENO manda los BÁSICOS (grano/madera/piedra/hierro) — ver TERRAIN_PROD en economy.js. Por eso el
-// resType de una provincia ya NO es un básico: es SOLO un ESPECIAL histórico (lujo/comercio regional) —
-// vino, paño, sal, seda, especias, caballos — o los raros yacimientos de plata/oro. Muchas provincias del
-// campo NO tienen especial (resType=null): son agrícolas puras y viven de la vocación de su terreno. Así el
-// resType (afinidad + fábrica sembrada + mapa de recursos) no solapa con los básicos que ya reparte el terreno.
+// El TERRENO manda los BÁSICOS (grano/madera/piedra/hierro). El resType de una provincia es un ESPECIAL de
+// COMERCIO situado por su ZONA HISTÓRICA de producción (cajas [latMin,latMax,lonMin,lonMax], como plata/oro):
+// vino donde había viñedos, seda en las rutas de la seda, especias en los entrepôts, sal en las salinas
+// históricas, caballos en las llanuras ganaderas. Fuera de esas zonas la provincia es agrícola pura
+// (resType=null). Así se acaba el "vino en Rusia": la distribución es histórica y por eso los bienes escasean
+// donde no se producen → nace el comercio. (Ver [[basileus-pop-economy-vision]].)
+const RES_ZONES={
+  // VINO: Iberia, S/O de Francia, Italia, Rin-Mosela, Panonia/Balcanes, Egeo/Creta, Levante costero
+  vino:[[36,43.5,-9,3.5],[43,49,-2.5,6.5],[37,46.5,7,18.5],[47.8,51.5,6,9.2],[44.5,48.5,15.5,23],[34.5,41.5,19,28],[31,37,32,37.5]],
+  // SEDA: Norte de Italia (Lucca/Florencia), Calabria/Sicilia, Granada/Valencia, Grecia/Egeo, Levante, Caspio
+  seda:[[42.8,46,8.5,13.2],[36.8,40,14.5,17.2],[36.3,40,-5.5,0.3],[36.5,41.5,20,29.5],[31,37,33.5,38.5],[36,42.5,46,53]],
+  // ESPECIAS (raros): NO se producen aquí; llegan a los ENTREPÔTS — Venecia, Génova, Alejandría, Levante, Bursa, Mar Negro
+  raros:[[45,46.4,11.8,13.8],[43.3,45,7.8,10.2],[29,32,28,32.8],[31,36.2,33.8,38.5],[38,41.6,26,31],[40,46,32.5,41.5]],
+  // SAL: Atlántico (Bourgneuf/Setúbal), Mediterráneo (Ibiza/Trapani/Chipre), Centroeuropa (Salzburgo/Wieliczka), Adriático, Crimea, Cheshire
+  sal:[[37,47.5,-10,-1],[34,40,-1.5,15.5],[46.5,51,12,21.5],[43,46.5,12,16.8],[43.5,47.5,31,39],[52,54.8,-3.3,-1.6],[31,37,32,37.5]],
+  // CABALLOS (petroleo): llanura panónica, Polonia-Lituania, Anatolia (Capadocia), Andalucía, Magreb (berberisco), estepa póntica
+  petroleo:[[44.5,48.8,15,23],[49,56,17,29.5],[36.5,40.5,30.5,37.5],[36,39.8,-7.5,-1],[28,36,-9.5,11.5],[43.5,50,28,47]],
+};
+// PAÑO: manufactura textil URBANA de las comarcas laneras — Flandes, Florencia/N.Italia, Inglaterra, Languedoc/Cataluña
+const PANO_ZONES=[[49.3,52.6,1.3,5.7],[42.8,46,8.3,13.2],[49.8,55.5,-5.6,1.7],[41,44.6,-1.2,4.6]];
 function assignResources(){
   for(const p of S.provs){
     p.resType=null;
     if(p.wasteland)continue;
-    // Ciudades: manufactura textil de lujo (paño) y algún lujo caro regional.
+    const[lon,lat]=pxToLonLat(p.x,p.y);
+    // Ciudades: paño en las comarcas textiles; si no, el lujo que su región produzca (o nada).
     if(p.urban){
-      const city=["pano","pano","pano","raros","seda","vino"];
-      p.resType=city[(S.rand()*city.length)|0];
+      if(inZones(PANO_ZONES,lon,lat)){p.resType="pano";continue}
+      const opts=[];for(const g in RES_ZONES)if(inZones(RES_ZONES[g],lon,lat))opts.push(g);
+      p.resType=opts.length?opts[(S.rand()*opts.length)|0]:null;
       continue;
     }
     const t=p.terrain;
-    // Yacimientos de plata/oro: solo en montaña/colinas (y bosque para el Harz) dentro de su zona
-    // histórica. El oro tiene prioridad (más raro) y una probabilidad menor que la plata.
+    // Yacimientos de plata/oro (zonas mineras históricas)
     if(t==="montana"||t==="colinas"||t==="bosque"){
-      const[lon,lat]=pxToLonLat(p.x,p.y);
       if(inZones(GOLD_ZONES,lon,lat)&&S.rand()<0.40){p.resType="oro";continue}
       if(inZones(SILVER_ZONES,lon,lat)&&S.rand()<0.48){p.resType="plata";continue}
     }
-    // Un ESPECIAL regional en ~1 de cada 4-5 provincias del campo (el resto quedan agrícolas puras).
-    if(S.rand()<0.22){
-      let pool;
-      if(t==="vega"||t==="pradera"||t==="llanura")pool=["vino","vino","pano"];        // vid de solana, lana
-      else if(t==="colinas"||t==="montana")pool=["vino","raros","petroleo"];          // vino de ladera, especias
-      else if(t==="estepa")pool=["petroleo","petroleo","raros","seda"];               // caballos de estepa, ruta de la seda
-      else if(t==="desierto")pool=["sal","raros","seda"];                             // caravanas, sal
-      else if(t==="bosque"||t==="pantano"||t==="tundra")pool=["raros","petroleo"];    // pieles/ámbar, ganado
-      else pool=["vino","pano","raros"];
-      if(p.coastal)pool=pool.concat(["sal","seda","raros"]);                          // puertos: sal marina, seda de Oriente
-      p.resType=pool[(S.rand()*pool.length)|0];
+    // Especial de comercio según la ZONA histórica en la que cae la provincia (con un filtro de terreno mínimo).
+    const opts=[];
+    for(const g in RES_ZONES){
+      if(!inZones(RES_ZONES[g],lon,lat))continue;
+      if((g==="vino"||g==="seda")&&(t==="tundra"||t==="desierto"||t==="pantano"))continue; // la vid/morera no cuaja
+      if(g==="petroleo"&&!(t==="llanura"||t==="pradera"||t==="estepa"||t==="vega"))continue; // caballos = pastos llanos
+      opts.push(g);
     }
+    if(opts.length&&S.rand()<0.55)p.resType=opts[(S.rand()*opts.length)|0]; // ~55% de las provincias EN zona llevan el bien
   }
 }
 /* ============================== Población =============================

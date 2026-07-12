@@ -130,23 +130,23 @@ const FOOD_PRICE=4.0;                                          // ducados por un
  * (S.nations[n].mkt). La producción de bienes de comercio se ESPEJA al mercado (la corona conserva
  * su copia como hasta ahora); en la próxima pasada se unificará (quitar NEED_PC de la corona y
  * encaminar la producción real al mercado). Precios FIJOS. Todo tunable (mods pequeños). */
-const MKT_GOODS=["pano","vino","sal","seda","raros"];           // LUJOS de comercio (se espejan al mercado desde los edificios)
+const MKT_GOODS=["pano","vino","sal","seda","raros","petroleo"];  // bienes de comercio (lujos + CABALLOS); se espejan al mercado desde los edificios
 // E1: el GRANO también se mercadea. Oferta = excedente campesino (overflow de la despensa); demanda =
 // las élites que NO cultivan (burgués/clero/nobleza) COMEN comprando grano del mercado. El campesino
 // come lo suyo (subsistencia), no compra. MKT_TRADE = todos los bienes que se compran/venden y ponen precio.
 // Bloque 1: los 4 BÁSICOS también se mercadean (el campesino vende superávit / compra déficit por terreno).
 const MKT_TRADE=[...BASICS,...MKT_GOODS];  // básicos (grano/madera/piedra/hierro) + lujos
 const NONGRAIN=["materiales","piedra","metal"]; // básicos no-grano: stock+precio nacional como los lujos (comercian por arbitraje)
-const MKT_PRICE={comida:0.8,materiales:1.0,piedra:1.0,metal:2.0,pano:2.2,vino:2.2,sal:1.6,seda:5.0,raros:4.0}; // ducados/unidad (referencia)
+const MKT_PRICE={comida:0.8,materiales:1.0,piedra:1.0,metal:2.0,pano:2.2,vino:2.2,sal:1.6,seda:5.0,raros:4.0,petroleo:3.0}; // ducados/unidad (referencia); caballos caros
 const NPC=1e-7;                                                 // escala "por habitante y tick"
 // Necesidad por hab/tick y estrato. La COMIDA es un staple: las élites comen ≈1/año (=1/YR_TICKS), como
 // todo el mundo, pero comprándola en el mercado. Los lujos, mucho menos (los altos, más y más fino).
 const EAT=1/YR_TICKS; // ración de grano por hab y tick (mismo que la subsistencia campesina)
 const LUX_NEED={
-  campesino:{pano:1.2*NPC,vino:1.0*NPC,sal:2.4*NPC},                                     // el campesino come su propio grano (no compra comida)
-  burgues:  {comida:EAT,pano:3.0*NPC,vino:3.0*NPC,sal:2.8*NPC,seda:0.8*NPC,raros:0.6*NPC},
-  clero:    {comida:EAT,pano:3.0*NPC,vino:4.0*NPC,sal:2.8*NPC,seda:1.0*NPC,raros:1.0*NPC},
-  nobleza:  {comida:EAT,pano:4.0*NPC,vino:5.0*NPC,sal:3.0*NPC,seda:2.0*NPC,raros:2.0*NPC},
+  campesino:{pano:1.2*NPC,vino:1.0*NPC,sal:2.4*NPC},                                                  // el campesino come su propio grano (no compra comida)
+  burgues:  {comida:EAT,pano:3.0*NPC,vino:3.0*NPC,sal:2.8*NPC,seda:0.8*NPC,raros:0.6*NPC,petroleo:1.2*NPC}, // caballos para el transporte mercantil
+  clero:    {comida:EAT,pano:3.0*NPC,vino:4.0*NPC,sal:2.8*NPC,seda:1.0*NPC,raros:1.0*NPC,petroleo:0.6*NPC},
+  nobleza:  {comida:EAT,pano:4.0*NPC,vino:5.0*NPC,sal:3.0*NPC,seda:2.0*NPC,raros:2.0*NPC,petroleo:3.0*NPC}, // la nobleza monta y arma la caballería
 };
 // Ingreso base de dinero por hab/tick y estrato. Campesino/burgués ≈ su cesta (viven al día);
 // clero (diezmos) y nobleza (rentas de la tierra) MUY por encima de su consumo → son la ÉLITE que
