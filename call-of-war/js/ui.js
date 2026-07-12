@@ -604,12 +604,15 @@ function buildRealmMenu(){
     {img:"btn_corte",dis:1},
     {img:"btn_tesoreria",on:"openTreasury()"},
     {img:"btn_leyes",dis:1},
-    {img:"btn_estamentos",on:"openEstates()"}
+    {img:"btn_estamentos",on:"openEstates()"},
+    {emoji:"🏪",on:"openMercado()",title:"Mercado"}
   ];
   el.innerHTML="<div class='rmEscudo' title='"+N.name+"'><span class='rmEscCol' style='background:"+N.color+"'></span>"+
       "<img src='assets/ui/escudo.png' alt='"+N.name+"'></div>"+
-    btns.map(b=>"<img class='rmBtnImg"+(b.dis?" dis":"")+"' src='assets/ui/"+b.img+".png' alt=''"+
-      (b.dis?" title='Próximamente'":" onclick='"+b.on+"'")+">").join("");
+    btns.map(b=>b.emoji
+      ?"<span class='rmBtnEmoji' title='"+b.title+"' onclick='"+b.on+"'>"+b.emoji+"</span>"
+      :"<img class='rmBtnImg"+(b.dis?" dis":"")+"' src='assets/ui/"+b.img+".png' alt=''"+
+        (b.dis?" title='Próximamente'":" onclick='"+b.on+"'")+">").join("");
   el.className="show";
 }
 // log de métricas del reino (arriba-derecha, fijo): KPIs de tesorería + ejércitos desplegados
@@ -995,31 +998,68 @@ function refreshEstates(){
     }
     h+="</div>";
   }
-  // Mercado nacional: stock + volumen comerciado al mes + estado (abastecido/escaso)
-  const info=(NA&&NA.mktInfo)||{};
-  h+="<div style='margin-top:12px;border-top:1px solid #2a2f36;padding-top:8px'>"+
-     "<div style='font-size:12px;color:var(--title);margin-bottom:4px'>🏪 Mercado nacional</div>"+
-     "<div style='display:flex;font-size:10px;color:#7a828b;padding:0 1px 2px'><span style='flex:1'></span><span style='width:60px;text-align:right'>stock</span><span style='width:80px;text-align:right'>comercio/mes</span><span style='width:72px;text-align:right'>estado</span></div>";
-  for(const g of MKT_TRADE){
-    const mi=info[g]||{};
-    const tag=mi.short?"<span style='color:var(--neg)'>escaso</span>":"<span style='color:var(--pos)'>abastecido</span>";
-    // precio dinámico: rojo si está por encima del de referencia (escasez), verde si por debajo (barato)
-    const price=mi.price!=null?mi.price:MKT_PRICE[g];
-    const pcol=price>MKT_PRICE[g]*1.05?"var(--neg)":(price<MKT_PRICE[g]*0.95?"var(--pos)":"#7a828b");
-    // Bloque 3: comercio internacional del bien (exporta el superávit sobrante / importa el déficit sobrante)
-    const intl=mi.exp>1?" <span style='color:var(--pos)' title='Exporta al mercado internacional (superávit)'>🌍↗"+nf(mi.exp)+"</span>":
-      (mi.imp>1?" <span style='color:#d6a15a' title='Importa del mercado internacional (déficit)'>🌍↙"+nf(mi.imp)+"</span>":"");
-    h+="<div style='display:flex;align-items:center;font-size:12px;padding:2px 1px'>"+
-       "<span style='flex:1'>"+(RES_ICON[g]||"")+" "+RES_LABEL[g]+" <span style='color:"+pcol+"' title='precio ref. "+MKT_PRICE[g]+"🪙'>"+(Math.round(price*10)/10)+"🪙</span>"+intl+"</span>"+
-       "<span style='color:var(--txt);width:60px;text-align:right'>"+nf(mkt[g]||0)+"</span>"+
-       "<span style='color:#9aa3ad;width:80px;text-align:right'>"+nf(mi.sold||0)+"</span>"+
-       "<span style='width:72px;text-align:right'>"+tag+"</span>"+
-       "</div>";
-  }
+  h+="<p style='color:#7a828b;font-size:11px;margin-top:10px;text-align:center'>Los estratos ganan por su rol, comen y compran sus lujos. El comercio de bienes vive ahora en la ventana <b>🏪 Mercado</b>.</p>";
+  body.innerHTML=h;
+}
+// ---- Mercado del reino (ventana propia): comercio de bienes, precios, oferta/demanda interna y exterior ----
+function refreshMercado(){
+  const ov=document.getElementById("mercadoOverlay");
+  if(!ov||ov.style.display!=="flex")return;
+  const body=document.getElementById("mercadoBody");
+  if(S.player<0){body.innerHTML="<p style='text-align:center;color:#9aa3ad'>Estás en modo observador. Toma el mando de una nación (desde el <b>Registro</b>) para ver su mercado.</p>";return}
+  const N=NATIONS[S.player],NA=S.nations[S.player];
+  const mkt=(NA&&NA.mkt)||{}, info=(NA&&NA.mktInfo)||{};
+  const nf=v=>Math.round(v).toLocaleString("es-ES");
+  const n1v=v=>Math.round(v*10)/10;
+  // agregados de comercio (valor = volumen × precio; /mes, se anualiza ×12)
+  let expVal=0,impVal=0,intVal=0,expVol=0,impVol=0,intVol=0;
+  for(const g of MKT_TRADE){const mi=info[g]||{},pr=mi.price!=null?mi.price:MKT_PRICE[g];
+    expVal+=(mi.exp||0)*pr; impVal+=(mi.imp||0)*pr; intVal+=(mi.sold||0)*pr;
+    expVol+=mi.exp||0; impVol+=mi.imp||0; intVol+=mi.sold||0;}
+  const bal=expVal-impVal;
+  let h="<div class='tsyhead'><span class='chip' style='background:"+N.color+"'></span> "+N.name+" · comercio de bienes</div>";
+  // tarjetas resumen
+  const card=(lab,val,sub,col)=>"<div style='flex:1;min-width:120px;background:#20252b;border:1px solid #2f363d;border-radius:7px;padding:8px 10px'>"+
+    "<div style='font-size:10px;color:#7a828b;text-transform:uppercase;letter-spacing:.4px'>"+lab+"</div>"+
+    "<div style='font-size:17px;font-weight:bold;color:"+(col||"var(--txt)")+"'>"+val+"</div>"+
+    "<div style='font-size:10px;color:#7a828b'>"+sub+"</div></div>";
+  h+="<div style='display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 4px'>"+
+    card("Balance comercial",(bal>=0?"+":"")+nf(bal)+"🪙",(bal>=0?"superávit":"déficit")+" /mes",bal>=0?"var(--pos)":"var(--neg)")+
+    card("Exportación",nf(expVal)+"🪙",nf(expVol)+" u/mes · "+nf(expVal*12)+"🪙/año","var(--pos)")+
+    card("Importación",nf(impVal)+"🪙",nf(impVol)+" u/mes · "+nf(impVal*12)+"🪙/año","#d6a15a")+
+    card("Comercio interno",nf(intVal)+"🪙",nf(intVol)+" u/mes (dentro del reino)")+
+    "</div>";
+  // tabla por bien, agrupada en Básicos y Lujos
+  const th="<div style='display:flex;font-size:10px;color:#7a828b;padding:3px 1px 2px;border-bottom:1px solid #2a2f36'>"+
+    "<span style='flex:1'>bien</span><span style='width:66px;text-align:right'>precio</span><span style='width:64px;text-align:right'>stock</span>"+
+    "<span style='width:70px;text-align:right'>demanda</span><span style='width:66px;text-align:right'>interno</span>"+
+    "<span style='width:60px;text-align:right'>exporta</span><span style='width:60px;text-align:right'>importa</span></div>";
+  const rowFor=g=>{
+    const mi=info[g]||{}, price=mi.price!=null?mi.price:MKT_PRICE[g], ref=MKT_PRICE[g];
+    const dev=ref>0?Math.round((price/ref-1)*100):0;
+    const pcol=price>ref*1.05?"var(--neg)":(price<ref*0.95?"var(--pos)":"#9aa3ad");
+    const expTxt=(mi.exp>1)?"<span style='color:var(--pos)'>↗"+nf(mi.exp)+"</span>":"<span style='color:#5a6470'>—</span>";
+    const impTxt=(mi.imp>1)?"<span style='color:#d6a15a'>↙"+nf(mi.imp)+"</span>":"<span style='color:#5a6470'>—</span>";
+    return "<div style='display:flex;align-items:center;font-size:12px;padding:2px 1px'>"+
+      "<span style='flex:1'>"+(RES_ICON[g]||"")+" "+RES_LABEL[g]+"</span>"+
+      "<span style='width:66px;text-align:right;color:"+pcol+"' title='ref. "+ref+"🪙 · "+(dev>=0?"+":"")+dev+"%'>"+n1v(price)+"🪙</span>"+
+      "<span style='width:64px;text-align:right;color:var(--txt)'>"+nf(mkt[g]||0)+"</span>"+
+      "<span style='width:70px;text-align:right;color:#9aa3ad'>"+nf(mi.dem||0)+"</span>"+
+      "<span style='width:66px;text-align:right;color:#9aa3ad'>"+nf(mi.sold||0)+"</span>"+
+      "<span style='width:60px;text-align:right'>"+expTxt+"</span>"+
+      "<span style='width:60px;text-align:right'>"+impTxt+"</span></div>";
+  };
+  h+="<div style='margin-top:12px'><div style='font-size:12px;color:var(--title);margin-bottom:2px'>🌾 Básicos</div>"+th;
+  for(const g of BASICS)h+=rowFor(g);
+  h+="</div><div style='margin-top:10px'><div style='font-size:12px;color:var(--title);margin-bottom:2px'>💎 Lujos</div>"+th;
+  for(const g of MKT_GOODS)h+=rowFor(g);
   h+="</div>";
-  h+="<p style='color:#7a828b;font-size:11px;margin-top:10px;text-align:center'>Los estratos ganan por su rol y compran sus lujos aquí. El precio sube con la escasez y baja con el excedente.</p>";
+  h+="<div style='display:flex;font-size:10px;color:#7a828b;gap:14px;flex-wrap:wrap;margin-top:10px;justify-content:center'>"+
+    "<span>precio en 🪙 (color: rojo caro / verde barato vs. referencia)</span><span>demanda/interno en unidades/mes</span>"+
+    "<span><span style='color:var(--pos)'>↗</span> exporta a otros reinos · <span style='color:#d6a15a'>↙</span> importa (u/mes)</span></div>";
+  h+="<p style='color:#7a828b;font-size:11px;margin-top:8px;text-align:center'>Los burgueses compran los bienes donde están baratos (excedente) y los venden donde están caros (déficit): el comercio hace CONVERGER los precios entre reinos.</p>";
   body.innerHTML=h;
 }
 export {
-  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, buildRealmMenu, refreshMetricsLog, refreshArmyPanel, refreshTreasury, refreshEstates
+  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, buildRealmMenu, refreshMetricsLog, refreshArmyPanel, refreshTreasury, refreshEstates, refreshMercado
 };

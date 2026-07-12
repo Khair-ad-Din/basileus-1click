@@ -259,6 +259,9 @@
   .rmBtnImg{height:33px;width:auto;flex:0 0 auto;cursor:pointer;transition:filter .1s;
     filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))}
   .rmBtnImg:hover{filter:brightness(1.13) drop-shadow(0 2px 3px rgba(0,0,0,.5))}
+  .rmBtnEmoji{height:33px;min-width:38px;display:inline-flex;align-items:center;justify-content:center;font-size:20px;
+    flex:0 0 auto;cursor:pointer;background:rgba(20,24,28,.62);border:1px solid #5a6470;border-radius:6px;transition:filter .1s}
+  .rmBtnEmoji:hover{filter:brightness(1.15) drop-shadow(0 2px 3px rgba(0,0,0,.5))}
   .rmBtnImg.dis{opacity:.5;cursor:not-allowed;filter:grayscale(.35) drop-shadow(0 1px 2px rgba(0,0,0,.35))}
   /* log de métricas del reino (arriba-derecha) */
   #side .mlog{margin:-2px -2px 8px;padding:6px 8px;background:rgba(20,24,28,.5);border-radius:5px;
@@ -443,6 +446,15 @@
     <h1 style="text-align:center;margin-bottom:2px">Estamentos del reino</h1>
     <p style="text-align:center;color:#9aa3ad;font-size:12px;margin:0 0 12px">Composición social de tu población.</p>
     <div id="estatesBody"></div>
+  </div>
+</div>
+
+<div class="overlay" id="mercadoOverlay" style="display:none">
+  <div class="panel" style="min-width:560px;max-width:720px;max-height:88vh;overflow:auto">
+    <button class="panelX" title="Cerrar" onclick="document.getElementById('mercadoOverlay').style.display='none'">✕</button>
+    <h1 style="text-align:center;margin-bottom:2px">🏪 Mercado del reino</h1>
+    <p style="text-align:center;color:#9aa3ad;font-size:12px;margin:0 0 12px">Comercio de bienes: precios, oferta/demanda interna y comercio exterior.</p>
+    <div id="mercadoBody"></div>
   </div>
 </div>
 

@@ -5,7 +5,7 @@ import {
   enterEditor, exitEditor, pushUndo, restoreWorldFromSnap, toggleRoadEdit, setProvinceOwner, dpSimplify, simplifyRing, traceProvince, applyShape, mergeProvinces, rasterPoly, keepLargestFragment, splitProvince, refreshEditorPanel, vertexAt, nearestSegment
 } from "./editor.js";
 import {
-  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, refreshArmyPanel, buildRealmMenu, refreshTreasury, refreshEstates
+  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, refreshArmyPanel, buildRealmMenu, refreshTreasury, refreshEstates, refreshMercado
 } from "./ui.js";
 import {
   atWar, declareWar, makePeace, underTruce, spawnArmy, setupNations, tryRoad, nbrs, bfsPath, startLeg, orderMove, takeTile, updateDuchy, isKeyTile, hourTick, resolveBattles, applyDamage, mergeIdle, aiTurn, findTarget, tryBuild, tryRecruit, disbandUnit, raiseLevies, checkVictory, armiesIn,
@@ -155,6 +155,12 @@ window.openEstates=function(){
   if(S.player<0)return;
   document.getElementById("estatesOverlay").style.display="flex";
   refreshEstates();
+};
+// --- Mercado del reino (comercio de bienes: precios, oferta/demanda interna y exterior) ---
+window.openMercado=function(){
+  if(S.player<0)return;
+  document.getElementById("mercadoOverlay").style.display="flex";
+  refreshMercado();
 };
 window.setTreasuryTab=function(t){S.treasuryTab=t;S.treasuryPath=[];refreshTreasury()};
 window.treasuryDrill=function(key){S.treasuryPath.push(key);refreshTreasury()};
@@ -755,7 +761,7 @@ setInterval(()=>{
   S.acc+=S.speed*GH_PER_SEC/4;
   let steps=0;
   while(S.acc>=1&&steps<60){S.acc-=1;hourTick();steps++}
-  if(steps){refreshTop();refreshSide();refreshTreasury();refreshEstates()} // refreshTreasury/Estates solo actúan si su overlay está abierto
+  if(steps){refreshTop();refreshSide();refreshTreasury();refreshEstates();refreshMercado()} // los refresh solo actúan si su overlay está abierto
   // oferta de paz de la IA: abrir la pantalla si no hay ya un overlay visible
   if(S.incomingPeace&&document.getElementById("peaceOverlay").style.display!=="flex")window.openIncomingPeace();
 },250);
