@@ -944,10 +944,12 @@ function refreshEstates(){
   if(S.player<0){body.innerHTML="<p style='text-align:center;color:#9aa3ad'>Estás en modo observador. Toma el mando de una nación (desde el <b>Registro</b>) para ver sus estamentos.</p>";return}
   const N=NATIONS[S.player],NA=S.nations[S.player];
   const cnt={};let pop=0;for(const k of STRATA)cnt[k]=0;
+  const owned={corona:{}};for(const k of STRATA)owned[k]={}; // edificios (niveles) por dueño
   for(const p of S.provs){
     if(p.owner!==S.player||p.wasteland||isOccupied(p))continue;
     pop+=p.pop||0;
     if(p.pops)for(const k of STRATA)cnt[k]+=p.pops[k]||0;
+    for(const b in p.buildings){const lv=p.buildings[b]||0;if(!lv)continue;const o=(p.bOwner&&p.bOwner[b])||"corona";if(owned[o])owned[o][b]=(owned[o][b]||0)+lv}
   }
   const wl=(NA&&NA.sWealth)||{}, mkt=(NA&&NA.mkt)||{};
   const nf=v=>Math.round(v).toLocaleString("es-ES");
@@ -965,8 +967,17 @@ function refreshEstates(){
        "</div>"+
        "<div style='height:6px;background:#2a2f36;border-radius:3px;margin-top:3px;overflow:hidden'>"+
          "<div style='height:100%;width:"+pct.toFixed(1)+"%;background:"+N.color+"'></div>"+
-       "</div>"+
        "</div>";
+    // reservas de bienes + edificios que POSEE el estamento (el campesino no construye)
+    if(k!=="campesino"){
+      const sr=(NA&&NA.sRes&&NA.sRes[k])||{};
+      const resP=[];for(const g in sr)if(sr[g]>1)resP.push((RES_ICON[g]||RES_LABEL[g]||g)+" "+nf(sr[g]));
+      const ob=owned[k];let nb=0;const types=[];for(const b in ob){nb+=ob[b];types.push((BUILDINGS[b]?BUILDINGS[b].label:b)+"×"+ob[b])}
+      const bTxt=nb?"🏛 "+nb+" edificios <span style='color:#7a828b'>("+types.slice(0,6).join(", ")+(types.length>6?"…":"")+")</span>":"🏛 sin edificios";
+      h+="<div style='font-size:11px;color:#9aa3ad;margin-top:2px;padding-left:23px'>"+bTxt+"</div>";
+      if(resP.length)h+="<div style='font-size:11px;color:#7a828b;padding-left:23px'>📦 "+resP.join(" · ")+"</div>";
+    }
+    h+="</div>";
   }
   // Mercado nacional: stock + volumen comerciado al mes + estado (abastecido/escaso)
   const info=(NA&&NA.mktInfo)||{};
