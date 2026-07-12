@@ -1,7 +1,7 @@
 // sim.js
 import { BUILDINGS, GARR_CITADEL, GARR_FORT, GARR_MIN, GOLD_PER_WS, LEVY_RAISE_HOURS, NATIONS, NEUTRAL, NPLAY, RES_BUILDING, RES_KEYS, SIEGE_BASE_H, START_STOCK, TERRAINS, UNITS, WAR_LOCK_HOURS, WS_BATTLE, WS_DUCHY_BASE, WS_DUCHY_PER } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyDef, armyHp, armySpd, buildBlock, buildJobs, buildMax, canAfford, costFor, economyTick, foodFill, storeCap, SUBS_BASICS, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor, seedStrataWealth } from "./economy.js";
+import { armyAtk, armyCount, armyDef, armyHp, armySpd, buildBlock, buildJobs, buildMax, canAfford, canStaffIndustry, costFor, economyTick, foodFill, storeCap, SUBS_BASICS, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor, seedStrataWealth } from "./economy.js";
 import { buildDuchies, hasRoad, roadLvl, isDuchyCap, kmBetween, roadKey } from "./mapgen.js";
 import { drawRoads, paintBorders, repaintProvince } from "./render.js";
 import { saveGame } from "./save.js";
@@ -18,7 +18,9 @@ function setupNations(){
   // una FÁBRICA del bien de la provincia (su resType) para que la economía building-driven no
   // arranque en déficit general: cada provincia produce de serie su propio recurso.
   for(const p of S.provs)if(!p.wasteland){
-    if(p.owner<NPLAY){p.sold=soldCap(p);const b=RES_BUILDING[p.resType];if(b)p.buildings[b]=1;}
+    // fábrica del resType SOLO donde la provincia pueda dotarla (los núcleos poblados); las provincias
+    // demasiado pequeñas quedan agrícolas y no arruinan a los reinos extensos con fábricas ociosas.
+    if(p.owner<NPLAY){p.sold=soldCap(p);const b=RES_BUILDING[p.resType];if(b&&canStaffIndustry(p,b))p.buildings[b]=1;}
     p.store={};for(const k of SUBS_BASICS)p.store[k]=storeCap(p,k)*0.6; // reservas locales iniciales por bien básico
   }
   // capitales históricas (marcadas por las ciudades del mapa) y tropas iniciales
