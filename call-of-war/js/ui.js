@@ -968,16 +968,22 @@ function refreshEstates(){
        "</div>"+
        "</div>";
   }
-  // Mercado nacional: stock disponible de cada bien de comercio y su precio fijo
+  // Mercado nacional: stock + volumen comerciado al mes + estado (abastecido/escaso)
+  const info=(NA&&NA.mktInfo)||{};
   h+="<div style='margin-top:12px;border-top:1px solid #2a2f36;padding-top:8px'>"+
-     "<div style='font-size:12px;color:var(--title);margin-bottom:5px'>🏪 Mercado nacional</div>"+
-     "<div style='display:flex;flex-wrap:wrap;gap:5px 14px;font-size:12px'>";
+     "<div style='font-size:12px;color:var(--title);margin-bottom:4px'>🏪 Mercado nacional</div>"+
+     "<div style='display:flex;font-size:10px;color:#7a828b;padding:0 1px 2px'><span style='flex:1'></span><span style='width:60px;text-align:right'>stock</span><span style='width:80px;text-align:right'>comercio/mes</span><span style='width:72px;text-align:right'>estado</span></div>";
   for(const g of MKT_GOODS){
-    h+="<span style='display:flex;gap:5px'><span>"+(RES_ICON[g]||"")+RES_LABEL[g]+"</span>"+
-       "<b style='color:var(--txt)'>"+nf(mkt[g]||0)+"</b>"+
-       "<span style='color:#7a828b'>("+MKT_PRICE[g]+"🪙)</span></span>";
+    const mi=info[g]||{};
+    const tag=mi.short?"<span style='color:var(--neg)'>escaso</span>":"<span style='color:var(--pos)'>abastecido</span>";
+    h+="<div style='display:flex;align-items:center;font-size:12px;padding:2px 1px'>"+
+       "<span style='flex:1'>"+(RES_ICON[g]||"")+" "+RES_LABEL[g]+" <span style='color:#7a828b'>"+MKT_PRICE[g]+"🪙</span></span>"+
+       "<span style='color:var(--txt);width:60px;text-align:right'>"+nf(mkt[g]||0)+"</span>"+
+       "<span style='color:#9aa3ad;width:80px;text-align:right'>"+nf(mi.sold||0)+"</span>"+
+       "<span style='width:72px;text-align:right'>"+tag+"</span>"+
+       "</div>";
   }
-  h+="</div></div>";
+  h+="</div>";
   h+="<p style='color:#7a828b;font-size:11px;margin-top:10px;text-align:center'>Los estratos ganan dinero por su rol y compran sus lujos aquí (precios fijos, primera versión).</p>";
   body.innerHTML=h;
 }

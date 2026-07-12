@@ -508,18 +508,21 @@ function economyTick(dt=1){
     if(!S.nations[n].alive)continue;
     const N=S.nations[n];ensureMarket(N);const str=nationStrata[n],W=N.sWealth;
     for(const k of STRATA)W[k]+=STRATA_INCOME[k]*str[k]*dt;          // ingreso base por rol
+    if(!N.mktInfo)N.mktInfo={};
     for(const g of MKT_GOODS){
-      let stock=N.mkt[g]||0,rev=0,demand=0;
+      let stock=N.mkt[g]||0,rev=0,demand=0,sold=0;
       for(const k of STRATA){
         const need=(LUX_NEED[k][g]||0)*str[k]*dt;
         demand+=need;
         if(need<=0)continue;
         const buy=Math.min(need,stock,(W[k]||0)/MKT_PRICE[g]);       // limitado por deseo, stock y bolsillo
-        if(buy>0){W[k]-=buy*MKT_PRICE[g];stock-=buy;rev+=buy*MKT_PRICE[g]}
+        if(buy>0){W[k]-=buy*MKT_PRICE[g];stock-=buy;rev+=buy*MKT_PRICE[g];sold+=buy}
       }
       W.burgues+=rev*BURGUES_MARGIN;                                 // los burgueses se quedan un margen (el resto = costes)
       const cap=(demand/dt)*24*MKT_CAP_DAYS;                         // tope = MKT_CAP_DAYS de demanda diaria
       N.mkt[g]=cap>0?Math.min(stock,cap):stock;                      // sobreoferta topada; los bienes escasos quedan bajos
+      // info para el panel (flujo/mes y escasez): demuestra que el mercado trabaja aunque el stock esté en equilibrio
+      N.mktInfo[g]={dem:demand/dt*730,sold:sold/dt*730,short:sold<demand*0.98};
     }
     for(const k of STRATA){const cap=(WEALTH_CAP[k]||0.1)*str[k];if(W[k]>cap)W[k]=cap;if(W[k]<0)W[k]=0}
     N.prosp=str.burgues>0?Math.min(1.5,(W.burgues/str.burgues)/PROSP_REF):1; // prosperidad burguesa (Fase C)
