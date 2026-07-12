@@ -808,6 +808,7 @@ function buildDuchies(){
 function isDuchyCap(pid){const p=S.provs[pid];return p.duchy>=0&&S.duchies[p.duchy]&&S.duchies[p.duchy].cap===pid}
 function roadKey(a,b){return a<b?a+"|"+b:b+"|"+a}
 function hasRoad(a,b){return S.roads.has(roadKey(a,b))}
+function roadLvl(a,b){return S.roads.get(roadKey(a,b))||0} // 0 = sin camino; 1..3 = nivel
 function landPath(from,to,allow){
   if(from===to)return[from];
   const prev=new Map([[from,-1]]);
@@ -828,14 +829,14 @@ function landPath(from,to,allow){
   return null;
 }
 function generateRoads(){
-  S.roads=new Set();S.roadQueue=[];
+  S.roads=new Map();S.roadQueue=[]; // clave -> nivel (1..3); los generados nacen a nivel 1
   for(let n=0;n<NPLAY;n++){
     const cap=S.nations[n].capital;
     if(cap<0)continue;
     for(const p of S.provs){
       if(p.owner!==n||!p.urban||p.id===cap)continue;
       const path=landPath(cap,p.id,x=>S.provs[x].owner===n&&!S.provs[x].wasteland);
-      if(path)for(let i=0;i<path.length-1;i++)S.roads.add(roadKey(path[i],path[i+1]));
+      if(path)for(let i=0;i<path.length-1;i++)S.roads.set(roadKey(path[i],path[i+1]),1);
     }
   }
   // arteria hacia la capital extranjera más cercana
@@ -850,7 +851,7 @@ function generateRoads(){
     }
     if(best<0||n>best)continue; // cada pareja una sola vez
     const path=landPath(capN,S.nations[best].capital,x=>!S.provs[x].wasteland);
-    if(path&&path.length<=14)for(let i=0;i<path.length-1;i++)S.roads.add(roadKey(path[i],path[i+1]));
+    if(path&&path.length<=14)for(let i=0;i<path.length-1;i++)S.roads.set(roadKey(path[i],path[i+1]),1);
   }
 }
 function kmBetween(a,b){
@@ -861,5 +862,5 @@ function kmBetween(a,b){
 }
 
 export {
-  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, rebuildProvinceData, buildDuchies, isDuchyCap, kmBetween, roadKey, hasRoad, landPath, generateRoads
+  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, rebuildProvinceData, buildDuchies, isDuchyCap, kmBetween, roadKey, hasRoad, roadLvl, landPath, generateRoads
 };

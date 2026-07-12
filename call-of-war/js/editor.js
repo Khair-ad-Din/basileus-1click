@@ -74,8 +74,8 @@ function toggleRoadEdit(a,b){
   if(S.provs[a].wasteland||S.provs[b].wasteland)return;
   pushUndo();
   S.customRoads=true;
-  const k=roadKey(a,b);
-  if(S.roads.has(k))S.roads.delete(k);else S.roads.add(k);
+  const k=roadKey(a,b), cur=S.roads.get(k)||0;
+  if(cur>=3)S.roads.delete(k);else S.roads.set(k,cur+1); // cicla nivel 0→1→2→3→0
   S.roadQueue=S.roadQueue.filter(q=>q.key!==k);
   drawRoads();
   refreshEditorPanel();
@@ -248,12 +248,12 @@ function mergeProvinces(a,b){
   rebuildProvinceData();
   if(S.customRoads){
     // remapear las claves de camino a los nuevos ids de provincia
-    const nr=new Set();
-    for(const k of S.roads){
+    const nr=new Map();
+    for(const [k,lvl] of S.roads){
       let[x,y]=k.split("|").map(Number);
       x=x===a?target:newIdOf(x);
       y=y===a?target:newIdOf(y);
-      if(x!==y&&S.adj[x]&&S.adj[x].has(y))nr.add(roadKey(x,y));
+      if(x!==y&&S.adj[x]&&S.adj[x].has(y))nr.set(roadKey(x,y),lvl);
     }
     S.roads=nr;S.roadQueue=[];
   }else generateRoads(); // los ids de provincia han cambiado

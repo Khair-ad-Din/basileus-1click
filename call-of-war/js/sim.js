@@ -2,7 +2,7 @@
 import { BUILDINGS, GARR_CITADEL, GARR_FORT, GARR_MIN, GOLD_PER_WS, LEVY_RAISE_HOURS, NATIONS, NEUTRAL, NPLAY, RES_BUILDING, RES_KEYS, SIEGE_BASE_H, START_STOCK, TERRAINS, UNITS, WAR_LOCK_HOURS, WS_BATTLE, WS_DUCHY_BASE, WS_DUCHY_PER } from "./config.js";
 import { S } from "./state.js";
 import { armyAtk, armyCount, armyDef, armyHp, armySpd, buildBlock, buildJobs, buildMax, canAfford, costFor, economyTick, foodFill, storeCap, SUBS_BASICS, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor } from "./economy.js";
-import { buildDuchies, hasRoad, isDuchyCap, kmBetween, roadKey } from "./mapgen.js";
+import { buildDuchies, hasRoad, roadLvl, isDuchyCap, kmBetween, roadKey } from "./mapgen.js";
 import { drawRoads, paintBorders, repaintProvince } from "./render.js";
 import { saveGame } from "./save.js";
 import { log, refreshBuildBar, refreshSide, refreshTop } from "./ui.js";
@@ -88,10 +88,12 @@ function spawnArmy(nation,prov,units){
 function tryRoad(a,b){
   const cost={dinero:800,materiales:1200};
   if(S.provs[a].owner!==S.player||S.provs[b].owner!==S.player)return;
-  if(hasRoad(a,b)||S.roadQueue.some(q=>q.key===roadKey(a,b)))return;
+  const key=roadKey(a,b), lvl=S.roads.get(key)||0;
+  if(lvl>=3)return;                                   // ya al nivel máximo
+  if(S.roadQueue.some(q=>q.key===key))return;         // ya en obra
   if(!canAfford(S.player,cost))return;
-  pay(S.player,cost);
-  S.roadQueue.push({key:roadKey(a,b),hoursLeft:4320,nation:S.player}); // 6 meses de obra
+  pay(S.player,cost);                                 // mismo coste por nivel
+  S.roadQueue.push({key,hoursLeft:4320,nation:S.player,toLvl:lvl+1}); // 6 meses de obra por nivel
   refreshSide();refreshTop();
 }
 // "Informes Reales": crónica mundial de sucesos (guerras, paces, plazas, reinos caídos, batallas).
@@ -242,7 +244,7 @@ function startLeg(a){
     a.legTotal=Math.max(24,km/90*24);
   }else{
     const terr=(TERRAINS[from.terrain].mov+TERRAINS[to.terrain].mov)/2;
-    const road=hasRoad(a.prov,a.path[0])?1.5:1; // los caminos aceleran la marcha un 50%
+    const road=1+0.1*roadLvl(a.prov,a.path[0]); // los caminos aceleran la marcha un 10% por nivel (máx +30%)
     a.legTotal=Math.max(6,km/(armySpd(a)*terr*road)*24);
   }
   a.legDone=0;
@@ -367,7 +369,7 @@ function hourTick(){
   for(let i=S.roadQueue.length-1;i>=0;i--){
     const q=S.roadQueue[i];
     if(--q.hoursLeft<=0){
-      S.roads.add(q.key);
+      S.roads.set(q.key,q.toLvl||((S.roads.get(q.key)||0)+1));
       S.roadQueue.splice(i,1);
       drawRoads();
       const[ra,rb]=q.key.split("|").map(Number);

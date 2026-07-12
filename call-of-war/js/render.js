@@ -403,12 +403,13 @@ function drawRoads(){
   c.clearRect(0,0,MW,MH);
   c.lineCap="round";c.lineJoin="round";
   const seg=(a,b)=>{c.beginPath();roadCurve(c,a,b);c.stroke()};
-  for(const k of S.roads){
+  for(const [k,lvl] of S.roads){
     const[a,b]=k.split("|").map(Number);
     if(!S.provs[a]||!S.provs[b])continue;
     c.setLineDash([]);
-    c.strokeStyle="rgba(45,34,20,.2)";c.lineWidth=3.4;seg(a,b); // sombra sutil
-    c.strokeStyle="rgba(112,86,54,.45)";c.lineWidth=1.7;seg(a,b); // tierra apagada
+    const w=1.0+0.7*lvl; // nivel 1..3 -> 1.7 / 2.4 / 3.1 (más grueso y marcado a mayor nivel)
+    c.strokeStyle="rgba(45,34,20,.2)";c.lineWidth=w+1.7;seg(a,b); // sombra sutil
+    c.strokeStyle="rgba(112,86,54,"+(0.38+0.11*lvl).toFixed(2)+")";c.lineWidth=w;seg(a,b); // tierra
   }
   for(const q of S.roadQueue){
     const[a,b]=q.key.split("|").map(Number);
@@ -468,7 +469,7 @@ function drawEditorOverlay(){
     // resaltar la red mientras se edita
     ctx.lineWidth=1.6/S.zoom;
     ctx.strokeStyle="rgba(255,214,110,.75)";
-    for(const k of S.roads){
+    for(const [k] of S.roads){
       const[x,y]=k.split("|").map(Number);
       if(!S.provs[x]||!S.provs[y])continue;
       ctx.beginPath();ctx.moveTo(S.provs[x].x,S.provs[x].y);ctx.lineTo(S.provs[y].x,S.provs[y].y);ctx.stroke();

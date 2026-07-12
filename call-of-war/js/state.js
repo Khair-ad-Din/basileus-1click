@@ -7,7 +7,7 @@ export const S = {
   provs: [], provIdx: null, pixOfProv: [], borderPxOfProv: [], adj: [], seaAdj: [],
   nations: [], armies: [], wars: new Map(), truces: new Map(), armyIdSeq: 1,
   duchies: [], reports: [],
-  roads: new Set(), roadQueue: [], customRoads: false,
+  roads: new Map(), roadQueue: [], customRoads: false, // clave "a|b" -> nivel (1..3)
   player: -1, hour: 0, acc: 0, speed: 1, started: false, gameOver: false,
   selProv: -1, selArmy: null, battleFlash: {},
   // vista (compartida por render, entrada y guardado)

@@ -6,6 +6,15 @@ import { canvas, clampPan, drawRoads, paintAll } from "./render.js";
 import { hourTick, syncDuchyOcc } from "./sim.js";
 import { buildRealmMenu, fmtDur, log, refreshSide, refreshTop } from "./ui.js";
 
+// Reconstruye S.roads como Map clave->nivel. Compatible hacia atrás: los guardados y el mapa
+// oficial antiguos almacenan solo la clave (string) => nivel 1; el formato nuevo son pares [clave,nivel].
+function parseRoads(arr){
+  const m=new Map();
+  if(Array.isArray(arr))for(const e of arr){
+    if(Array.isArray(e))m.set(e[0],e[1]||1); else m.set(e,1);
+  }
+  return m;
+}
 function buildSnapshot(){
   const rle=[];
   let cur=S.provIdx[0],run=1;
@@ -56,7 +65,7 @@ function loadProvMap(snap){
   if(computed)isolateWastePockets(); // los flags editados a mano se respetan tal cual
   for(const p of S.provs)if(p.wasteland){p.owner=NEUTRAL;p.owner0=NEUTRAL;p.capital=false;p.urban=false}
   assignPopulation();
-  if(snap.roads){S.roads=new Set(snap.roads);S.roadQueue=[];S.customRoads=true}
+  if(snap.roads){S.roads=parseRoads(snap.roads);S.roadQueue=[];S.customRoads=true}
   else S.customRoads=false;
 }
 function roundStore(store){ // reservas locales por bien (redondeadas), o null
@@ -86,7 +95,7 @@ function continueGame(){
   if(!s)return;
   S.hour=s.hour;S.player=s.player;S.armyIdSeq=s.armyIdSeq;
   S.wars=new Map(s.wars);S.truces=new Map(s.truces);
-  S.roads=new Set(s.roads);S.roadQueue=s.roadQueue||[];
+  S.roads=parseRoads(s.roads);S.roadQueue=s.roadQueue||[];
   S.reports=s.reports||[];
   S.peaceWith=-1;S.peaceSel=new Set();S.peaceGold=0;S.incomingPeace=null;
   s.nations.forEach((x,i)=>Object.assign(S.nations[i],x));

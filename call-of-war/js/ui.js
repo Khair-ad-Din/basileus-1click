@@ -397,18 +397,22 @@ function roadsHTML(p){
     if(S.provs[b].owner!==S.player)continue;
     any=true;
     const kmR=Math.round(kmBetween(p,S.provs[b]));
-    if(hasRoad(p.id,b))rows+="<div class='recrow'><span class='u'>→ "+S.provs[b].name+"</span><span class='cst'>✓ camino</span></div>";
-    else if(S.roadQueue.some(q=>q.key===roadKey(p.id,b))){
-      const q=S.roadQueue.find(q=>q.key===roadKey(p.id,b));
-      rows+="<div class='recrow'><span class='u'>→ "+S.provs[b].name+"</span><span class='cst'>obra "+fmtDur(q.hoursLeft)+"</span></div>";
+    const key=roadKey(p.id,b), lvl=S.roads.get(key)||0;
+    const q=S.roadQueue.find(q=>q.key===key);
+    const name="→ "+S.provs[b].name;
+    if(q){
+      rows+="<div class='recrow'><span class='u'>"+name+" <span class='sm'>(→ nivel "+q.toLvl+")</span></span><span class='cst'>obra "+fmtDur(q.hoursLeft)+"</span></div>";
+    }else if(lvl>=3){
+      rows+="<div class='recrow'><span class='u'>"+name+"</span><span class='cst'>✓ nivel 3/3</span></div>";
     }else{
       const dis=!canAfford(S.player,{dinero:800,materiales:1200});
-      rows+="<div class='recrow'><span class='u'>→ "+S.provs[b].name+" <span class='sm'>("+kmR+" km)</span></span>"+
-        "<button class='bbtn' "+(dis?"disabled":"")+" onclick='tryRoad("+p.id+","+b+")'>Camino</button></div>";
+      const tag=lvl>0?"<span class='cst' style='margin-right:6px'>nivel "+lvl+"/3</span>":"<span class='sm'>("+kmR+" km)</span> ";
+      rows+="<div class='recrow'><span class='u'>"+name+" "+tag+"</span>"+
+        "<button class='bbtn' "+(dis?"disabled":"")+" onclick='tryRoad("+p.id+","+b+")'>"+(lvl>0?"Mejorar":"Camino")+"</button></div>";
     }
   }
   if(!any)return "<div class='prow'><span class='dim'>Sin provincias propias adyacentes a las que unir por camino.</span></div>";
-  return "<div class='sm' style='color:#9aa3ad;margin-bottom:7px'>Une provincias propias adyacentes: +50% de velocidad de marcha entre ellas. Cada camino cuesta 800 Ducados y 1200 Madera (6 meses).</div>"+rows;
+  return "<div class='sm' style='color:#9aa3ad;margin-bottom:7px'>Une provincias propias adyacentes: +10% de velocidad de marcha por nivel (máx nivel 3, +30%). Cada nivel cuesta 800 Ducados y 1200 Madera (6 meses).</div>"+rows;
 }
 // ejércitos presentes + reclutamiento de esta provincia; la pinta la ventana de Ejércitos
 function armyHTML(p){
