@@ -591,6 +591,10 @@ function aiTurn(n){
   // guerra: declarar al vecino con el que más frontera se comparte, ponderado por debilidad
   const enemies=[];
   for(let m=0;m<NPLAY;m++)if(m!==n&&S.nations[m].alive&&atWar(n,m))enemies.push(m);
+  // PAZ: las levas vuelven a casa. En tiempos de paz solo se mantienen las unidades PROFESIONALES; las
+  // levas (milicianos) se levantan al entrar en guerra (raiseLevies) y se licencian al firmar la paz. Así
+  // el mantenimiento en paz no escala con el territorio (era la ruina de los reinos extensos y despoblados).
+  if(!enemies.length)for(const a of S.armies.slice())if(a.nation===n&&a.units.miliciano>0.05)disbandUnit(a,"miliciano",a.units.miliciano);
   // engrosar con LEVAS antes de campaña: reúne levas alrededor del mayor ejército propio parado en casa
   if(enemies.length&&treasury>1500&&S.rand()<0.06){
     let host=null,hc=-1;
