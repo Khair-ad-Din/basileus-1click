@@ -190,11 +190,16 @@ const PRICE_MAX=2.2;      // techo del multiplicador de precio (escasez cara)
 const TRADE_RATE=0.05;        // fracción del stock exportable que se mueve por tick (convergencia gradual)
 const TRADE_MIN_SPREAD=0.06;  // diferencial mínimo (sobre el precio ref) para que el arbitraje sea rentable
 const TRADE_COST=0.0;         // coste de transporte (0 = frictionless; futuro: por distancia entre reinos)
+// El comercio de cada tick es "a golpes" (el arbitraje empareja rotando: un reino comercia mucho un tick y
+// nada el siguiente). Para el PANEL se suaviza con una media móvil (EMA) → un RITMO mensual estable que no
+// parpadea. TEL_SMOOTH ≈ media de ~35 ticks (1-2 días de juego): estable pero sigue los cambios reales.
+const TEL_SMOOTH=0.02;
 function ensureMarket(N){ // inicializa el estado de mercado/riqueza de una nación si falta
   if(!N.sWealth){N.sWealth={};for(const k of STRATA)N.sWealth[k]=0}
   if(!N.mkt)N.mkt={};
   if(!N.mktPrice){N.mktPrice={};for(const g of MKT_TRADE)N.mktPrice[g]=MKT_PRICE[g]} // precio actual por bien (arranca en el de referencia)
   if(!N.sRes){N.sRes={};for(const e of ESTATES_BUILD)N.sRes[e]={}} // reservas de BIENES por estamento (E2); el dinero va en sWealth
+  if(!N.mktTel){N.mktTel={};for(const g of MKT_TRADE)N.mktTel[g]={sold:0,exp:0,imp:0}} // telemetría de comercio SUAVIZADA (para el panel)
 }
 // Riqueza INICIAL por habitante y estrato: la nobleza y el clero nacen RICOS (tierras, tesoro
 // eclesiástico) y los campesinos pobres. Fija la jerarquía de riqueza desde el arranque (~mitad
@@ -771,6 +776,16 @@ function economyTick(dt=1){
         B.N.mktInfo[g].imp=(B.N.mktInfo[g].imp||0)+q/dt*730;                   // importa (panel)
       }
       lo++;hi--;                                                               // cada reino comercia con su opuesto; converge en varios ticks
+    }
+  }
+  // Telemetría de comercio SUAVIZADA (para el panel): el volumen de cada tick es "a golpes" (el arbitraje
+  // empareja rotando). Se promedia con EMA → un ritmo mensual estable que no parpadea. El panel lee estos
+  // valores suavizados (sold/exp/imp en unidades/mes); dem y price ya son estables por su cuenta.
+  const sm=Math.min(1,TEL_SMOOTH*dt);
+  for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(!N||!N.alive||!N.mktInfo)continue;ensureMarket(N);
+    for(const g of MKT_TRADE){const mi=N.mktInfo[g];if(!mi)continue;const t=N.mktTel[g]||(N.mktTel[g]={sold:0,exp:0,imp:0});
+      t.sold+=((mi.sold||0)-t.sold)*sm; t.exp+=((mi.exp||0)-t.exp)*sm; t.imp+=((mi.imp||0)-t.imp)*sm;
+      mi.sold=t.sold; mi.exp=t.exp; mi.imp=t.imp; // el panel lee el valor SUAVIZADO (estable)
     }
   }
 }
