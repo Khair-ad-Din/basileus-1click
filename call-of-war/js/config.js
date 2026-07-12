@@ -191,7 +191,9 @@ const NEW_GOODS=[
 ];
 for(const[k,label,short,icon,price,strat,desc]of NEW_GOODS){
   RES_LABEL[k]=label; RES_SHORT[k]=short; RES_ICON[k]=icon; RES_DESC[k]=desc;
-  if(strat){RES_KEYS.push(k); RES_STRAT.push(k); START_STOCK[k]=0;}
+  // TODOS los bienes nuevos los stockea la corona (RES_KEYS → resbar): los estratégicos en su grupo, los de
+  // consumo en el grupo de comercio. Así la barra de recursos se llena (2 filas) con todo el catálogo.
+  RES_KEYS.push(k); START_STOCK[k]=0; (strat?RES_STRAT:RES_TRADE).push(k);
 }
 // Bienes con SPRITE .png (assets/res/); los demás se pintan con su emoji (RES_ICON). El resbar y resImg lo usan.
 const RES_ART=new Set(["dinero","comida","materiales","piedra","metal","petroleo","raros","pano","vino","sal","seda"]);
