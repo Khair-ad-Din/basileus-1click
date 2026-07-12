@@ -9,7 +9,12 @@ function popTag(v){return v>=1000?(v/1000).toFixed(v>=10000?0:1).replace(".0",""
 const baseC=Object.assign(document.createElement("canvas"),{width:MW,height:MH});
 const baseCtx=baseC.getContext("2d");
 let baseData;
-const borderC=Object.assign(document.createElement("canvas"),{width:MW,height:MH});
+// Superresolución del TRAZADO de fronteras. El mapa de provincias (provIdx) sigue a resolución
+// base; las fronteras, en cambio, se extraen como vectores, se suavizan (Chaikin) y se hornean en
+// este lienzo a BS× la resolución del mapa. Al volcarlo escalado, los bordes salen nítidos al hacer
+// zoom en vez de escalonados. Subir/bajar BS es el único mando de nitidez↔memoria (BS=3 ≈ 120 MB).
+const BS=3;
+const borderC=Object.assign(document.createElement("canvas"),{width:MW*BS,height:MH*BS});
 function hex2rgb(h){return[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]}
 const NCOL=NATIONS.map(n=>hex2rgb(n.color));
 const TCOL=Object.fromEntries(TERRAIN_KEYS.map(k=>[k,hex2rgb(TERRAINS[k].color)]));
@@ -25,7 +30,7 @@ function resColor(pid){
   return RES_MAPCOL[p.resType]||[150,150,150];
 }
 // Jerarquía de fronteras (estilo EU4): nación = gruesa y opaca, ducado = media, provincia = fina.
-// [r,g,b,a]. La nacional se engrosa 1px hacia dentro en paintBorders.
+// [r,g,b,a]; el grosor por tier lo fija paintBorders al trazar los vectores (ver layer(...)).
 const B_NATION=[6,8,11,255];
 const B_DUCHY=[12,15,19,205];
 const B_PROV=[26,30,34,72];
@@ -139,86 +144,124 @@ function paintAll(){
   }
   baseCtx.putImageData(baseData,0,0);
   paintBorders();
+  drawGraph(); // la malla de conexiones/nodos se rehace cuando cambia la estructura del mapa
 }
 const borderCtx=borderC.getContext("2d");
-let borderData;
-function borderIsOuter(i){
-  const p=S.provIdx[i],x=i%MW;
-  if(x===0||x===MW-1||i<MW||i>=MW*MH-MW)return true;
-  const own=S.provs[p].owner;
-  let q;
-  q=S.provIdx[i-1];if(q<0||(q!==p&&S.provs[q].owner!==own))return true;
-  q=S.provIdx[i+1];if(q<0||(q!==p&&S.provs[q].owner!==own))return true;
-  q=S.provIdx[i-MW];if(q<0||(q!==p&&S.provs[q].owner!==own))return true;
-  q=S.provIdx[i+MW];if(q<0||(q!==p&&S.provs[q].owner!==own))return true;
-  return false;
+let bordersDirty=false;                 // la conquista/ocupación cambió un dueño: rehornear al dibujar
+const NODEW=MW+1;                        // retícula de esquinas: id de nodo = ny*NODEW + nx
+const rgba=c=>"rgba("+c[0]+","+c[1]+","+c[2]+","+(c[3]/255).toFixed(3)+")";
+// Tier de la frontera entre dos provincias (id, o -1 = mar). Reproduce la jerarquía anterior
+// pero por ARISTA (no por píxel): 0 ninguna · 1 provincia · 2 ducado · 3 nación · 4 páramo · 5 costa.
+function borderTier(a,b){
+  if(a===b)return 0;
+  if(a<0&&b<0)return 0;                                   // mar-mar
+  if(a<0||b<0)return S.provs[a<0?b:a].wasteland?4:5;      // tierra contra mar
+  const wa=S.provs[a].wasteland,wb=S.provs[b].wasteland;
+  if(wa&&wb)return 0;                                     // interior de páramo: sin divisiones
+  if(wa||wb)return 4;                                     // borde de páramo
+  if(S.provs[a].owner!==S.provs[b].owner)return 3;        // nación
+  if(S.provs[a].duchy!==S.provs[b].duchy)return 2;        // ducado
+  return 1;                                               // provincia
 }
-function putPx(o,c){const d=borderData.data;d[o]=c[0];d[o+1]=c[1];d[o+2]=c[2];d[o+3]=c[3]}
-function setBorderPx(i){
-  const o=i*4;
-  if(S.provs[S.provIdx[i]].wasteland){
-    // el páramo no tiene divisiones internas; solo contorno con tierras habitadas o mar
-    if(borderIsWasteEdge(i))putPx(o,B_WASTE);else borderData.data[o+3]=0;
-    return;
+// Recorre provIdx y agrupa los segmentos-retícula de frontera por tier (arrays planos de pares de nodos).
+function collectBorderSegs(){
+  const segs=[[],[],[],[],[]]; // segs[tier-1]
+  for(let y=0;y<MH;y++){
+    const row=y*MW, below=row+MW;
+    for(let x=0;x<MW;x++){
+      const p=S.provIdx[row+x];
+      let t=borderTier(p, x<MW-1?S.provIdx[row+x+1]:-1);  // arista derecha → segmento vertical
+      if(t){const n0=y*NODEW+x+1; segs[t-1].push(n0,n0+NODEW)}
+      t=borderTier(p, y<MH-1?S.provIdx[below+x]:-1);      // arista inferior → segmento horizontal
+      if(t){const n0=(y+1)*NODEW+x; segs[t-1].push(n0,n0+1)}
+    }
   }
-  if(borderIsOuter(i))putPx(o,B_NATION);
-  else if(borderIsDuchyEdge(i))putPx(o,B_DUCHY);   // división de ducado: intermedia
-  else putPx(o,B_PROV);                             // división de provincia: fina
+  return segs;
 }
-// borde interno entre provincias del MISMO dueño pero de DUCADOS distintos (subdivisión de iure)
-function borderIsDuchyEdge(i){
-  const p=S.provIdx[i],x=i%MW;
-  const P=S.provs[p],du=P.duchy;
-  if(du<0)return false;
-  const chk=q=>q>=0&&q!==p&&S.provs[q].owner===P.owner&&!S.provs[q].wasteland&&S.provs[q].duchy!==du;
-  if(x>0&&chk(S.provIdx[i-1]))return true;
-  if(x<MW-1&&chk(S.provIdx[i+1]))return true;
-  if(i>=MW&&chk(S.provIdx[i-MW]))return true;
-  if(i<MW*MH-MW&&chk(S.provIdx[i+MW]))return true;
-  return false;
+// Encadena una lista plana de segmentos (pares de nodos) en polilíneas, cortando en los nodos de
+// grado ≠ 2 (tripuntos/finales) para que los vértices donde concurren 3+ provincias queden fijos.
+function tracePolys(flat){
+  const nSeg=flat.length>>1;
+  if(!nSeg)return[];
+  const inc=new Map(); // nodo -> [otroNodo,segK, otroNodo,segK, ...]
+  const add=(n,o,k)=>{let a=inc.get(n);if(a===undefined){a=[];inc.set(n,a)}a.push(o,k)};
+  for(let k=0;k<nSeg;k++){const a=flat[2*k],b=flat[2*k+1];add(a,b,k);add(b,a,k)}
+  const used=new Uint8Array(nSeg);
+  const step=n=>{const a=inc.get(n);if(a)for(let j=0;j<a.length;j+=2)if(!used[a[j+1]])return j;return -1};
+  const polys=[];
+  for(let k=0;k<nSeg;k++){
+    if(used[k])continue;
+    used[k]=1;
+    const line=[flat[2*k],flat[2*k+1]];
+    for(let back=0;back<2;back++){                         // extiende por delante y por detrás
+      let cur=back?line[0]:line[line.length-1];
+      while((inc.get(cur)||[]).length===4){                // grado 2 (2 aristas ⇒ 4 entradas)
+        const a=inc.get(cur),j=step(cur);
+        if(j<0)break;
+        used[a[j+1]]=1;
+        if(back)line.unshift(a[j]); else line.push(a[j]);
+        cur=a[j];
+      }
+    }
+    polys.push(line);
+  }
+  return polys;
 }
-function borderIsWasteEdge(i){
-  const x=i%MW;
-  if(x===0||x===MW-1||i<MW||i>=MW*MH-MW)return true;
-  let q;
-  q=S.provIdx[i-1];if(q<0||!S.provs[q].wasteland)return true;
-  q=S.provIdx[i+1];if(q<0||!S.provs[q].wasteland)return true;
-  q=S.provIdx[i-MW];if(q<0||!S.provs[q].wasteland)return true;
-  q=S.provIdx[i+MW];if(q<0||!S.provs[q].wasteland)return true;
-  return false;
+// Suaviza (Chaikin ×2) una polilínea de nodos y la añade a `path` en coords de mapa × `scale`.
+function chaikinPath(line,path,scale){
+  let pts=new Array(line.length);
+  for(let i=0;i<line.length;i++){const n=line[i];pts[i]=[(n%NODEW)*scale,((n/NODEW)|0)*scale]}
+  for(let it=0;it<2&&pts.length>=3;it++){
+    const out=[pts[0]];
+    for(let i=0;i<pts.length-1;i++){
+      const p=pts[i],q=pts[i+1];
+      out.push([p[0]*0.75+q[0]*0.25,p[1]*0.75+q[1]*0.25]);
+      out.push([p[0]*0.25+q[0]*0.75,p[1]*0.25+q[1]*0.75]);
+    }
+    out.push(pts[pts.length-1]);
+    pts=out;
+  }
+  path.moveTo(pts[0][0],pts[0][1]);
+  for(let i=1;i<pts.length;i++)path.lineTo(pts[i][0],pts[i][1]);
 }
+// Hornea TODAS las fronteras como vectores suavizados en borderC (a BS× la resolución del mapa).
+// Sustituye al antiguo trazado ráster de 1px; el nombre se conserva (sim.js lo llama al conquistar).
 function paintBorders(){
-  borderData=borderCtx.createImageData(MW,MH);
-  for(let p=0;p<S.provs.length;p++)for(const i of S.borderPxOfProv[p])setBorderPx(i);
-  // engrosar la frontera NACIONAL 1px hacia dentro (queda ~2px: país > ducado > provincia)
-  for(let p=0;p<S.provs.length;p++){
-    if(S.provs[p].wasteland)continue;
-    for(const i of S.borderPxOfProv[p]){
-      if(!borderIsOuter(i))continue;
-      const x=i%MW;
-      if(x>0&&S.provIdx[i-1]===p)putPx((i-1)*4,B_NATION);
-      if(x<MW-1&&S.provIdx[i+1]===p)putPx((i+1)*4,B_NATION);
-      if(i>=MW&&S.provIdx[i-MW]===p)putPx((i-MW)*4,B_NATION);
-      if(i<MW*MH-MW&&S.provIdx[i+MW]===p)putPx((i+MW)*4,B_NATION);
-    }
-  }
-  borderCtx.putImageData(borderData,0,0);
-  drawGraph(); // la malla de conexiones/nodos se rehace cuando cambia el mapa
-}
-function updateBordersAround(pid){
-  if(!borderData)return;
-  let x0=MW,y0=MH,x1=-1,y1=-1;
-  const upd=p=>{
-    for(const i of S.borderPxOfProv[p]){
-      setBorderPx(i);
-      const x=i%MW,y=(i/MW)|0;
-      if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;
-    }
+  const segs=collectBorderSegs();
+  borderCtx.setTransform(1,0,0,1,0,0);
+  borderCtx.clearRect(0,0,borderC.width,borderC.height);
+  borderCtx.lineJoin="round";borderCtx.lineCap="round";
+  const layer=(ti,col,wmap)=>{
+    const polys=tracePolys(segs[ti]);
+    if(!polys.length)return;
+    const path=new Path2D();
+    for(const l of polys)chaikinPath(l,path,BS);
+    borderCtx.strokeStyle=rgba(col);
+    borderCtx.lineWidth=Math.max(1,wmap*BS);
+    borderCtx.stroke(path);
   };
-  upd(pid);
-  for(const n of S.adj[pid])upd(n);
-  if(x1<0)return;
-  borderCtx.putImageData(borderData,0,0,x0,y0,x1-x0+1,y1-y0+1);
+  // de fina a gruesa: la nación y la costa se pintan encima (país > ducado > provincia)
+  layer(0,B_PROV,0.7);    // provincia
+  layer(1,B_DUCHY,1.1);   // ducado
+  layer(3,B_WASTE,1.5);   // páramo
+  layer(2,B_NATION,1.6);  // nación
+  layer(4,B_NATION,1.6);  // costa (mismo trazo que la frontera nacional)
+  bordersDirty=false;
+}
+// Contorno vectorial de UNA provincia (para la selección); Path2D en coords de mapa (×1, se traza
+// directamente bajo la transformación de zoom).
+function buildSelPath(pid){
+  const flat=[];
+  for(const i of S.borderPxOfProv[pid]){
+    const x=i%MW,y=(i/MW)|0;
+    if((x<MW-1?S.provIdx[i+1]:-1)!==pid){const n0=y*NODEW+x+1;flat.push(n0,n0+NODEW)}
+    if((x>0?S.provIdx[i-1]:-1)!==pid){const n0=y*NODEW+x;flat.push(n0,n0+NODEW)}
+    if((y<MH-1?S.provIdx[i+MW]:-1)!==pid){const n0=(y+1)*NODEW+x;flat.push(n0,n0+1)}
+    if((y>0?S.provIdx[i-MW]:-1)!==pid){const n0=y*NODEW+x;flat.push(n0,n0+1)}
+  }
+  const path=new Path2D();
+  for(const l of tracePolys(flat))chaikinPath(l,path,1);
+  return path;
 }
 function repaintProvince(pid){
   const P=S.provs[pid],base=provColor(pid),s=P.shade,d=baseData.data;
@@ -229,7 +272,7 @@ function repaintProvince(pid){
     d[o]=c[0]*s;d[o+1]=c[1]*s;d[o+2]=c[2]*s;
   }
   baseCtx.putImageData(baseData,0,0);
-  updateBordersAround(pid); // la frontera se mueve con la conquista/ocupación
+  bordersDirty=true; // la frontera se mueve con la conquista/ocupación: se rehornea antes de dibujar
 }
 // Malla de conexiones (grafo de movimiento): líneas finas entre centros de provincias adyacentes
 // (tierra sólida, mar punteado) y un nodo ROJO en el centro REAL de cada provincia. Aclara dónde
@@ -399,16 +442,20 @@ function armyPos(a){
   }
   return{x:p.x,y:p.y};
 }
-let selOutline=null,selOutlineProv=-1;
-function clearSelOutline(){selOutline=null;selOutlineProv=-1} // reset del contorno cacheado (otros módulos no pueden reasignar los locals de este)
+let selPath=null,selPathProv=-1;
+function clearSelOutline(){selPath=null;selPathProv=-1} // reset del contorno cacheado (otros módulos no pueden reasignar los locals de este)
 function draw(){
   ctx.setTransform(1,0,0,1,0,0);
   ctx.fillStyle="#27384a";ctx.fillRect(0,0,canvas.width,canvas.height);
   ctx.setTransform(S.zoom,0,0,S.zoom,S.panX,S.panY);
-  ctx.imageSmoothingEnabled=S.zoom<1.5;
+  if(bordersDirty)paintBorders(); // conquista/ocupación pendiente: rehornear los vectores (1 vez por frame)
+  // Suavizado SIEMPRE activo: las fronteras ya no viven en baseC (son vectoriales), así que
+  // interpolar el relleno solo difumina el escalón entre provincias vecinas (p.ej. el shade de
+  // cada provincia del mismo reino) en vez de mostrar píxeles duros al hacer zoom.
+  ctx.imageSmoothingEnabled=true;
   ctx.drawImage(baseC,0,0);
   ctx.drawImage(roadsC,0,0);
-  ctx.drawImage(borderC,0,0);
+  ctx.drawImage(borderC,0,0,MW,MH); // borderC está a BS×: se vuelca al rectángulo del mapa
   // marcadores de capital como DIBUJO DE FONDO: centrados en la provincia, pequeños y translúcidos.
   // Se pintan BAJO la malla, así el nodo rojo del centro queda visible encima. No bloquean clics
   // (el clic se resuelve por píxel de provincia, no por la geometría del marcador).
@@ -429,17 +476,14 @@ function draw(){
     }
   }
   if(S.showGraph)ctx.drawImage(graphC,0,0); // malla de conexiones + nodos reales (encima de los marcadores)
-  // contorno de provincia seleccionada
+  // contorno de provincia seleccionada (vectorial: nítido a cualquier zoom)
   if(S.selProv>=0){
-    if(selOutlineProv!==S.selProv){
-      selOutline=document.createElement("canvas");selOutline.width=MW;selOutline.height=MH;
-      const c2=selOutline.getContext("2d");
-      const im=c2.createImageData(MW,MH);
-      for(const i of S.borderPxOfProv[S.selProv]){const o=i*4;im.data[o]=255;im.data[o+1]=255;im.data[o+2]=255;im.data[o+3]=230}
-      c2.putImageData(im,0,0);
-      selOutlineProv=S.selProv;
-    }
-    ctx.drawImage(selOutline,0,0);
+    if(selPathProv!==S.selProv){selPath=buildSelPath(S.selProv);selPathProv=S.selProv}
+    ctx.save();
+    ctx.lineJoin="round";ctx.lineCap="round";
+    ctx.strokeStyle="rgba(18,20,24,.85)";ctx.lineWidth=3.4/S.zoom;ctx.stroke(selPath); // halo oscuro
+    ctx.strokeStyle="rgba(255,255,255,.95)";ctx.lineWidth=1.6/S.zoom;ctx.stroke(selPath);
+    ctx.restore();
   }
   if(S.editMode){
     drawEditorOverlay();
@@ -550,5 +594,5 @@ function draw(){
 }
 
 export {
-  hex2rgb, provColor, paintAll, borderIsOuter, setBorderPx, borderIsWasteEdge, paintBorders, updateBordersAround, repaintProvince, drawGraph, roadCurve, drawRoads, fitCanvas, clampPan, armyPos, draw, drawArrow, drawEditorOverlay, NCOL, TCOL, WASTECOL, baseC, baseCtx, borderC, borderCtx, roadsC, canvas, baseData, borderData, selOutline, clearSelOutline
+  hex2rgb, provColor, paintAll, paintBorders, repaintProvince, drawGraph, roadCurve, drawRoads, fitCanvas, clampPan, armyPos, draw, drawArrow, drawEditorOverlay, NCOL, TCOL, WASTECOL, baseC, baseCtx, roadsC, canvas, baseData, clearSelOutline
 };
