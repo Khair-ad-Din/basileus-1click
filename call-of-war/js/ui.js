@@ -1,7 +1,7 @@
 // ui.js
 import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, RES_DESC, RES_ICON, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, WAR_LOCK_HOURS, terrainFx, STRATA, STRATA_INFO } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildingYield, buildJobs, buildMax, buildSlots, canAfford, costFor, employedIn, foodBalance, foodCap, foodCons, foodFill, harvestMul, subsProd, subsCons, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationEconomy, nationLedger, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, MKT_GOODS, MKT_TRADE, MKT_PRICE } from "./economy.js";
+import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildingYield, buildJobs, buildMax, buildSlots, canAfford, costFor, employedIn, foodBalance, foodCap, foodCons, foodFill, harvestMul, subsProd, subsCons, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationEconomy, nationLedger, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, MKT_GOODS, MKT_TRADE, MKT_PRICE, BASICS, terrMul } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
 import { canvas, clampPan } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
@@ -241,6 +241,22 @@ function renderBuildTabs(){
 function ta(s){return String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\n/g,"&#10;")}
 function iInfo(t){return " <i class='i' data-tip=\""+ta(t)+"\">i</i>"}
 function statv(val,brk){return "<b class='statv' data-tip=\""+ta(brk)+"\">"+val+"</b>"}
+// Línea del TERRENO: su nombre + qué básicos (grano/madera/piedra/hierro) produce bien o mal. El campesino
+// produce según el terreno y VENDE su excedente (verde ×>1) / COMPRA su déficit (rojo ×<1) en el mercado
+// nacional. Va en su propia línea (separada del recurso estratégico). Antes esto solo estaba en el motor.
+function terrainVocationHTML(p){
+  if(p.wasteland||!p.terrain)return"";
+  let cells="";
+  for(const k of BASICS){
+    const m=terrMul(p,k), cls=m>1.05?"pos":(m<0.95?"neg":"dim");
+    const tip=RES_LABEL[k]+": ×"+m.toFixed(2)+(m>1.05?" — excedente: la provincia VENDE en el mercado":
+      m<0.95?" — déficit: la provincia COMPRA en el mercado":" — se autoabastece");
+    cells+="<span class='voc "+cls+"' data-tip=\""+ta(tip)+"\">"+resImg(k)+"×"+m.toFixed(1)+"</span>";
+  }
+  return "<div class='tl vocrow'><span class='dim'>"+TERRAINS[p.terrain].label+
+    iInfo(TERRAINS[p.terrain].label+" — "+terrainFx(p.terrain)+"\n\nRendimientos del terreno: el campesino produce según el terreno y vende su excedente (verde) o compra su déficit (rojo) en el mercado nacional. Ningún terreno es bueno en todo → de ahí nace el comercio.")+
+    ":</span> "+cells+"</div>";
+}
 // ---- Desgloses estilo EU4 (texto multilínea para el tooltip flotante) ----
 function moraleBreak(p){
   let realmG=0;for(const q of S.provs){if(q.owner!==p.owner||q.wasteland)continue;for(const b in BUILDINGS){const fx=BUILDINGS[b].fx;if(fx.realmMoral)realmG+=fx.realmMoral*(q.buildings[b]||0)}}
@@ -310,9 +326,9 @@ function refreshProvPanel(){
   s+="<div class='tl'><span class='chip' style='background:"+NATIONS[p.owner].color+"'></span> "+NATIONS[p.owner].name+
      (p.duchy>=0&&S.duchies[p.duchy]?" <span style='color:#5c636b'>|</span> "+uiIcon('ducado')+" "+S.duchies[p.duchy].name:"")+"</div>";
   if(isOccupied(p))s+="<div class='tl' style='color:#e0a17a'>⚔ Ocupada por <span class='chip' style='background:"+NATIONS[p.occupier].color+"'></span> "+NATIONS[p.occupier].name+"</div>";
-  const good=p.urban?("Ciudad"+(p.resType?" · "+RES_LABEL[p.resType]:"")):(RES_LABEL[p.resType]||"—");
-  s+="<div class='tl'>"+(p.resType?resImg(p.resType)+" ":"")+good+" · "+TERRAINS[p.terrain].label+
-     iInfo(TERRAINS[p.terrain].label+" — "+terrainFx(p.terrain))+"</div>";
+  const good=p.urban?("Ciudad"+(p.resType?" · "+RES_LABEL[p.resType]:"")):(p.resType?RES_LABEL[p.resType]:"Sin especial");
+  s+="<div class='tl'>"+(p.resType?resImg(p.resType)+" ":"")+good+"</div>";
+  s+=terrainVocationHTML(p);
   s+="<div class='prow'><span>"+uiIcon('poblacion')+" Población"+iInfo("Habitantes: trabajan la tierra (producción base), dotan los edificios, pagan impuestos y aportan la soldadesca. Crece con el excedente de comida.")+"</span>"+
      statv(fmtPop(p.pop),"Población: "+fmtPop(p.pop)+" hab\nCrece con la despensa llena; cae en hambruna.")+"</div>";
   s+="<div class='prow'><span>🙂 Moral"+iInfo("Factor de PRODUCTIVIDAD: al 100% los pops rinden al máximo; por debajo, reducen su producción. No se recupera sola: la hacen crecer los edificios de moral (templo, catedral).")+"</span>"+
