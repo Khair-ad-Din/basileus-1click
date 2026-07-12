@@ -1,7 +1,7 @@
 // sim.js
 import { BUILDINGS, GARR_CITADEL, GARR_FORT, GARR_MIN, GOLD_PER_WS, LEVY_RAISE_HOURS, NATIONS, NEUTRAL, NPLAY, RES_BUILDING, RES_KEYS, SIEGE_BASE_H, START_STOCK, TERRAINS, UNITS, WAR_LOCK_HOURS, WS_BATTLE, WS_DUCHY_BASE, WS_DUCHY_PER } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyDef, armyHp, armySpd, buildBlock, buildJobs, buildMax, canAfford, costFor, economyTick, foodFill, storeCap, SUBS_BASICS, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor } from "./economy.js";
+import { armyAtk, armyCount, armyDef, armyHp, armySpd, buildBlock, buildJobs, buildMax, canAfford, costFor, economyTick, foodFill, storeCap, SUBS_BASICS, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor, seedStrataWealth } from "./economy.js";
 import { buildDuchies, hasRoad, roadLvl, isDuchyCap, kmBetween, roadKey } from "./mapgen.js";
 import { drawRoads, paintBorders, repaintProvince } from "./render.js";
 import { saveGame } from "./save.js";
@@ -12,7 +12,8 @@ import { log, refreshBuildBar, refreshSide, refreshTop } from "./ui.js";
 
 function setupNations(){
   S.nations=NATIONS.map((n,i)=>({idx:i,res:Object.fromEntries(RES_KEYS.map(k=>[k,START_STOCK[k]||0])),
-    ai:true,capital:-1,alive:!n.neutral,lastAI:0,startProvs:0}));
+    ai:true,capital:-1,alive:!n.neutral,lastAI:0,startProvs:0,
+    sWealth:{campesino:0,burgues:0,clero:0,nobleza:0},mkt:{}})); // Fase B: riqueza de estratos + mercado nacional
   // sembrar la soldadesca (cupo movilizable) y la despensa (almacén de comida) iniciales, y
   // una FÁBRICA del bien de la provincia (su resType) para que la economía building-driven no
   // arranque en déficit general: cada provincia produce de serie su propio recurso.
@@ -75,6 +76,7 @@ function setupNations(){
   }
   // ducados: subdivisión de iure del mapa (unidad de conquista). Determinista, tras fijar capitales.
   buildDuchies();
+  seedStrataWealth(); // Fase B: riqueza inicial por estrato (nobleza/clero nacen ricos)
 }
 function spawnArmy(nation,prov,units){
   // a.src = mapa provincia->pops que la componen (para que las bajas resten pop a su origen)

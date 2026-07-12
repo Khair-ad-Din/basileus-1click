@@ -1,7 +1,7 @@
 // ui.js
 import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, RES_DESC, RES_ICON, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, WAR_LOCK_HOURS, terrainFx, STRATA, STRATA_INFO } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildingYield, buildJobs, buildMax, buildSlots, canAfford, costFor, employedIn, foodBalance, foodCap, foodCons, foodFill, harvestMul, subsProd, subsCons, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationEconomy, nationLedger, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots } from "./economy.js";
+import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildingYield, buildJobs, buildMax, buildSlots, canAfford, costFor, employedIn, foodBalance, foodCap, foodCons, foodFill, harvestMul, subsProd, subsCons, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationEconomy, nationLedger, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, MKT_GOODS, MKT_PRICE } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
 import { canvas, clampPan } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
@@ -942,33 +942,43 @@ function refreshEstates(){
   if(!ov||ov.style.display!=="flex")return;
   const body=document.getElementById("estatesBody");
   if(S.player<0){body.innerHTML="<p style='text-align:center;color:#9aa3ad'>Estás en modo observador. Toma el mando de una nación (desde el <b>Registro</b>) para ver sus estamentos.</p>";return}
-  const N=NATIONS[S.player];
-  const cnt={},wl={};let pop=0;for(const k of STRATA){cnt[k]=0;wl[k]=0}
+  const N=NATIONS[S.player],NA=S.nations[S.player];
+  const cnt={};let pop=0;for(const k of STRATA)cnt[k]=0;
   for(const p of S.provs){
     if(p.owner!==S.player||p.wasteland||isOccupied(p))continue;
     pop+=p.pop||0;
     if(p.pops)for(const k of STRATA)cnt[k]+=p.pops[k]||0;
-    if(p.wealth)for(const k of STRATA)wl[k]+=p.wealth[k]||0;
   }
+  const wl=(NA&&NA.sWealth)||{}, mkt=(NA&&NA.mkt)||{};
   const nf=v=>Math.round(v).toLocaleString("es-ES");
   let h="<div class='tsyhead'><span class='chip' style='background:"+N.color+"'></span> "+N.name+" · "+nf(pop)+" hab.</div>";
-  h+="<div style='margin-top:10px'>";
+  h+="<div style='display:flex;font-size:10px;color:#7a828b;margin:8px 2px 3px'><span style='flex:1'></span><span style='width:88px;text-align:right'>habitantes</span><span style='width:52px;text-align:right'>%</span><span style='width:78px;text-align:right'>riqueza 🪙</span></div>";
   for(const k of STRATA){
     const info=STRATA_INFO[k],c=cnt[k],pct=pop>0?100*c/pop:0;
-    h+="<div style='margin-bottom:9px'>"+
+    h+="<div style='margin-bottom:8px'>"+
        "<div style='display:flex;align-items:center;gap:7px;font-size:13px'>"+
          "<span style='font-size:16px'>"+info.icon+"</span>"+
          "<b style='flex:1'>"+info.label+"</b>"+
-         "<span style='color:var(--txt)'>"+nf(c)+"</span>"+
-         "<span style='color:#9aa3ad;width:46px;text-align:right'>"+pct.toFixed(1)+"%</span>"+
+         "<span style='color:var(--txt);width:88px;text-align:right'>"+nf(c)+"</span>"+
+         "<span style='color:#9aa3ad;width:52px;text-align:right'>"+pct.toFixed(1)+"%</span>"+
+         "<span style='color:var(--title);width:78px;text-align:right'>"+nf(wl[k]||0)+"</span>"+
        "</div>"+
        "<div style='height:6px;background:#2a2f36;border-radius:3px;margin-top:3px;overflow:hidden'>"+
          "<div style='height:100%;width:"+pct.toFixed(1)+"%;background:"+N.color+"'></div>"+
        "</div>"+
        "</div>";
   }
-  h+="</div>";
-  h+="<p style='color:#7a828b;font-size:11px;margin-top:12px;text-align:center'>La riqueza por estrato y el mercado llegan en la próxima fase.</p>";
+  // Mercado nacional: stock disponible de cada bien de comercio y su precio fijo
+  h+="<div style='margin-top:12px;border-top:1px solid #2a2f36;padding-top:8px'>"+
+     "<div style='font-size:12px;color:var(--title);margin-bottom:5px'>🏪 Mercado nacional</div>"+
+     "<div style='display:flex;flex-wrap:wrap;gap:5px 14px;font-size:12px'>";
+  for(const g of MKT_GOODS){
+    h+="<span style='display:flex;gap:5px'><span>"+(RES_ICON[g]||"")+RES_LABEL[g]+"</span>"+
+       "<b style='color:var(--txt)'>"+nf(mkt[g]||0)+"</b>"+
+       "<span style='color:#7a828b'>("+MKT_PRICE[g]+"🪙)</span></span>";
+  }
+  h+="</div></div>";
+  h+="<p style='color:#7a828b;font-size:11px;margin-top:10px;text-align:center'>Los estratos ganan dinero por su rol y compran sus lujos aquí (precios fijos, primera versión).</p>";
   body.innerHTML=h;
 }
 export {

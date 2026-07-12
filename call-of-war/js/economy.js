@@ -1,5 +1,5 @@
 // economy.js
-import { NPLAY, BUILDINGS, BUILD_JOBS, TERRAINS, UNITS, RES_KEYS, RES_LABEL, LOOT_FRAC } from "./config.js";
+import { NPLAY, BUILDINGS, BUILD_JOBS, TERRAINS, UNITS, RES_KEYS, RES_LABEL, LOOT_FRAC, STRATA } from "./config.js";
 import { S } from "./state.js";
 
 // ---- Ocupación (estilo EU4): la provincia sigue siendo de iure de su dueño (p.owner) pero
@@ -95,6 +95,46 @@ function foodCap(p){return storeCap(p,"comida")}
 const NEED_PC={pano:0.00000018,vino:0.00000018,sal:0.00000028}; // por habitante y tick
 const NEED_PRICE={pano:2.2,vino:2.2,sal:1.6};  // ducados por unidad al comprar en el mercado
 const FOOD_PRICE=4.0;                                          // ducados por unidad de grano (alivio de hambruna): caro, para que la hambruna se sienta
+
+/* ---- Mercado nacional de comercio + riqueza de estratos (Fase B) ----
+ * Capa ADITIVA sobre la economía de la corona (que NO se toca en esta fase): cada estrato gana
+ * dinero por su rol (S.nations[n].sWealth) y compra sus lujos en un mercado nacional por reino
+ * (S.nations[n].mkt). La producción de bienes de comercio se ESPEJA al mercado (la corona conserva
+ * su copia como hasta ahora); en la próxima pasada se unificará (quitar NEED_PC de la corona y
+ * encaminar la producción real al mercado). Precios FIJOS. Todo tunable (mods pequeños). */
+const MKT_GOODS=["pano","vino","sal","seda","raros"];
+const MKT_PRICE={pano:2.2,vino:2.2,sal:1.6,seda:5.0,raros:4.0}; // ducados/unidad
+const NPC=1e-7;                                                 // escala "por habitante y tick"
+// Necesidad de lujo por hab/tick y estrato (los altos consumen más y más fino):
+const LUX_NEED={
+  campesino:{pano:1.2*NPC,vino:1.0*NPC,sal:2.4*NPC},
+  burgues:  {pano:3.0*NPC,vino:3.0*NPC,sal:2.8*NPC,seda:0.8*NPC,raros:0.6*NPC},
+  clero:    {pano:3.0*NPC,vino:4.0*NPC,sal:2.8*NPC,seda:1.0*NPC,raros:1.0*NPC},
+  nobleza:  {pano:4.0*NPC,vino:5.0*NPC,sal:3.0*NPC,seda:2.0*NPC,raros:2.0*NPC},
+};
+// Ingreso base de dinero por hab/tick y estrato. Campesino/burgués ≈ su cesta (viven al día);
+// clero (diezmos) y nobleza (rentas de la tierra) MUY por encima de su consumo → son la ÉLITE que
+// acumula (para, en el futuro, construir por su cuenta). Los burgueses ADEMÁS cobran un margen de
+// las ventas del mercado (BURGUES_MARGIN), no toda la venta.
+const STRATA_INCOME={campesino:10*NPC,burgues:26*NPC,clero:60*NPC,nobleza:85*NPC};
+const BURGUES_MARGIN=0.10;   // los burgueses (comerciantes) se quedan solo este margen de las ventas; el resto = costes (sumidero)
+// Tope de riqueza acumulada por habitante, POR ESTRATO (estabiliza y fija la jerarquía de riqueza:
+// campesinos pobres, burgueses acomodados, clero y nobleza ricos). El exceso se consume/reinvierte.
+const WEALTH_CAP={campesino:0.02,burgues:0.04,clero:2.0,nobleza:3.0};
+const MKT_DECAY=0.985;    // los excedentes no vendidos del mercado se disipan por tick (perecen/salen)
+function ensureMarket(N){ // inicializa el estado de mercado/riqueza de una nación si falta
+  if(!N.sWealth){N.sWealth={};for(const k of STRATA)N.sWealth[k]=0}
+  if(!N.mkt)N.mkt={};
+}
+// Riqueza INICIAL por habitante y estrato: la nobleza y el clero nacen RICOS (tierras, tesoro
+// eclesiástico) y los campesinos pobres. Fija la jerarquía de riqueza desde el arranque (~mitad
+// del tope de cada estrato). Se siembra en setupNations (partidas nuevas); las guardadas la restauran.
+const START_WEALTH_PC={campesino:0.005,burgues:0.02,clero:1.0,nobleza:1.5};
+function seedStrataWealth(){
+  const str=Array.from({length:NPLAY},()=>{const o={};for(const k of STRATA)o[k]=0;return o});
+  for(const p of S.provs){if(p.owner>=NPLAY||p.wasteland||!p.pops)continue;const s=str[p.owner];for(const k of STRATA)s[k]+=p.pops[k]||0}
+  for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(!N)continue;ensureMarket(N);for(const k of STRATA)N.sWealth[k]=(START_WEALTH_PC[k]||0)*str[n][k]}
+}
 // constantes del tick demográfico (compartidas con el arnés de análisis tools/sim-economy.mjs)
 const SOLD_REGEN=0.0012;          // la soldadesca recupera este % del hueco hasta su techo, por tick
 const POP_GROWTH_BASE=0.008/8760; // crecimiento con la despensa llena ≈1.1%/año; escala con el llenado
@@ -397,6 +437,7 @@ function economyTick(dt=1){
   // (esta última se llena en la pasada A). La MORAL ya no se integra aquí: la gobierna el bloque
   // diario de sim.js (crecimiento pop-driven por edificios; ver moraleGrowth/moraleTarget).
   const troops=new Float64Array(NPLAY),nationPop=new Float64Array(NPLAY);
+  const nationStrata=Array.from({length:NPLAY},()=>{const o={};for(const k of STRATA)o[k]=0;return o}); // pop por estrato y nación (Fase B)
   const armyUp=Array.from({length:NPLAY},()=>({})); // mantenimiento del ejército por nación y recurso
   for(const a of S.armies){if(a.nation>=NPLAY)continue;
     for(const k in a.units){troops[a.nation]+=a.units[k];const u=UNITS[k].up||{};
@@ -413,8 +454,12 @@ function economyTick(dt=1){
       continue;
     }
     nationPop[n]+=p.pop||0;
+    if(p.pops){const ns=nationStrata[n];for(const k of STRATA)ns[k]+=p.pops[k]||0} // Fase B: agregado de estratos
     const R=S.nations[n].res,e=provEconomy(p);
     for(const k in e.res)R[k]+=e.res[k]*dt;
+    // Fase B: la producción de bienes de comercio se espeja al mercado nacional (la corona conserva su copia)
+    const N=S.nations[n];ensureMarket(N);
+    for(const g of MKT_GOODS)if(e.res[g]>0)N.mkt[g]=(N.mkt[g]||0)+e.res[g]*dt;
   }
   // Por nación: mantenimiento del ejército y necesidades de confort (consumo/mercado/desabastecimiento).
   for(let n=0;n<NPLAY;n++){
@@ -431,6 +476,27 @@ function economyTick(dt=1){
       // sin penalización de moral: no cubrir un lujo, de momento, no tiene efecto
     }
     for(const k of RES_KEYS)if(R[k]<0)R[k]=0;
+  }
+  // Fase B: MERCADO NACIONAL de comercio + riqueza de estratos (capa aditiva; no toca el tesoro).
+  // Cada estrato gana un ingreso base por su rol y compra sus lujos del mercado; lo que paga va a
+  // los burgueses (comerciantes). El exceso de riqueza se topa por hab (estabiliza) y el stock del
+  // mercado no vendido se disipa. Nada de esto altera S.nations[n].res (la corona sigue igual).
+  for(let n=0;n<NPLAY;n++){
+    if(!S.nations[n].alive)continue;
+    const N=S.nations[n];ensureMarket(N);const str=nationStrata[n],W=N.sWealth;
+    for(const k of STRATA)W[k]+=STRATA_INCOME[k]*str[k]*dt;          // ingreso base por rol
+    for(const g of MKT_GOODS){
+      let stock=N.mkt[g]||0,rev=0;
+      for(const k of STRATA){
+        const need=(LUX_NEED[k][g]||0)*str[k]*dt;
+        if(need<=0)continue;
+        const buy=Math.min(need,stock,(W[k]||0)/MKT_PRICE[g]);       // limitado por deseo, stock y bolsillo
+        if(buy>0){W[k]-=buy*MKT_PRICE[g];stock-=buy;rev+=buy*MKT_PRICE[g]}
+      }
+      W.burgues+=rev*BURGUES_MARGIN;                                 // los burgueses se quedan un margen (el resto = costes)
+      N.mkt[g]=stock*MKT_DECAY;                                      // el excedente no vendido se disipa
+    }
+    for(const k of STRATA){const cap=(WEALTH_CAP[k]||0.1)*str[k];if(W[k]>cap)W[k]=cap;if(W[k]<0)W[k]=0}
   }
   // Comida del EJÉRCITO (pop-driven): cada ejército consume grano por sus pops. El slider a.supply
   // reparte entre FORRAJEO local (la provincia que pisa + sus vecinas, proporcional a la reserva de
@@ -485,5 +551,6 @@ function economyTick(dt=1){
 }
 
 export {
-  canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, nationLedger, isOccupied, occupierOf, provLoot, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, recruitable, taxOf, moraleGrowth, MORALE_MIN, MORALE_HOSTILE, SOLD_FRAC, foodCons, foodBalance, foodCap, foodFill, harvestMul, subsProd, subsCons, subsBalance, storeCap, storeOf, SUBS_BASICS, specialistCap, buildJobs, freeLabor, staffing, employedIn, jobsOf, buildingYield, buildSlots, usedSlots, structPPF, JOBS_PER_LEVEL, NEED_PC, NEED_PRICE, FOOD_PRICE, economyTick
+  canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, nationLedger, isOccupied, occupierOf, provLoot, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, recruitable, taxOf, moraleGrowth, MORALE_MIN, MORALE_HOSTILE, SOLD_FRAC, foodCons, foodBalance, foodCap, foodFill, harvestMul, subsProd, subsCons, subsBalance, storeCap, storeOf, SUBS_BASICS, specialistCap, buildJobs, freeLabor, staffing, employedIn, jobsOf, buildingYield, buildSlots, usedSlots, structPPF, JOBS_PER_LEVEL, NEED_PC, NEED_PRICE, FOOD_PRICE, economyTick,
+  MKT_GOODS, MKT_PRICE, ensureMarket, seedStrataWealth
 };
