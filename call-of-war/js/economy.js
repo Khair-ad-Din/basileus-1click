@@ -136,12 +136,14 @@ const WEALTH_CAP={campesino:0.02,burgues:0.04,clero:2.0,nobleza:3.0};
 // la PROSPERIDAD de los burgueses del reino (si prosperan, atraen; si penan, no); el DESCENSO es libre.
 const PROMO_RATE=0.0010;      // fracción de la brecha corregida por tick (lento, stackeable)
 const PROSP_REF=0.02;         // riqueza/hab de burgués de referencia (prosperidad = actual/REF, ~1 al inicio)
-function targetBurgFrac(p){   // fracción objetivo de burgueses sobre la clase baja (resto = campesinos)
-  let f=p.urban?0.35:0.03;
+function targetBurgFrac(p){   // fracción objetivo de burgueses sobre la clase baja (campesino+burgués)
+  // Base = el sembrado inicial (sobre la clase baja): así NO hay descenso de arranque; solo el
+  // comercio construido empuja por encima → ascenso. Ciudad ~0.40, campo ~0.052.
+  let f=p.urban?0.40:0.052;
   for(const b of ["mercado","gremio","lonja","puerto"])f+=0.03*lvlOf(p,b); // el comercio atrae burguesía
   return Math.min(0.6,f);
 }
-const MKT_DECAY=0.985;    // los excedentes no vendidos del mercado se disipan por tick (perecen/salen)
+const MKT_CAP_DAYS=120;   // tope de inventario del mercado = tantos días de demanda (acota la sobreoferta sin destruir bienes cada tick)
 function ensureMarket(N){ // inicializa el estado de mercado/riqueza de una nación si falta
   if(!N.sWealth){N.sWealth={};for(const k of STRATA)N.sWealth[k]=0}
   if(!N.mkt)N.mkt={};
@@ -507,15 +509,17 @@ function economyTick(dt=1){
     const N=S.nations[n];ensureMarket(N);const str=nationStrata[n],W=N.sWealth;
     for(const k of STRATA)W[k]+=STRATA_INCOME[k]*str[k]*dt;          // ingreso base por rol
     for(const g of MKT_GOODS){
-      let stock=N.mkt[g]||0,rev=0;
+      let stock=N.mkt[g]||0,rev=0,demand=0;
       for(const k of STRATA){
         const need=(LUX_NEED[k][g]||0)*str[k]*dt;
+        demand+=need;
         if(need<=0)continue;
         const buy=Math.min(need,stock,(W[k]||0)/MKT_PRICE[g]);       // limitado por deseo, stock y bolsillo
         if(buy>0){W[k]-=buy*MKT_PRICE[g];stock-=buy;rev+=buy*MKT_PRICE[g]}
       }
       W.burgues+=rev*BURGUES_MARGIN;                                 // los burgueses se quedan un margen (el resto = costes)
-      N.mkt[g]=stock*MKT_DECAY;                                      // el excedente no vendido se disipa
+      const cap=(demand/dt)*24*MKT_CAP_DAYS;                         // tope = MKT_CAP_DAYS de demanda diaria
+      N.mkt[g]=cap>0?Math.min(stock,cap):stock;                      // sobreoferta topada; los bienes escasos quedan bajos
     }
     for(const k of STRATA){const cap=(WEALTH_CAP[k]||0.1)*str[k];if(W[k]>cap)W[k]=cap;if(W[k]<0)W[k]=0}
     N.prosp=str.burgues>0?Math.min(1.5,(W.burgues/str.burgues)/PROSP_REF):1; // prosperidad burguesa (Fase C)
