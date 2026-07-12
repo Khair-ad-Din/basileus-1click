@@ -145,6 +145,7 @@ function paintAll(){
   baseCtx.putImageData(baseData,0,0);
   paintBorders();
   drawGraph(); // la malla de conexiones/nodos se rehace cuando cambia la estructura del mapa
+  bakeTerrain(); // PRUEBA: capa de sprites de terreno (no-op si aún no cargaron)
 }
 const borderCtx=borderC.getContext("2d");
 let bordersDirty=false;                 // la conquista/ocupación cambió un dueño: rehornear al dibujar
@@ -250,7 +251,7 @@ function paintBorders(){
 }
 // Contorno vectorial de UNA provincia (para la selección); Path2D en coords de mapa (×1, se traza
 // directamente bajo la transformación de zoom).
-function buildSelPath(pid){
+function buildSelPath(pid,scale=1){
   const flat=[];
   for(const i of S.borderPxOfProv[pid]){
     const x=i%MW,y=(i/MW)|0;
@@ -260,9 +261,58 @@ function buildSelPath(pid){
     if((y>0?S.provIdx[i-MW]:-1)!==pid){const n0=y*NODEW+x;flat.push(n0,n0+1)}
   }
   const path=new Path2D();
-  for(const l of tracePolys(flat))chaikinPath(l,path,1);
+  for(const l of tracePolys(flat))chaikinPath(l,path,scale);
   return path;
 }
+// ============================ PRUEBA: relleno con sprites de terreno ============================
+// Cada provincia se rellena con el sprite de su terreno, escalado para cubrir su bounding-box
+// (modo "cover", conservando proporción) y RECORTADO a la forma de la provincia con clip() sobre
+// su contorno vectorial. Se hornea una vez en terrainC (a BS×) y se vuelca escalado. Experimental:
+// si no convence, se revierte quitando la llamada en el bucle de dibujo y este bloque.
+const TERRAIN_SPRITE={montana:"mountain",colinas:"hills",bosque:"forest",pantano:"swamp",
+  vega:"farmland",pradera:"meadow",llanura:"grass_dry",estepa:"grass_dry"};
+// Color medio de cada sprite: se pinta bajo el sprite para que los huecos del blob (esquinas
+// transparentes del dibujo) se vean del color del terreno en vez del color político de debajo.
+const TERRAIN_FILL={grass_dry:"#987f1e",farmland:"#675517",hills:"#7d6e1e",mountain:"#6f603e",
+  forest:"#4b4b18",meadow:"#72701a",swamp:"#6b6733"};
+const _terrImg={};let _terrReady=0,_terrTotal=0;
+const terrainC=Object.assign(document.createElement("canvas"),{width:MW*BS,height:MH*BS});
+const terrainCtx=terrainC.getContext("2d");
+function loadTerrainSprites(){
+  const files=[...new Set(Object.values(TERRAIN_SPRITE))];
+  _terrTotal=files.length;
+  for(const f of files){
+    const img=new Image();
+    img.onload=()=>{_terrImg[f]=img;if(++_terrReady===_terrTotal)bakeTerrain()};
+    img.onerror=()=>{if(++_terrReady===_terrTotal)bakeTerrain();console.warn("terreno: no cargó "+f)};
+    img.src="assets/terrain/"+f+".png";
+  }
+}
+function bakeTerrain(){
+  if(_terrReady<_terrTotal||!S.provs||!S.provs.length)return;
+  terrainCtx.setTransform(1,0,0,1,0,0);
+  terrainCtx.clearRect(0,0,terrainC.width,terrainC.height);
+  terrainCtx.imageSmoothingEnabled=true;
+  for(const p of S.provs){
+    if(p.wasteland)continue;
+    const file=TERRAIN_SPRITE[p.terrain];
+    const img=_terrImg[file];
+    if(!img)continue;
+    const px=S.pixOfProv[p.id];if(!px||!px.length)continue;
+    let minx=MW,miny=MH,maxx=0,maxy=0;
+    for(const i of px){const x=i%MW,y=(i/MW)|0;if(x<minx)minx=x;if(x>maxx)maxx=x;if(y<miny)miny=y;if(y>maxy)maxy=y}
+    const bw=(maxx-minx+1)*BS,bh=(maxy-miny+1)*BS;
+    terrainCtx.save();
+    terrainCtx.clip(buildSelPath(p.id,BS));
+    terrainCtx.fillStyle=TERRAIN_FILL[file]||"#7d6e1e";      // base del terreno: tapa los huecos del blob
+    terrainCtx.fillRect(minx*BS,miny*BS,bw,bh);
+    const sc=Math.max(bw/img.width,bh/img.height)*1.12;      // "cover" + leve sobre-escalado
+    const dw=img.width*sc,dh=img.height*sc;
+    terrainCtx.drawImage(img,minx*BS+(bw-dw)/2,miny*BS+(bh-dh)/2,dw,dh);
+    terrainCtx.restore();
+  }
+}
+loadTerrainSprites();
 function repaintProvince(pid){
   const P=S.provs[pid],base=provColor(pid),s=P.shade,d=baseData.data;
   const occ=(!S.terrainView&&!S.popView&&!S.resView&&!P.wasteland&&P.occupier>=0&&P.occupier!==P.owner)?NCOL[P.occupier]:null;
@@ -454,6 +504,7 @@ function draw(){
   // cada provincia del mismo reino) en vez de mostrar píxeles duros al hacer zoom.
   ctx.imageSmoothingEnabled=true;
   ctx.drawImage(baseC,0,0);
+  if(_terrReady===_terrTotal)ctx.drawImage(terrainC,0,0,MW,MH); // PRUEBA: terreno sobre el relleno
   ctx.drawImage(roadsC,0,0);
   ctx.drawImage(borderC,0,0,MW,MH); // borderC está a BS×: se vuelca al rectángulo del mapa
   // marcadores de capital como DIBUJO DE FONDO: centrados en la provincia, pequeños y translúcidos.
