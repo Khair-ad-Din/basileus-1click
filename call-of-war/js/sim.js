@@ -611,8 +611,9 @@ function aiTurn(n){
     // orden de preferencia según recurso de la provincia y si es capital
     const pri=[];
     if(p.capital){pri.push("cuartel","fabrica","fortaleza","templo","mercado");}
-    const byRes={comida:"granja",materiales:"aserradero",piedra:"cantera",metal:"mina",plata:"minaPlata",oro:"minaOro"};
-    if(byRes[p.resType])pri.push(byRes[p.resType]);
+    // el resType es un ESPECIAL histórico (vino/paño/sal/seda/especias/caballos/plata/oro): construir su
+    // fábrica propia primero (los básicos ya no son resType — los produce el terreno, ver assignResources).
+    if(p.resType&&RES_BUILDING[p.resType])pri.push(RES_BUILDING[p.resType]);
     pri.push("mercado","gremio","granja","templo","cuartel","fabrica","campo");
     if(p.coastal)pri.push("puerto");
     for(const b of pri){

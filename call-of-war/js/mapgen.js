@@ -505,12 +505,18 @@ const GOLD_ZONES=[
   [45.4,47.6,22.3,25.7]  // Transilvania (Baia Mare, Roșia Montană)
 ];
 function inZones(zones,lon,lat){for(const[la0,la1,lo0,lo1]of zones)if(lat>=la0&&lat<=la1&&lon>=lo0&&lon<=lo1)return true;return false}
+// El TERRENO manda los BÁSICOS (grano/madera/piedra/hierro) — ver TERRAIN_PROD en economy.js. Por eso el
+// resType de una provincia ya NO es un básico: es SOLO un ESPECIAL histórico (lujo/comercio regional) —
+// vino, paño, sal, seda, especias, caballos — o los raros yacimientos de plata/oro. Muchas provincias del
+// campo NO tienen especial (resType=null): son agrícolas puras y viven de la vocación de su terreno. Así el
+// resType (afinidad + fábrica sembrada + mapa de recursos) no solapa con los básicos que ya reparte el terreno.
 function assignResources(){
   for(const p of S.provs){
-    // Ciudades: su base ya no es "dinero gratis" (ver economy.js: el motor de ducados son los
-    // impuestos + el comercio de mercado/lonja/puerto). Producen manufacturas y lujos regionales.
+    p.resType=null;
+    if(p.wasteland)continue;
+    // Ciudades: manufactura textil de lujo (paño) y algún lujo caro regional.
     if(p.urban){
-      const city=["pano","pano","pano","raros","vino","seda","metal"];
+      const city=["pano","pano","pano","raros","seda","vino"];
       p.resType=city[(S.rand()*city.length)|0];
       continue;
     }
@@ -522,26 +528,18 @@ function assignResources(){
       if(inZones(GOLD_ZONES,lon,lat)&&S.rand()<0.40){p.resType="oro";continue}
       if(inZones(SILVER_ZONES,lon,lat)&&S.rand()<0.48){p.resType="plata";continue}
     }
-    // bien de lujo regional (~13% del campo), según terreno y costa
-    if(S.rand()<0.13){
-      const lux=["pano","vino","sal","raros","seda"];
-      if(t==="vega"||t==="pradera"||t==="llanura")lux.push("vino","pano","pano");
-      if(t==="colinas"||t==="montana")lux.push("vino","raros");
-      if(t==="estepa"||t==="desierto")lux.push("raros","seda","sal");
-      if(p.coastal)lux.push("sal","seda","raros");
-      p.resType=lux[(S.rand()*lux.length)|0];
-      continue;
+    // Un ESPECIAL regional en ~1 de cada 4-5 provincias del campo (el resto quedan agrícolas puras).
+    if(S.rand()<0.22){
+      let pool;
+      if(t==="vega"||t==="pradera"||t==="llanura")pool=["vino","vino","pano"];        // vid de solana, lana
+      else if(t==="colinas"||t==="montana")pool=["vino","raros","petroleo"];          // vino de ladera, especias
+      else if(t==="estepa")pool=["petroleo","petroleo","raros","seda"];               // caballos de estepa, ruta de la seda
+      else if(t==="desierto")pool=["sal","raros","seda"];                             // caravanas, sal
+      else if(t==="bosque"||t==="pantano"||t==="tundra")pool=["raros","petroleo"];    // pieles/ámbar, ganado
+      else pool=["vino","pano","raros"];
+      if(p.coastal)pool=pool.concat(["sal","seda","raros"]);                          // puertos: sal marina, seda de Oriente
+      p.resType=pool[(S.rand()*pool.length)|0];
     }
-    // recurso estratégico según terreno
-    let strat;
-    if(t==="montana"||t==="colinas")strat=["piedra","piedra","metal","metal","petroleo"];
-    else if(t==="bosque"||t==="pantano")strat=["materiales","materiales","materiales","comida"];
-    else if(t==="tundra")strat=["materiales","comida","comida"]; // costa nórdica jugable: pieles/pesca
-    else if(t==="estepa"||t==="pradera")strat=["petroleo","petroleo","comida","comida"];
-    else if(t==="vega")strat=["comida","comida","comida","vino"];
-    else if(t==="desierto")strat=["comida","petroleo","sal"];
-    else strat=["comida","comida","materiales","metal"]; // llanura
-    p.resType=strat[(S.rand()*strat.length)|0];
   }
 }
 /* ============================== Población =============================
