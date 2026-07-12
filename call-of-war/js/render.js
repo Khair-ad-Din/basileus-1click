@@ -313,6 +313,10 @@ function bakeTerrain(){
   }
 }
 loadTerrainSprites();
+// Opacidad del tinte político sobre el terreno (0 = sin tinte, 1 = color pleno). Ajustable en vivo
+// por consola: setPolTint(0.4). El bucle de dibujo (rAF) lo aplica en el siguiente frame.
+let POL_TINT=0.35;
+if(typeof window!=="undefined")window.setPolTint=v=>{POL_TINT=Math.max(0,Math.min(1,+v||0))};
 function repaintProvince(pid){
   const P=S.provs[pid],base=provColor(pid),s=P.shade,d=baseData.data;
   const occ=(!S.terrainView&&!S.popView&&!S.resView&&!P.wasteland&&P.occupier>=0&&P.occupier!==P.owner)?NCOL[P.occupier]:null;
@@ -504,7 +508,12 @@ function draw(){
   // cada provincia del mismo reino) en vez de mostrar píxeles duros al hacer zoom.
   ctx.imageSmoothingEnabled=true;
   ctx.drawImage(baseC,0,0);
-  if(_terrReady===_terrTotal)ctx.drawImage(terrainC,0,0,MW,MH); // PRUEBA: terreno sobre el relleno
+  if(_terrReady===_terrTotal){
+    ctx.drawImage(terrainC,0,0,MW,MH); // terreno sobre el relleno
+    // TINTE POLÍTICO: se repinta baseC (color de dueño, ya actualizado al conquistar) con poca
+    // opacidad sobre el terreno, recuperando el color de cada país sin ocultar el relieve.
+    if(POL_TINT>0){ctx.globalAlpha=POL_TINT;ctx.drawImage(baseC,0,0);ctx.globalAlpha=1}
+  }
   ctx.drawImage(roadsC,0,0);
   ctx.drawImage(borderC,0,0,MW,MH); // borderC está a BS×: se vuelca al rectángulo del mapa
   // marcadores de capital como DIBUJO DE FONDO: centrados en la provincia, pequeños y translúcidos.
