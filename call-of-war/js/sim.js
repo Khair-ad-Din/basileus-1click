@@ -13,7 +13,7 @@ import { log, refreshBuildBar, refreshSide, refreshTop } from "./ui.js";
 function setupNations(){
   S.nations=NATIONS.map((n,i)=>({idx:i,res:Object.fromEntries(RES_KEYS.map(k=>[k,START_STOCK[k]||0])),
     ai:true,capital:-1,alive:!n.neutral,lastAI:0,startProvs:0,
-    sWealth:{campesino:0,burgues:0,clero:0,nobleza:0},mkt:{}})); // Fase B: riqueza de estratos + mercado nacional
+    sWealth:{campesino:0,burgues:0,clero:0,nobleza:0},mkt:{},taxRate:0.08})); // Fase B: riqueza de estratos + mercado + palanca fiscal
   // sembrar la soldadesca (cupo movilizable) y la despensa (almacén de comida) iniciales, y
   // una FÁBRICA del bien de la provincia (su resType) para que la economía building-driven no
   // arranque en déficit general: cada provincia produce de serie su propio recurso.

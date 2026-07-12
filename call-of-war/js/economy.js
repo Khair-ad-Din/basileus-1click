@@ -157,6 +157,38 @@ function seedStrataWealth(){
   for(const p of S.provs){if(p.owner>=NPLAY||p.wasteland||!p.pops)continue;const s=str[p.owner];for(const k of STRATA)s[k]+=p.pops[k]||0}
   for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(!N)continue;ensureMarket(N);for(const k of STRATA)N.sWealth[k]=(START_WEALTH_PC[k]||0)*str[n][k]}
 }
+// ================= REPARTO FEUDAL: un solo grifo campesino =================
+// El dinero de la capa 3 ya no lo genera cada estrato de la nada. Hay UN grifo: la producción
+// campesina (abstracción de vender su excedente), del que CLERO, NOBLEZA y CORONA extraen un %;
+// el resto queda al campesino. El burgués es la excepción (vive del margen del mercado). Como el
+// flujo cuelga de los mismos multiplicadores que la subsistencia (terreno·granja·moral), una
+// hambruna (menos campesinos) o una provincia desmoralizada golpea el ingreso de TODOS a la vez.
+// Sustituye a la vez los ingresos planos por rol (salvo burgués) y el impuesto plano taxOf.
+// BASE_INCOME calibrado para PARIDAD del ingreso de la corona con el antiguo taxOf: el viejo
+// impuesto de Castilla (~Σ taxOf) equivale a ~corona·ΣflujoBase; con corona≈0.08+realengo eso da
+// BASE_INCOME≈2.4e-4 (ver arnés de validación). Todo tunable.
+const BASE_INCOME=2.4e-4;  // ducados por campesino y tick, antes del reparto (grifo único)
+const DIEZMO=0.10;         // fracción del flujo para el clero (fija)
+const ALCABALA=0.08;       // impuesto de la corona sobre el comercio (sobre las ventas del mercado)
+// Señorío de la provincia (derivado, sin estado nuevo): renta de la tierra y a quién va.
+//  capital→realengo (renta a la CORONA) · ciudad→abadengo (renta al CLERO) · resto→solariego (renta a la NOBLEZA)
+const MANOR_RENT={realengo:0.10,solariego:0.28,abadengo:0.22};
+function manorOf(p){return p.capital?"realengo":(p.urban?"abadengo":"solariego")}
+function taxRateOf(n){const N=S.nations[n];return N&&N.taxRate!=null?Math.max(0.02,Math.min(0.20,N.taxRate)):0.08} // palanca fiscal por nación
+function flujoBase(p){ // flujo campesino por tick (mismos multiplicadores que la subsistencia)
+  if(!p||p.owner>=NPLAY||p.wasteland||!p.pops)return 0;
+  return p.pops.campesino*BASE_INCOME*structPPF(p)*(p.morale/100);
+}
+// Reparto del flujo en fracciones {clero,nobleza,corona,campesino}. Clamp defensivo: si la
+// extracción supera 0.9, se escala para que al campesino le quede siempre ≥10%.
+function repartoRates(p,taxRate){
+  const manor=manorOf(p),rent=MANOR_RENT[manor];
+  let clero=DIEZMO,nobleza=0,corona=taxRate;
+  if(manor==="abadengo")clero+=rent; else if(manor==="realengo")corona+=rent; else nobleza+=rent;
+  let ext=clero+nobleza+corona;
+  if(ext>0.9){const s=0.9/ext;clero*=s;nobleza*=s;corona*=s;ext=0.9}
+  return{clero,nobleza,corona,campesino:1-ext};
+}
 // constantes del tick demográfico (compartidas con el arnés de análisis tools/sim-economy.mjs)
 const SOLD_REGEN=0.0012;          // la soldadesca recupera este % del hueco hasta su techo, por tick
 const POP_GROWTH_BASE=0.008/8760; // crecimiento con la despensa llena ≈1.1%/año; escala con el llenado
@@ -305,7 +337,7 @@ function provEconomy(p){
   if(!p||p.owner>=NPLAY||p.wasteland)return out;
   const mor=p.morale/100,terr=TERRAINS[p.terrain].prod,st=staffing(p);
   const add=(k,v)=>{out.res[k]=(out.res[k]||0)+v};
-  add("dinero",taxOf(p));                                    // impuestos de la población (motor de ducados; no dependen de la dotación)
+  add("dinero",flujoBase(p)*repartoRates(p,taxRateOf(p.owner)).corona); // parte de la corona del reparto feudal (sustituye al impuesto plano)
   const mul=1+(provProdMul(p)-1)*st;                         // multiplicador de producción (gremio/fundición/universidad), escalado por dotación
   for(const b in BUILDINGS){                                 // TODA la producción de bienes viene de los edificios (con afinidad si coincide el bien)
     const lvl=lvlOf(p,b);if(!lvl)continue;
@@ -323,7 +355,7 @@ function provBreakdown(p){
   if(!p||p.owner>=NPLAY||p.wasteland)return{income,upkeep,net,mano};
   const mor=p.morale/100,terr=TERRAINS[p.terrain].prod,st=staffing(p);
   const mul=1+(provProdMul(p)-1)*st; // multiplicador de producción (gremio/fundición/universidad)
-  income.push({label:"Impuestos de la población",res:"dinero",amt:taxOf(p)});
+  income.push({label:"Impuesto feudal (reparto)",res:"dinero",amt:flujoBase(p)*repartoRates(p,taxRateOf(p.owner)).corona});
   for(const b in BUILDINGS){ // TODA la producción de bienes viene de edificios (afinidad si coincide el bien)
     const fx=BUILDINGS[b].fx,lvl=lvlOf(p,b);if(!lvl)continue;
     if(fx.prodAdd)for(const k in fx.prodAdd)income.push({label:BUILDINGS[b].label,res:k,amt:fx.prodAdd[k]*lvl*terr*mor*st*(resAff(p,b,k)?1+AFFINITY:1)*mul});
@@ -353,6 +385,7 @@ function nationEconomy(n){
   }
   for(const r in up)res[r]=(res[r]||0)-up[r];
   for(const k in NEED_PC)res[k]=(res[k]||0)-pop*NEED_PC[k]; // necesidades de confort de la población
+  res.dinero=(res.dinero||0)+(S.nations[n].alcabalaRate||0); // alcabala del comercio (reconcilia con el tick)
   return{res,provs:prov.length,troops,pop,army:up};
 }
 /* ---- Libro mayor del reino (Tesorería) ----
@@ -370,7 +403,7 @@ function nationLedger(n){
     pop+=p.pop||0;
     const mor=p.morale/100,terr=TERRAINS[p.terrain].prod,st=staffing(p);
     const mul=1+(provProdMul(p)-1)*st;                                // multiplicador de producción (gremio/fundición/universidad)
-    push("dinero","Impuestos",p.name,taxOf(p));                       // impuestos de la población
+    push("dinero","Impuestos",p.name,flujoBase(p)*repartoRates(p,taxRateOf(p.owner)).corona); // reparto feudal (parte de la corona)
     for(const b in BUILDINGS){
       const lvl=lvlOf(p,b);if(!lvl)continue;
       const fx=BUILDINGS[b].fx,lab=BUILDINGS[b].label;
@@ -390,6 +423,7 @@ function nationLedger(n){
     for(const r in uu)push(r,"Mantenimiento del ejército",UNITS[u].label,-uu[r]*a.units[u]);
   }
   for(const k in NEED_PC)push(k,"Necesidades de la población",RES_LABEL[k],-pop*NEED_PC[k]); // consumo de confort
+  push("dinero","Comercio","Alcabala",S.nations[n].alcabalaRate||0); // impuesto de la corona sobre el mercado
   return items;
 }
 function armyCount(a){let t=0;for(const k in a.units)t+=a.units[k];return t}
@@ -483,6 +517,10 @@ function economyTick(dt=1){
     // Fase B: la producción de bienes de comercio se espeja al mercado nacional (la corona conserva su copia)
     const N=S.nations[n];ensureMarket(N);
     for(const g of MKT_GOODS)if(e.res[g]>0)N.mkt[g]=(N.mkt[g]||0)+e.res[g]*dt;
+    // reparto feudal del flujo campesino a los estamentos (la parte de la corona ya va en e.res.dinero)
+    const fb=flujoBase(p)*dt;
+    if(fb>0){const rr=repartoRates(p,taxRateOf(n));
+      N.sWealth.clero+=fb*rr.clero; N.sWealth.nobleza+=fb*rr.nobleza; N.sWealth.campesino+=fb*rr.campesino}
   }
   // Por nación: mantenimiento del ejército y necesidades de confort (consumo/mercado/desabastecimiento).
   for(let n=0;n<NPLAY;n++){
@@ -507,8 +545,9 @@ function economyTick(dt=1){
   for(let n=0;n<NPLAY;n++){
     if(!S.nations[n].alive)continue;
     const N=S.nations[n];ensureMarket(N);const str=nationStrata[n],W=N.sWealth;
-    for(const k of STRATA)W[k]+=STRATA_INCOME[k]*str[k]*dt;          // ingreso base por rol
+    W.burgues+=STRATA_INCOME.burgues*str.burgues*dt;                 // solo el burgués tiene sueldo flat; el resto vive del reparto feudal
     if(!N.mktInfo)N.mktInfo={};
+    let revTotal=0;
     for(const g of MKT_GOODS){
       let stock=N.mkt[g]||0,rev=0,demand=0,sold=0;
       for(const k of STRATA){
@@ -519,11 +558,14 @@ function economyTick(dt=1){
         if(buy>0){W[k]-=buy*MKT_PRICE[g];stock-=buy;rev+=buy*MKT_PRICE[g];sold+=buy}
       }
       W.burgues+=rev*BURGUES_MARGIN;                                 // los burgueses se quedan un margen (el resto = costes)
+      revTotal+=rev;
       const cap=(demand/dt)*24*MKT_CAP_DAYS;                         // tope = MKT_CAP_DAYS de demanda diaria
       N.mkt[g]=cap>0?Math.min(stock,cap):stock;                      // sobreoferta topada; los bienes escasos quedan bajos
       // info para el panel (flujo/mes y escasez): demuestra que el mercado trabaja aunque el stock esté en equilibrio
       N.mktInfo[g]={dem:demand/dt*730,sold:sold/dt*730,short:sold<demand*0.98};
     }
+    N.res.dinero+=revTotal*ALCABALA;                                 // ALCABALA: la corona cobra del comercio (compensa el ×3 urbano perdido)
+    N.alcabalaRate=revTotal/dt*ALCABALA;                             // por tick, para reconciliar el display de Tesorería
     for(const k of STRATA){const cap=(WEALTH_CAP[k]||0.1)*str[k];if(W[k]>cap)W[k]=cap;if(W[k]<0)W[k]=0}
     N.prosp=str.burgues>0?Math.min(1.5,(W.burgues/str.burgues)/PROSP_REF):1; // prosperidad burguesa (Fase C)
   }
@@ -593,5 +635,5 @@ function economyTick(dt=1){
 
 export {
   canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, nationLedger, isOccupied, occupierOf, provLoot, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, recruitable, taxOf, moraleGrowth, MORALE_MIN, MORALE_HOSTILE, SOLD_FRAC, foodCons, foodBalance, foodCap, foodFill, harvestMul, subsProd, subsCons, subsBalance, storeCap, storeOf, SUBS_BASICS, specialistCap, buildJobs, freeLabor, staffing, employedIn, jobsOf, buildingYield, buildSlots, usedSlots, structPPF, JOBS_PER_LEVEL, NEED_PC, NEED_PRICE, FOOD_PRICE, economyTick,
-  MKT_GOODS, MKT_PRICE, ensureMarket, seedStrataWealth
+  MKT_GOODS, MKT_PRICE, ensureMarket, seedStrataWealth, flujoBase, repartoRates, taxRateOf, manorOf
 };
