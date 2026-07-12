@@ -49,26 +49,28 @@ function soldCap(p){
 }
 function soldAvail(p){return p.sold!=null?p.sold:soldCap(p)} // stock actual (o el techo si aún no se sembró)
 
-/* ---- Subsistencia local por provincia (bienes BÁSICOS) ----
- * Los campesinos (pops de serie) NO trabajan en fábricas: trabajan la tierra y producen/consumen
- * localmente una cesta de bienes BÁSICOS (comida, madera, piedra, hierro) ≈ autosuficiente. Cada
- * bien se guarda en una RESERVA local por provincia (p.store), cuyo tope amplía el Almacén. Un
- * modificador de COSECHA (harvestMul, ±HARVEST_AMP/año, determinista por provincia+año) afecta a
- * los bienes ORGÁNICOS (hoy la comida; extensible al vino cuando el lujo pase a local). En un mal
- * año se consume más de lo que se produce → se drena la reserva; si la de COMIDA se agota y sigue
- * negativa → HAMBRUNA (muertes) [+ migración, futura]. Los demás básicos, de momento, solo se
- * vacían sin efecto (hay planes para ellos). Es la MISMA unidad que el recurso nacional, para que
- * el reino pueda socorrer/requisar en el futuro. Capa SEPARADA del Tesoro (los edificios rinden a
- * la nación; los campesinos se alimentan a sí mismos). Los LUJOS (paño/vino/sal) siguen nacionales. */
+/* ---- Subsistencia local por provincia: el GRANO ----
+ * Los campesinos (pops de serie) NO trabajan en fábricas: trabajan la tierra y producen/consumen su
+ * propio GRANO ≈ autosuficiente. El grano se guarda en una DESPENSA local por provincia (p.store.comida),
+ * cuyo tope amplía el Almacén, como colchón anti-hambruna. Un modificador de COSECHA (harvestMul,
+ * ±HARVEST_AMP/año, determinista por provincia+año) afecta al grano (bien ORGÁNICO). En un mal año se
+ * consume más de lo que se produce → se drena la despensa; si se agota y sigue negativa → HAMBRUNA
+ * (muertes) [+ migración, futura]. El grano ES la misma unidad que el recurso nacional (para socorro/
+ * requisa). Capa SEPARADA del Tesoro: los edificios rinden a la nación, los campesinos comen su grano.
+ * Los DEMÁS bienes (madera/piedra/hierro, lujos) NO se acopian por provincia: son FLUJO al mercado
+ * nacional — el excedente campesino (resType) y los edificios los ponen a la venta y los estamentos los
+ * compran para comer (trigo) y construir (materiales). Ver E1/E2 en [[basileus-pop-economy-vision]]. */
 const YR_TICKS=8760;             // ticks (horas de juego) por año
 const HARVEST_AMP=0.33;          // variación anual de cosecha (±33%)
-const SUBS_BASICS=["comida","materiales","piedra","metal"];   // cesta de subsistencia campesina (madera=materiales, hierro=metal)
-const SUBS_ORGANIC={comida:1};   // bienes afectados por el desastre de cosecha (extensible: vino cuando sea local)
-// producción y consumo por HABITANTE y tick de cada básico, calibrados ≈ iguales (autosuficiencia):
-// la comida a escala histórica (1/hab/año); los demás, cantidades pequeñas. Tunables.
-const SUBS_CONS={comida:1/YR_TICKS, materiales:0.0000010, piedra:0.0000004, metal:0.0000004};
-const SUBS_PROD={comida:1/YR_TICKS, materiales:0.0000010, piedra:0.0000004, metal:0.0000004};
-const SUBS_STORE_YEARS={comida:0.7, materiales:0.5, piedra:0.5, metal:0.5}; // capacidad de reserva (× Almacén)
+// La única subsistencia ALMACENADA por provincia es el GRANO (despensa, colchón anti-hambruna): tiene
+// sentido histórico y mecánico. Los demás básicos (madera/piedra/hierro) ya NO se acopian localmente
+// (eran estado inerte); son FLUJO al mercado nacional — los produce el resType campesino + los edificios
+// y los compran los estamentos para comer (trigo) y construir (madera/piedra/hierro). Ver E1/E2.
+const SUBS_BASICS=["comida"];    // único bien con reserva local (la despensa)
+const SUBS_ORGANIC={comida:1};   // bienes afectados por el desastre de cosecha (harvestMul)
+const SUBS_CONS={comida:1/YR_TICKS}; // consumo de grano por hab y tick (≈1/hab/año, escala histórica)
+const SUBS_PROD={comida:1/YR_TICKS}; // producción base de grano por hab y tick (×fertilidad×granja×cosecha en subsProd)
+const SUBS_STORE_YEARS={comida:0.7}; // capacidad de la despensa en años de consumo (× Almacén)
 // rendimiento alimentario del terreno: ~1 = autosuficiente; >1 da excedente (crece). Suelo 1.0:
 // el terreno pobre no crece pero tampoco muere de hambre; la hambruna llega por una mala racha de
 // cosechas (harvestMul) cuando la reserva de comida está baja.
@@ -611,28 +613,25 @@ function economyTick(dt=1){
       if(avail>0){const take=Math.min(localNeed,avail);for(const q of pool)q.store.comida-=take*(q.store.comida/avail)}
     }
   }
-  // Pasada B: subsistencia LOCAL por bien básico (reserva por provincia p.store), hambruna de comida,
-  // crecimiento ligado al llenado de la despensa y regeneración de la soldadesca.
+  // Pasada B: subsistencia LOCAL de GRANO (despensa por provincia p.store.comida), hambruna, crecimiento
+  // ligado al llenado de la despensa y regeneración de la soldadesca. Los demás básicos ya no se acopian.
   const regen=Math.min(1,SOLD_REGEN*dt);
   for(const p of S.provs){
     if(p.wasteland)continue;
     if(!p.store)p.store={};
     const pop0=p.pop||0; // Fase A: para reescalar los estratos con el cambio de población
     let famine=false;
-    for(const k of SUBS_BASICS){
-      const cap=storeCap(p,k);
-      if(p.store[k]==null)p.store[k]=cap*0.6;
-      p.store[k]+=subsBalance(p,k)*dt;
-      if(p.store[k]>cap)p.store[k]=cap;
-      if(p.store[k]<0){
-        let deficit=-p.store[k];p.store[k]=0;
-        if(k==="comida"){
-          // el reino socorre comprando grano (relieve automático; el socorro/requisa dirigido por el jugador es futuro)
-          if(p.owner<NPLAY){const R=S.nations[p.owner].res;const relief=Math.min(deficit,(R.dinero||0)/FOOD_PRICE);if(relief>0){R.dinero-=relief*FOOD_PRICE;deficit-=relief}}
-          const cons=subsCons(p,"comida")*dt;
-          if(cons>0&&deficit/cons>FAMINE_DEF){p.pop=Math.max(0,(p.pop||0)-deficit*STARVE_RATE);famine=true}
-        }
-        // madera/piedra/hierro: la reserva se vacía sin efecto por ahora (hay planes para ellos)
+    {
+      const cap=storeCap(p,"comida");
+      if(p.store.comida==null)p.store.comida=cap*0.6;
+      p.store.comida+=subsBalance(p,"comida")*dt;
+      if(p.store.comida>cap)p.store.comida=cap;
+      if(p.store.comida<0){
+        let deficit=-p.store.comida;p.store.comida=0;
+        // el reino socorre comprando grano (relieve automático; el socorro/requisa dirigido por el jugador es futuro)
+        if(p.owner<NPLAY){const R=S.nations[p.owner].res;const relief=Math.min(deficit,(R.dinero||0)/FOOD_PRICE);if(relief>0){R.dinero-=relief*FOOD_PRICE;deficit-=relief}}
+        const cons=subsCons(p,"comida")*dt;
+        if(cons>0&&deficit/cons>FAMINE_DEF){p.pop=Math.max(0,(p.pop||0)-deficit*STARVE_RATE);famine=true}
       }
     }
     p.famine=famine;
