@@ -847,14 +847,14 @@ function economyTick(dt=1){
     R.dinero+=flujoBase(p)*repartoRates(p,taxRateOf(p.owner)).corona*dt; // parte de la corona del reparto feudal
     for(const k in cr)R[k]+=cr[k]*dt;                                    // edificios de la CORONA → tesoro
     // Fase B: la producción de comercio de la corona se espeja al mercado nacional (conserva su copia)
-    for(const g of MKT_GOODS)if(cr[g]>0)N.mkt[g]=(N.mkt[g]||0)+cr[g]*dt;
+    for(const g of MKT_GOODS)if(cr[g]>0){N.mkt[g]=(N.mkt[g]||0)+cr[g]*dt;recVol(n,g,"prod",cr[g]*dt)} // producción de la CORONA al mercado (+ telemetría "producido")
     // E2: edificios de ESTAMENTOS → su bolsillo. El dinero producido/gastado va a sWealth. Los BIENES:
     // lo que PRODUCEN va a su reserva (sRes) y los lujos también alimentan el mercado; lo que CONSUMEN de
     // mantenimiento (neto negativo) lo COMPRAN (coste en dinero a precio de referencia), así no hay reserva negativa.
     for(const e of ESTATES_BUILD){const eo=byOwner[e];if(!eo)continue;
       for(const k in eo){const v=eo[k]*dt;
         if(k==="dinero"){N.sWealth[e]+=v;recFlow(n,e,v>=0?"Producción de edificios":"Mantenimiento de edificios",v);continue}
-        if(v>=0){N.sRes[e][k]=(N.sRes[e][k]||0)+v; if(MKT_GOODS.indexOf(k)>=0)N.mkt[k]=(N.mkt[k]||0)+v}
+        if(v>=0){N.sRes[e][k]=(N.sRes[e][k]||0)+v; if(MKT_GOODS.indexOf(k)>=0){N.mkt[k]=(N.mkt[k]||0)+v;recVol(n,k,"prod",v)}} // producción del ESTAMENTO (manufacturas) al mercado (+ telemetría "producido")
         else{const c=v*(MKT_PRICE[k]||1);N.sWealth[e]+=c;recFlow(n,e,"Mantenimiento de edificios",c)}}} // consumo de mantenimiento en bienes → comprado (coste en dinero)
     // reparto feudal del flujo campesino a los estamentos (la parte de la corona ya va arriba)
     const fb=flujoBase(p)*dt;
