@@ -620,8 +620,8 @@ function provEconomy(p){ // economía que rinde a la CORONA: reparto feudal (su 
 // Beneficio NETO mensual del edificio b (a precios de mercado ACTUALES): producción − insumos − mantenimiento.
 // + = gana, − = pierde. Lo usan la UI (avisar de edificios ruinosos) y (futuro) la IA (deshabilitar los que pierden).
 // Usa el nivel ESTRUCTURAL (lo que rendiría OPERATIVO), para poder decidir si merece la pena tenerlo encendido.
-function buildingProfit(p,b){
-  const lvl=p.buildings[b]||0; if(!lvl)return 0;
+function buildingProfit(p,b,lvlArg){
+  const lvl=lvlArg!=null?lvlArg:(p.buildings[b]||0); if(!lvl)return 0; // lvlArg = puntuar a un nivel dado (p.ej. el próximo, para decidir si construir)
   const B=BUILDINGS[b]; if(!B.fx)return 0;
   const N=(p.owner<NPLAY)?S.nations[p.owner]:null;
   const price=k=>k==="dinero"?1:((N&&N.mktPrice&&N.mktPrice[k]!=null)?N.mktPrice[k]:(MKT_PRICE[k]||1));
@@ -633,6 +633,17 @@ function buildingProfit(p,b){
   if(B.up)for(const k in B.up)v-=B.up[k]/12*lvl*price(k);
   return v;
 }
+// Conjunto de bienes OBTENIBLES ahora mismo por cualquier reino: básicos universales + los que produce alguna
+// provincia por su especialidad (terreno) + los que hay en algún mercado (importables por arbitraje global). GATE de
+// construcción (Opción 1): no levantar una fábrica cuyo INSUMO no exista en el alcance. Como la producción es por
+// terreno y el comercio global, casi siempre existe → no crea el deadlock "sin demanda↔sin import".
+function sourceableSet(){
+  const s=new Set(BASICS);
+  for(const p of S.provs)if(!p.wasteland&&p.resType)s.add(p.resType);
+  for(let i=0;i<NPLAY;i++){const N=S.nations[i];if(N&&N.alive&&N.mkt)for(const g in N.mkt)if(N.mkt[g]>1)s.add(g)}
+  return s;
+}
+function inputsSourceable(b,src){const B=BUILDINGS[b];if(!B.inputs)return true;for(const k in B.inputs)if(!src.has(k))return false;return true}
 function degradeBuildings(){ // 1 tick: los edificios DESHABILITADOS pierden condición; al llegar a 0 se destruyen (−1 nivel)
   for(const p of S.provs){
     if(!p.bOff)continue;
@@ -1077,6 +1088,6 @@ export {
   MKT_GOODS, MKT_TRADE, MKT_PRICE, ensureMarket, seedStrataWealth, flujoBase, repartoRates, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, manorOf, canStaffIndustry, bOwnerOf, provEconomyByOwner, ESTATES_BUILD,
   BASICS, TERRAIN_CAT, terrMul, terrCatMul, RES_RAW_CATS,
   MONTH_TICKS, resetTsyLedger, tsyTick, tsyAvail, tsyMonthBal, recFlow, BONUS_BIEN, PROSP_CHANNELS,
-  bOff, bCond, effLvl, buildingProfit, degradeBuildings,
+  bOff, bCond, effLvl, buildingProfit, degradeBuildings, sourceableSet, inputsSourceable,
   prosperityTick, prospLevel, PROSP_LEVEL_PTS, PROSP_MAX_PTS, CHANNEL_GOODS, NAT_BONUS_PER_LEVEL
 };

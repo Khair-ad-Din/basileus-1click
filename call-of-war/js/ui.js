@@ -1,7 +1,7 @@
 // ui.js
 import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, RES_DESC, RES_ICON, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, WAR_LOCK_HOURS, terrainFx, STRATA, STRATA_INFO, RES_ART, RES_CAT } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildingYield, buildJobs, buildMax, buildSlots, canAfford, costFor, employedIn, foodBalance, foodCap, foodCons, foodFill, harvestMul, subsProd, subsCons, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationEconomy, nationLedger, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, MKT_GOODS, MKT_TRADE, MKT_PRICE, BASICS, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, resetTsyLedger, tsyAvail, tsyMonthBal, BONUS_BIEN, PROSP_CHANNELS, prospLevel, PROSP_LEVEL_PTS, PROSP_MAX_PTS, CHANNEL_GOODS, NAT_BONUS_PER_LEVEL, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, buildingProfit } from "./economy.js";
+import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildingYield, buildJobs, buildMax, buildSlots, canAfford, costFor, employedIn, foodBalance, foodCap, foodCons, foodFill, harvestMul, subsProd, subsCons, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationEconomy, nationLedger, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, MKT_GOODS, MKT_TRADE, MKT_PRICE, BASICS, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, resetTsyLedger, tsyAvail, tsyMonthBal, BONUS_BIEN, PROSP_CHANNELS, prospLevel, PROSP_LEVEL_PTS, PROSP_MAX_PTS, CHANNEL_GOODS, NAT_BONUS_PER_LEVEL, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, buildingProfit, sourceableSet, inputsSourceable } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
 import { canvas, clampPan } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
@@ -420,6 +420,7 @@ function refreshProvPanel(){
 function buildTilesHTML(p){
   const showAll=S.buildFilter==="all";
   const cList=showAll?BUILD_CATS:BUILD_CATS.filter(c=>c[0]===S.buildFilter);
+  const src=sourceableSet(); // para avisar de fábricas sin fuente de insumo (una vez por render)
   let cats="<div class='bcats'>";
   for(const[cat,label]of cList){
     let tiles="";
@@ -462,10 +463,19 @@ function buildTilesHTML(p){
             profTxt+"<span style='color:#9aa3ad;white-space:nowrap'>⏸ Off</span></div>";
         }
       }
+      // hint de FÁBRICAS: aviso si el insumo no tiene fuente (gate), o rentabilidad esperada del próximo nivel
+      let hint="";
+      const isFact=!!(B.inputs||(B.fx&&B.fx.prodAdd));
+      if(isFact&&!maxed&&!inQ){
+        if(B.inputs&&!inputsSourceable(b,src))
+          hint="<div style='font-size:10px;color:#d0913a'>⚠ sin fuente de "+Object.keys(B.inputs).filter(k=>!src.has(k)).map(k=>RES_LABEL[k]||k).join("/")+"</div>";
+        else{const ep=Math.round(buildingProfit(p,b,lvl+1));
+          hint="<div style='font-size:10px;color:"+(ep>=0?"#8aa478":"#c9776a")+"'>≈ "+(ep>=0?"+":"−")+fmt(Math.abs(ep))+"🪙/mes "+(lvl>0?"el sig. nivel":"si la construyes")+"</div>";}
+      }
       tiles+="<div class='"+cls+"'"+onclick+(off?" style='opacity:.62'":"")+" data-tip=\""+ta(B.desc)+"\">"+
         "<img class='bic' src='assets/buildings/"+b+".png' alt='"+B.label+"' title='"+B.label+"' onerror=\"this.replaceWith(bemoji('"+B.icon+"'))\">"+
         "<div class='th'><span class='nm'>"+B.label+"</span>"+lvBadge+"</div>"+
-        "<div class='ben'>"+benefitHTML(p,b)+jobsHtml+"</div>"+ctrl+
+        "<div class='ben'>"+benefitHTML(p,b)+jobsHtml+hint+"</div>"+ctrl+
         "<div class='foot2'>"+upStr+foot+"</div></div>";
     }
     cats+="<div class='bcat'><div class='lab'>"+label+"</div><div class='btiles'>"+tiles+"</div></div>";

@@ -1,7 +1,7 @@
 // sim.js
 import { BUILDINGS, GARR_CITADEL, GARR_FORT, GARR_MIN, GOLD_PER_WS, LEVY_RAISE_HOURS, NATIONS, NEUTRAL, NPLAY, RES_BUILDING, RES_KEYS, SIEGE_BASE_H, START_STOCK, TERRAINS, UNITS, WAR_LOCK_HOURS, WS_BATTLE, WS_DUCHY_BASE, WS_DUCHY_PER } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyDef, armyHp, armySpd, bOwnerOf, buildBlock, buildJobs, buildMax, buildSlots, canAfford, canStaffIndustry, costFor, economyTick, ESTATES_BUILD, foodFill, storeCap, SUBS_BASICS, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor, usedSlots, seedStrataWealth, tsyTick, recFlow, specialistCap, jobsOf, prosperityTick, degradeBuildings } from "./economy.js";
+import { armyAtk, armyCount, armyDef, armyHp, armySpd, bOwnerOf, buildBlock, buildJobs, buildMax, buildSlots, canAfford, canStaffIndustry, costFor, economyTick, ESTATES_BUILD, foodFill, storeCap, SUBS_BASICS, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor, usedSlots, seedStrataWealth, tsyTick, recFlow, specialistCap, jobsOf, prosperityTick, degradeBuildings, buildingProfit, sourceableSet, inputsSourceable } from "./economy.js";
 import { buildDuchies, hasRoad, roadLvl, isDuchyCap, kmBetween, roadKey } from "./mapgen.js";
 import { drawRoads, paintBorders, repaintProvince } from "./render.js";
 import { saveGame } from "./save.js";
@@ -367,7 +367,28 @@ const ESTATE_BUILDS={
 const BUILD_MAT_PRICE={dinero:1,materiales:1,piedra:1,metal:2,comida:0.8,pano:2.2,vino:2.2,sal:1.6,seda:5,raros:4,petroleo:2};
 const ESTATE_BUILD_KEEP=4; // colchón: solo construyen si su riqueza supera KEEP× el coste (invierten el excedente, no el principal)
 function estateCostDinero(cost){let t=0;for(const k in cost)t+=cost[k]*(BUILD_MAT_PRICE[k]||1);return t}
-function pickEstateBuild(p,e,N){ // primer edificio del repertorio del estamento que sea construible y asequible aquí
+// IA de ajuste del mercado: deshabilita las FÁBRICAS que pierden dinero (sobreoferta / insumo caro) y reactiva
+// (reparando) las que vuelven a ser rentables. Histéresis (deadband) para no oscilar. Solo fábricas de producción.
+const BLDG_LOSS=-50, BLDG_GAIN=100; // umbrales mensuales en ducados (deshabilitar bajo −50/mes, reactivar sobre +100/mes)
+function autoManageBuildings(p,owners){
+  const N=S.nations[p.owner]; if(!N)return;
+  for(const b in p.buildings){
+    if(!(p.buildings[b]>0))continue;
+    const o=bOwnerOf(p,b); if(owners.indexOf(o)<0)continue;         // solo edificios de estos dueños (el jugador gestiona su corona a mano)
+    const B=BUILDINGS[b],fx=B.fx; if(!(B.inputs||(fx&&fx.prodAdd)))continue; // solo FÁBRICAS de producción (la infra/multiplicadores no se auto-apaga)
+    const prof=buildingProfit(p,b), off=!!(p.bOff&&p.bOff[b]);
+    if(!off){
+      if(prof<BLDG_LOSS){(p.bOff||(p.bOff={}))[b]=true;if(!p.bCond)p.bCond={};if(p.bCond[b]==null)p.bCond[b]=1;} // pierde → apagar
+    } else if(prof>BLDG_GAIN){                                       // vuelve a ganar → reactivar (reparando la parte degradada)
+      const cond=(p.bCond&&p.bCond[b]!=null)?p.bCond[b]:1, frac=Math.max(0,1-cond);
+      if(o==="corona"){const c={},base=costFor(p,b);for(const k in base)c[k]=Math.round(base[k]*frac);
+        if(canAfford(p.owner,c)){pay(p.owner,c);delete p.bOff[b];p.bCond[b]=1;}}
+      else{const rep=estateCostDinero(costFor(p,b))*frac;
+        if((N.sWealth[o]||0)>=rep){if(rep>0){N.sWealth[o]-=rep;recFlow(p.owner,o,"Construcción",-rep);}delete p.bOff[b];p.bCond[b]=1;}}
+    }
+  }
+}
+function pickEstateBuild(p,e,N,src){ // primer edificio del repertorio del estamento que sea construible, asequible y RENTABLE aquí
   for(const b of ESTATE_BUILDS[e]){
     if(lvlOf(p,b)>0&&bOwnerOf(p,b)!==e)continue;          // ya existe y es de otro (o de la corona) → no lo toco
     if(lvlOf(p,b)>=buildMax(p,b))continue;
@@ -377,24 +398,28 @@ function pickEstateBuild(p,e,N){ // primer edificio del repertorio del estamento
     if(B.resReq&&p.resType!==B.resReq)continue;
     if(usedSlots(p)>=buildSlots(p))continue;             // sin hueco
     if(B.req){let ok=true;for(const r in B.req)if(lvlOf(p,r)<B.req[r]){ok=false;break}if(!ok)continue}
+    if(!inputsSourceable(b,src))continue;                // GATE (Opción 1): no levantar fábrica cuyo INSUMO no exista en el alcance (evita el deadlock)
     const fx=B.fx,economic=fx.prodAdd||fx.goldAdd||fx.prodMul; // productivos: solo donde se pueda dotar
     if(economic&&freeLabor(p)<buildJobs(p)+JOBS_PER_LEVEL)continue;
     // solo invierten el EXCEDENTE: guardan un colchón (KEEP× el coste) para seguir comiendo y no arruinarse
     if(N.sWealth[e]<estateCostDinero(costFor(p,b))*ESTATE_BUILD_KEEP)continue;
+    if((B.inputs||fx.prodAdd)&&buildingProfit(p,b,lvlOf(p,b)+1)<=0)continue; // no construir FÁBRICAS que ya darían PÉRDIDAS (evita sobre-construir en el vacío)
     return b;
   }
   return null;
 }
 function estateBuild(){
+  const src=sourceableSet(); // bienes obtenibles ahora (gate de construcción); se calcula 1 vez por pasada
   for(const p of S.provs){
-    if(p.owner>=NPLAY||p.wasteland||isOccupied(p)||p.buildQueue.length)continue; // provincia libre de obra
-    if(usedSlots(p)>=buildSlots(p)||!p.pops)continue;
+    if(p.owner>=NPLAY||p.wasteland||isOccupied(p))continue;
     const N=S.nations[p.owner];if(!N||!N.sWealth)continue;
+    autoManageBuildings(p, N.ai?["burgues","clero","nobleza","corona"]:["burgues","clero","nobleza"]); // corona solo si IA; el jugador la gestiona a mano
+    if(p.buildQueue.length||usedSlots(p)>=buildSlots(p)||!p.pops)continue; // ya no CONSTRUIR más aquí (pero la auto-gestión de arriba sí corre)
     // el estamento con MÁS presencia (población) en la provincia intenta primero
     const order=ESTATES_BUILD.slice().sort((a,b)=>(p.pops[b]||0)-(p.pops[a]||0));
     for(const e of order){
       if(!(p.pops[e]>0))continue;                        // sin presencia, no construye aquí
-      const b=pickEstateBuild(p,e,N);
+      const b=pickEstateBuild(p,e,N,src);
       if(!b)continue;
       const bcost=estateCostDinero(costFor(p,b));
       N.sWealth[e]-=bcost;recFlow(p.owner,e,"Construcción",-bcost);      // paga la obra de su riqueza
@@ -613,6 +638,7 @@ function aiTurn(n){
   const owned=S.provs.filter(p=>p.owner===n&&!isOccupied(p)); // no desarrollar lo ocupado
   if(!owned.length)return;
   // construir: prioridad militar en la capital, economía en el resto
+  const src=sourceableSet(); // gate de construcción (Opción 1): bienes obtenibles en el alcance
   for(let t=0;t<2;t++){
     const p=owned[(S.rand()*owned.length)|0];
     if(p.buildQueue.length)continue;
@@ -627,9 +653,11 @@ function aiTurn(n){
     for(const b of pri){
       if(lvlOf(p,b)>=buildMax(p,b))continue;
       if(buildBlock(p,b))continue;
+      if(!inputsSourceable(b,src))continue;                    // GATE (Opción 1): insumo obtenible en el alcance
       // no construir un edificio productivo si la provincia no puede DOTARLO (mano de obra libre)
       const fx=BUILDINGS[b].fx, economic=fx.prodAdd||fx.goldAdd||fx.prodMul;
       if(economic&&freeLabor(p)<buildJobs(p)+JOBS_PER_LEVEL)continue;
+      if((BUILDINGS[b].inputs||fx.prodAdd)&&buildingProfit(p,b,lvlOf(p,b)+1)<=0)continue; // no construir FÁBRICAS ruinosas (sobreoferta/insumo caro)
       pay(n,costFor(p,b));
       p.buildQueue.push({b,hoursLeft:timeFor(p,b)});
       break;
