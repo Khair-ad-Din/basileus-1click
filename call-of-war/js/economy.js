@@ -445,7 +445,7 @@ function logEconMonth(monthIdx){
   const M={},vol=S.mktVol||{},info=N.mktInfo||{},mkt=N.mkt||{},pr=N.mktPrice||{};
   for(const g of MKT_TRADE){const v=vol[g]||{},mi=info[g]||{};
     const prod=Math.round(v.prod||0),sold=Math.round(v.sold||0),disc=Math.round(v.discard||0),inv=Math.round(mkt[g]||0);
-    if(prod||sold||disc||inv)M[g]=[prod,sold,disc,inv,+((pr[g]||0).toFixed(2)),Math.round(mi.dem||0)]; // [prod,sold,discard,inv,price,dem]
+    if(prod||sold||disc||inv||mi.dem)M[g]=[prod,sold,disc,inv,+((pr[g]||0).toFixed(2)),Math.round(mi.dem||0)]; // [prod,sold,discard,inv,price,dem] — incluye los bienes con SOLO demanda (los que no se producen)
   }
   S.econLog.push({d, pop:Math.round(pop), camp:Math.round(camp), duc:+(nationEconomy(n).res.dinero).toFixed(1), alc:Math.round(S.tsyAlc||0), W, F, M});
   if(S.econLog.length>3600)S.econLog.shift(); // cap ~300 años de juego

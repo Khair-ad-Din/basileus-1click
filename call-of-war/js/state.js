@@ -7,6 +7,7 @@ export const S = {
   provs: [], provIdx: null, pixOfProv: [], borderPxOfProv: [], adj: [], seaAdj: [],
   nations: [], armies: [], wars: new Map(), truces: new Map(), armyIdSeq: 1,
   duchies: [], reports: [],
+  rel: new Map(), relMonthKey: -1, // diplomacia: campo compartido Tensión↔Concordia por par "a|b" (−100..+100); mes del último tick de deriva
   roads: new Map(), roadQueue: [], customRoads: false, // clave "a|b" -> nivel (1..3)
   player: -1, hour: 0, acc: 0, speed: 1, started: false, gameOver: false,
   // capa de presentación mensual de la tesorería del jugador (ver economy.js: tsyTick/tsyAvail)

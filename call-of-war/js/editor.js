@@ -45,6 +45,7 @@ function pushUndo(){
 }
 function restoreWorldFromSnap(snap){
   S.provs=[];S.armies=[];S.wars=new Map();S.truces=new Map();S.armyIdSeq=1;S.duchies=[];S.reports=[];
+  S.rel=new Map();S.relMonthKey=-1;
   S.player=-1;S.hour=0;S.acc=0;S.started=false;S.gameOver=false;
   S.selProv=-1;S.selArmy=null;S.battleFlash={};clearSelOutline();
   S.shapeSel=-1;S.shapePoly=[];S.dragVi=-1;S.mergeFrom=-1;S.splitFrom=-1;S.roadFrom=-1;

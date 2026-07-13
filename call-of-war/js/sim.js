@@ -2,6 +2,7 @@
 import { BUILDINGS, GARR_CITADEL, GARR_FORT, GARR_MIN, GOLD_PER_WS, LEVY_RAISE_HOURS, NATIONS, NEUTRAL, NPLAY, RES_BUILDING, RES_KEYS, SIEGE_BASE_H, START_STOCK, TERRAINS, UNITS, WAR_LOCK_HOURS, WS_BATTLE, WS_DUCHY_BASE, WS_DUCHY_PER } from "./config.js";
 import { S } from "./state.js";
 import { armyAtk, armyCount, armyDef, armyHp, armySpd, bOwnerOf, buildBlock, buildJobs, buildMax, buildSlots, canAfford, canStaffIndustry, costFor, economyTick, ESTATES_BUILD, foodFill, storeCap, SUBS_BASICS, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor, usedSlots, seedStrataWealth, tsyTick, recFlow, specialistCap, jobsOf, prosperityTick, degradeBuildings, buildingProfit, buildingOutput, sourceableSet, inputsSourceable } from "./economy.js";
+import { relTick, getRel, THRESH } from "./diplomacy.js";
 import { buildDuchies, hasRoad, roadLvl, isDuchyCap, kmBetween, roadKey } from "./mapgen.js";
 import { drawRoads, paintBorders, repaintProvince } from "./render.js";
 import { saveGame } from "./save.js";
@@ -129,13 +130,17 @@ function atWar(a,b){
   if(a===NEUTRAL||b===NEUTRAL)return true;
   return S.wars.has(warKey(a,b));
 }
-function declareWar(a,b){
-  if(a===NEUTRAL||b===NEUTRAL||a===b||atWar(a,b))return;
-  if(S.hour<WAR_LOCK_HOURS)return; // los primeros 4 años no hay guerras
+// force=true salta el gate de tensión (marcha a territorio enemigo = acto de guerra; y la IA hasta
+// que aprenda a escalar tensión en la Fase 7). El jugador NO fuerza: necesita ≤ THRESH.war de tensión.
+function declareWar(a,b,opts){
+  if(a===NEUTRAL||b===NEUTRAL||a===b||atWar(a,b))return false;
+  if(S.hour<WAR_LOCK_HOURS)return false; // los primeros años no hay guerras
+  if(!(opts&&opts.force)&&getRel(a,b)>THRESH.war)return false; // sin suficiente tensión no se puede declarar
   const lo=Math.min(a,b),hi=Math.max(a,b);
   S.wars.set(warKey(a,b),{a:lo,b:hi,start:S.hour,tA:0,tB:0});
   log(NATIONS[a].name+" declara la guerra a "+NATIONS[b].name+".");
   report("⚔","<b>"+NATIONS[a].name+"</b> declara la guerra a <b>"+NATIONS[b].name+"</b>.",[a,b]);
+  return true;
 }
 function tallyOf(w,nation){return nation===w.a?w.tA:w.tB}
 function addBattleScore(w,nation,pts){if(nation===w.a)w.tA+=pts;else w.tB+=pts}
@@ -458,6 +463,7 @@ function hourTick(){
   economyTick(); // secciones 0/1/1b: movilizados, economía+necesidades por nación, comida/población/soldadesca (sin DOM)
   tsyTick(tsyBefore); // capa mensual: acumula el delta recurrente del jugador y publica la cifra "/mes" al cambiar de mes (sin tocar el motor)
   prosperityTick(); // prosperidad por provincia/bien: +1/−1 punto al mes según excedente (se autodispara al cambiar de mes)
+  relTick(); // diplomacia: deriva mensual del campo de relaciones hacia su línea base (se autodispara al cambiar de mes)
   if(S.hour%24===0)estateBuild(); // E2: los estamentos levantan su tipo de edificio con su riqueza (1 vez/día)
   degradeBuildings(); // ciclo de vida: los edificios deshabilitados se degradan y, a condición 0, se destruyen
   // 2. construcción
@@ -514,7 +520,7 @@ function hourTick(){
       const p=S.provs[a.prov];
       const controller=p.occupier>=0?p.occupier:p.owner;
       if(controller!==a.nation){
-        if(p.owner<NPLAY&&p.owner!==a.nation)declareWar(a.nation,p.owner);
+        if(p.owner<NPLAY&&p.owner!==a.nation)declareWar(a.nation,p.owner,{force:true});
         const defenders=armiesIn(a.prov).filter(x=>x.nation===controller);
         if(defenders.length===0){
           if(a.nation===p.owner)takeTile(a.prov,a.nation);        // liberación de tile propio ocupado
@@ -752,7 +758,7 @@ function aiTurn(n){
       if(score>bs){bs=score;best=m}
     }
     // fuerza para decidir: ejércitos + territorio (potencial de levas). Ejércitos levy-heavy pesan menos.
-    if(best>=0&&mightOf(n)>mightOf(best)*1.05)declareWar(n,best);
+    if(best>=0&&mightOf(n)>mightOf(best)*1.05)declareWar(n,best,{force:true}); // TODO Fase 7: la IA escala tensión y deja de forzar
   }
   // mover ejércitos. La guarnición (def de ejércitos parados por tile) se precalcula una vez.
   const wantNeutral=day>1&&S.hour>=WAR_LOCK_HOURS; // sin expansión durante el bloqueo inicial

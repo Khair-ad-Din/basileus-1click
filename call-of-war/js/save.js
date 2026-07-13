@@ -79,7 +79,7 @@ function saveGame(){
   if(!S.started||S.gameOver||S.player<0)return;
   try{
     const s={v:4,t:Date.now(),hour:S.hour,player:S.player,armyIdSeq:S.armyIdSeq,
-      wars:[...S.wars],truces:[...S.truces],roads:[...S.roads],roadQueue:S.roadQueue,reports:S.reports,
+      wars:[...S.wars],truces:[...S.truces],rel:[...S.rel],roads:[...S.roads],roadQueue:S.roadQueue,reports:S.reports,
       nations:S.nations.map(x=>({res:x.res,ai:x.ai,capital:x.capital,alive:x.alive,startProvs:x.startProvs,sWealth:x.sWealth,sRes:x.sRes,mkt:x.mkt,taxRate:x.taxRate,alcabala:x.alcabala,almojarifazgo:x.almojarifazgo})),
       provs:S.provs.map(p=>[p.owner,Math.round(p.morale*10)/10,p.buildings,p.buildQueue,p.recruitQueue,Math.round(p.pop||0),Math.round(p.sold||0),roundStore(p.store),p.occupier==null?-1:p.occupier,p.siege||null,p.bOwner||null,roundProsp(p.prosp),p.bOff||null,roundProsp(p.bCond)]),
       armies:S.armies.map(a=>({id:a.id,nation:a.nation,prov:a.prov,units:a.units,src:a.src,path:a.path,legDone:a.legDone,legTotal:a.legTotal,supply:a.supply})),
@@ -99,6 +99,7 @@ function continueGame(){
   if(!s)return;
   S.hour=s.hour;S.player=s.player;S.armyIdSeq=s.armyIdSeq;
   S.wars=new Map(s.wars);S.truces=new Map(s.truces);
+  S.rel=new Map(s.rel||[]);S.relMonthKey=-1; // relaciones diplomáticas (v4 antiguos sin rel → vacío)
   S.roads=parseRoads(s.roads);S.roadQueue=s.roadQueue||[];
   S.reports=s.reports||[];
   S.peaceWith=-1;S.peaceSel=new Set();S.peaceGold=0;S.incomingPeace=null;

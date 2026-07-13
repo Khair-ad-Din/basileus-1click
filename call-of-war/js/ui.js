@@ -6,6 +6,7 @@ import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
 import { canvas, clampPan } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
 import { armiesIn, atWar, duchyValue, fortGarrison, occupiedDuchiesBy, tryBuild, tryRecruit, tryRoad, warscore } from "./sim.js";
+import { getRel, relTier, THRESH, canDeclareWar } from "./diplomacy.js";
 
 // Metadata de las CATEGORÍAS de bienes (orden, icono, etiqueta), reutilizada por el Mercado, la Tesorería y
 // el panel del reino para agrupar los bienes por categoría. 'moneda' (Ducados) va aparte (su propia pestaña).
@@ -869,21 +870,37 @@ function refreshSide(){
   refreshArmyPanel();
   refreshArmyWin();
 }
+// Barra visual del campo compartido Tensión↔Concordia (−100..+100). El 0 es el centro; la barra
+// se llena a la IZQUIERDA en rojo (tensión) o a la DERECHA en verde/azul (concordia).
+function relBarHTML(v){
+  const half=50, w=Math.abs(v)/100*half, t=relTier(v);
+  const seg=v<0?"left:"+(half-w)+"%;width:"+w+"%;background:#c0564e"
+            :v>0?"left:"+half+"%;width:"+w+"%;background:"+t.color
+            :"left:"+half+"%;width:0";
+  return "<div class='relbar' title='"+t.label+" ("+(v>0?"+":"")+Math.round(v)+")'>"+
+    "<div class='relfill' style='"+seg+"'></div><div class='relzero'></div></div>";
+}
 function refreshDiplomacy(){
   const locked=S.hour<WAR_LOCK_HOURS;
   let h="";
   if(locked)h+="<div class='sm' style='color:#c9a86a;margin-bottom:8px'>⚔ Paz obligada: no se puede declarar la guerra hasta dentro de "+fmtDur(WAR_LOCK_HOURS-S.hour)+".</div>";
-  h+="<table class='dip'><tr><th>Nación</th><th>Provincias</th><th>Fuerza</th><th>Estado</th><th></th></tr>";
+  h+="<table class='dip'><tr><th>Nación</th><th>Prov.</th><th>Fuerza</th><th>Relación</th><th>Estado</th><th></th></tr>";
   for(let n=0;n<NPLAY;n++){
     if(n===S.player)continue;
     const alive=S.nations[n].alive;
     h+="<tr><td><span class='chip' style='background:"+NATIONS[n].color+"'></span> "+NATIONS[n].name+"</td>";
     h+="<td>"+nationProvCount(n)+"</td><td>"+Math.round(nationStrength(n))+"</td>";
-    if(!alive){h+="<td colspan='2'>Eliminada</td></tr>";continue}
+    if(!alive){h+="<td colspan='3'>Eliminada</td></tr>";continue}
+    const v=getRel(S.player,n), t=relTier(v);
+    h+="<td>"+relBarHTML(v)+" <span style='color:"+t.color+";font-weight:600'>"+(v>0?"+":"")+Math.round(v)+"</span></td>";
     if(atWar(S.player,n)){
       h+="<td style='color:#d08080'>EN GUERRA</td><td><button class='bbtn' onclick='openPeace("+n+")'>Gestionar paz</button></td>";
     }else{
-      h+="<td style='color:#90b080'>Paz</td><td><button class='bbtn red'"+(locked?" disabled title='Bloqueo de guerra inicial'":" onclick='playerDeclare("+n+")'")+">Declarar guerra</button></td>";
+      const cw=canDeclareWar(S.player,n);
+      const dis=locked||!cw.ok;
+      const tip=locked?"Bloqueo de guerra inicial":(!cw.ok?"Necesitas "+Math.ceil(cw.need)+" de tensión más (≤ "+THRESH.war+")":"");
+      h+="<td style='color:"+t.color+"'>"+t.label+"</td>";
+      h+="<td><button class='bbtn red'"+(dis?" disabled title=\""+tip+"\"":" onclick='playerDeclare("+n+")'")+">Declarar guerra</button></td>";
     }
     h+="</tr>";
   }
