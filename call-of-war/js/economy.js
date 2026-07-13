@@ -1,5 +1,5 @@
 // economy.js
-import { NPLAY, BUILDINGS, BUILD_JOBS, TERRAINS, UNITS, RES_KEYS, RES_LABEL, LOOT_FRAC, STRATA, EXTRA_GOODS, RES_CAT, RES_RAW_CATS } from "./config.js";
+import { NPLAY, BUILDINGS, BUILD_JOBS, TERRAINS, UNITS, RES_KEYS, RES_LABEL, LOOT_FRAC, STRATA, EXTRA_GOODS, RES_CAT, RES_RAW_CATS, START_DATE } from "./config.js";
 import { S } from "./state.js";
 
 // ---- Ocupación (estilo EU4): la provincia sigue siendo de iure de su dueño (p.owner) pero
@@ -61,6 +61,7 @@ function soldAvail(p){return p.sold!=null?p.sold:soldCap(p)} // stock actual (o 
  * nacional — el excedente campesino (resType) y los edificios los ponen a la venta y los estamentos los
  * compran para comer (trigo) y construir (materiales). Ver E1/E2 en [[basileus-pop-economy-vision]]. */
 const YR_TICKS=8760;             // ticks (horas de juego) por año
+const MONTH_TICKS=YR_TICKS/12;   // ≈730 ticks/mes (la campaña avanza en meses de calendario)
 const HARVEST_AMP=0.33;          // variación anual de cosecha (±33%)
 // ---- BLOQUE 1: vocación productiva del TERRENO por bien básico ----
 // El campesino produce los 4 BÁSICOS (grano/madera/piedra/hierro) según su TERRENO, y NECESITA la misma
@@ -106,7 +107,9 @@ function terrCatMul(p,cat){ // igual pero por categoría directa (para la ficha 
   if(cat==="mar")return p.coastal?MAR_MUL:MAR_INLAND;
   const t=TERRAIN_CAT[p.terrain]; return (t&&t[cat]!=null)?t[cat]:1;
 }
-const RESTYPE_RATE=0.35;                                  // producción de la ESPECIALIDAD (resType) por hab/año (× terreno)
+const RESTYPE_RATE=0.50;                                  // producción de la ESPECIALIDAD (resType) por hab/año (× terreno). SUBIDO 0.35→0.50.
+// NOTA (medido con arnés, A/B): MÁS producción BAJA el ingreso del campesino por sus materias (0.35→130k/mes vs 0.50→51k/mes):
+// el glut hunde el precio más rápido de lo que sube el volumen. Con escasez + precio SIN tope, la industria le paga carísimo.
 const BASIC_SET=new Set(["comida","materiales","piedra","metal"]); // los 4 básicos universales (los produce toda provincia)
 // ¿el bien g es una MATERIA PRIMA de especialidad? (categoría de campo, y no uno de los 4 básicos universales)
 function isRawSpecialty(g){return !!g&&!BASIC_SET.has(g)&&RES_RAW_CATS.indexOf(RES_CAT[g])>=0}
@@ -168,17 +171,29 @@ const EAT=1/YR_TICKS; // ración de grano por hab y tick (mismo que la subsisten
 // pescado, lienzo, cuero, hulla) y de ÉLITE (solo los altos: seda, especias, azúcar, pieles, ámbar, armas).
 // Los bienes INTERMEDIOS (lana, uva, aceituna, cobre, carbón…) NO se consumen aquí: su demanda la crea la
 // CADENA de producción (las fábricas los compran del mercado, ver el consumo de insumos en economyTick).
+// Cestas AMPLIADAS (Paso 2): consumo mayor y con más MANUFACTURAS (el campesino ya compra fustán, más paño/cuero…)
+// para que la demanda absorba la oferta y los pops gasten su renta. Se calibra con la oferta (sembrado de fábricas).
 const LUX_NEED={
-  campesino:{pano:1.2*NPC,vino:1.0*NPC,sal:2.4*NPC,aceite:1.6*NPC,pescado:1.4*NPC,lienzo:1.2*NPC,cuero:0.7*NPC,hulla:1.6*NPC},
-  burgues:  {comida:EAT,pano:3.0*NPC,vino:3.0*NPC,sal:2.8*NPC,seda:0.8*NPC,raros:0.6*NPC,petroleo:1.2*NPC,aceite:2.2*NPC,pescado:1.6*NPC,lienzo:1.6*NPC,fustan:1.4*NPC,cuero:1.2*NPC,hulla:1.8*NPC,azucar:0.4*NPC,cera:0.5*NPC},
-  clero:    {comida:EAT,pano:3.0*NPC,vino:4.0*NPC,sal:2.8*NPC,seda:1.0*NPC,raros:1.0*NPC,petroleo:0.6*NPC,aceite:2.6*NPC,pescado:2.0*NPC,lienzo:1.6*NPC,cuero:1.0*NPC,hulla:1.6*NPC,azucar:0.7*NPC,cera:2.2*NPC}, // el clero quema mucha cera (velas)
-  nobleza:  {comida:EAT,pano:4.0*NPC,vino:5.0*NPC,sal:3.0*NPC,seda:2.0*NPC,raros:2.0*NPC,petroleo:3.0*NPC,aceite:3.0*NPC,pescado:1.8*NPC,cuero:1.6*NPC,hulla:2.0*NPC,azucar:1.2*NPC,pieles:1.6*NPC,ambar:0.6*NPC,armas:1.2*NPC,bronce:0.5*NPC,cera:1.0*NPC}, // arma y viste a su séquito
+  // Campesino: cesta AGRANDADA y con el canal "COMER MEJOR" (ganado=carne). Hallazgo histórico: el excedente del campesino
+  // se iba en mejor dieta (carne/lácteos/cerveza) y en manufacturas del artesano (paño/lino/cuero/hierro), NO en ahorro. El
+  // peso está en las MANUFACTURAS (drenan hacia el burgués) + carne (elástica: el rico come mucha más). Escala con la riqueza
+  // vía sobreconsumo (ver over[k]×OVER_ELAST). Se calibra junto a CAMP_CASH: cesta grande + grifo pequeño → ahorro ≈ 0.
+  campesino:{pano:5.0*NPC,vino:3.5*NPC,sal:4.0*NPC,aceite:4.5*NPC,pescado:3.6*NPC,ganado:2.5*NPC,lienzo:4.0*NPC,cuero:3.0*NPC,hulla:3.4*NPC,fustan:3.5*NPC,cera:0.4*NPC},
+  burgues:  {comida:EAT,pano:6.0*NPC,vino:6.0*NPC,sal:4.2*NPC,seda:1.6*NPC,raros:1.2*NPC,petroleo:2.0*NPC,aceite:4.5*NPC,pescado:3.2*NPC,lienzo:3.2*NPC,fustan:2.8*NPC,cuero:2.4*NPC,hulla:3.6*NPC,azucar:0.9*NPC,cera:1.0*NPC},
+  clero:    {comida:EAT,pano:6.0*NPC,vino:8.0*NPC,sal:4.2*NPC,seda:2.0*NPC,raros:2.0*NPC,petroleo:1.0*NPC,aceite:5.2*NPC,pescado:4.0*NPC,lienzo:3.2*NPC,cuero:2.0*NPC,hulla:3.2*NPC,azucar:1.4*NPC,cera:4.4*NPC}, // el clero quema mucha cera (velas)
+  nobleza:  {comida:EAT,pano:8.0*NPC,vino:10.0*NPC,sal:4.5*NPC,seda:4.0*NPC,raros:4.0*NPC,petroleo:6.0*NPC,aceite:6.0*NPC,pescado:3.6*NPC,cuero:3.2*NPC,hulla:4.0*NPC,azucar:2.4*NPC,pieles:3.2*NPC,ambar:1.2*NPC,armas:2.4*NPC,bronce:1.0*NPC,cera:2.0*NPC}, // arma y viste a su séquito
 };
 // Ingreso base de dinero por hab/tick y estrato. Campesino/burgués ≈ su cesta (viven al día);
 // clero (diezmos) y nobleza (rentas de la tierra) MUY por encima de su consumo → son la ÉLITE que
 // acumula (para, en el futuro, construir por su cuenta). Los burgueses ADEMÁS cobran un margen de
 // las ventas del mercado (BURGUES_MARGIN), no toda la venta.
 const STRATA_INCOME={campesino:10*NPC,burgues:26*NPC,clero:60*NPC,nobleza:85*NPC};
+// MONETIZACIÓN del campesino (hallazgo histórico c.1450, ver artefacto): el campesino monetizaba solo ~10-20% de su
+// producción; el resto era comida autoconsumida + semilla (~25%), NO dinero. Su flujoBase RETENIDO se acreditaba 100%
+// como efectivo → ~2400× su cesta → atesoraba sin fin ("grifo sin desagüe"). CAMP_CASH deja como EFECTIVO GASTABLE solo
+// esta fracción del reparto campesino; el resto es sustento en especie (ya cubierto por la subsistencia subsCons). NO toca
+// corona/clero/nobleza (extraen del BRUTO, su renta era dinero real). Es la palanca MAESTRA del ahorro: menor = menos hucha.
+const CAMP_CASH=0.30;
 const BURGUES_MARGIN=0.10;   // los burgueses (comerciantes) se quedan solo este margen de las ventas; el resto = costes (sumidero)
 // Tope de riqueza acumulada por habitante, POR ESTRATO (estabiliza y fija la jerarquía de riqueza:
 // campesinos pobres, burgueses acomodados, clero y nobleza ricos). El exceso se consume/reinvierte.
@@ -205,9 +220,53 @@ function capDays(g){return NONGRAIN.indexOf(g)>=0?BASIC_CAP_DAYS:MKT_CAP_DAYS}
 // (mercado medio lleno). Así los bienes que un reino PRODUCE se abaratan y los que le FALTAN se
 // encarecen (presión comercial realista), y el panel deja de estar congelado. Mods pequeños y suaves.
 const PRICE_ADJ=0.02;     // velocidad de ajuste del precio por tick (EMA lenta: ~1-2 días de vida media)
-const PRICE_K=1.2;        // amplitud: mercado vacío → +PRICE_K sobre el precio ref; lleno → −PRICE_K
-const PRICE_MIN=0.6;      // suelo del multiplicador de precio (excedente barato)
-const PRICE_MAX=2.2;      // techo del multiplicador de precio (escasez cara)
+// PRECIO LIBRE (sin techo/suelo artificiales): el multiplicador emerge del llenado del inventario respecto a
+// su objetivo, en forma MULTIPLICATIVA (siempre positivo, ilimitado hacia arriba cuando escasea). fill=0.5 =
+// referencia (×1). PRICE_ELAST = cuánto reacciona el precio al desequilibrio. La antigua banda [0.6,2.2] se retiró.
+const PRICE_ELAST=0.9;    // sensibilidad del precio al llenado (mayor = precios más volátiles con la escasez)
+const PRICE_MULMIN=0.05, PRICE_MULMAX=30; // clamp de SEGURIDAD (no de diseño): nunca 0/negativo ni infinito
+// DISPOSICIÓN A PAGAR por estrato: precio de reserva = ref × RMUL. Cada clase compra su deseo pleno al precio de
+// referencia, MENOS a medida que el precio sube hacia su reserva, y NADA por encima (se cae del mercado). Los
+// ricos (RMUL alto) aguantan comprando cuando escasea; los pobres se caen antes. Un poco MÁS cuando está barato (DMAX).
+const RMUL={campesino:1.5, burgues:2.0, clero:2.5, nobleza:3.2};
+const RMUL_FACT=2.2;      // disposición a pagar de las FÁBRICAS por sus insumos (para producir)
+const RMUL_BASIC=2.8;     // disposición a pagar por los BÁSICOS de construcción/subsistencia (madera/piedra/hierro)
+const RMUL_ORDER=["nobleza","clero","burgues","campesino"]; // se sirve primero al de mayor disposición a pagar (si escasea)
+const DMAX=1.4;           // demanda máxima (×deseo base) cuando el bien está muy barato
+// SOBRECONSUMO (Paso 2.5): además de cubrir su cesta básica, cada estrato desea MÁS cuanto más rico es (convierte la
+// hucha en DEMANDA → competencia por los bienes → precios más altos, y la riqueza se gasta). Rendimientos DECRECIENTES
+// para no desbocar: extra = OVER_MAX × ratio/(ratio+OVER_K), con ratio = riqueza / (coste de la cesta básica × horizonte).
+const OVER_MAX=4.0;       // deseo EXTRA máximo (×cesta básica) de un estrato muy rico (subido 3→4: techo de gasto más alto → drena mejor la hucha)
+const OVER_K=10;          // "meses de colchón" de riqueza antes de sobreconsumir con fuerza (rendim. decrecientes)
+const OVER_HORIZON=730;   // ticks (~1 mes) para medir el colchón de riqueza respecto al gasto básico
+// LEY DE ENGEL: el sobreconsumo NO afecta igual a todos los bienes. Los STAPLES son inelásticos (no comes 4× pan
+// ni te pones 4× la misma ropa básica); los LUJOS son elásticos (el rico compra mucha más seda/especias). Este
+// factor multiplica el sobreconsumo por bien (0 = nada, 1 = pleno). Sin entrada = 1 (lujo por defecto).
+const OVER_ELAST={comida:0.15,sal:0.3,pescado:0.8,aceite:0.7,pano:0.8,lienzo:0.8,fustan:0.9,cuero:0.9,hulla:0.4,
+  materiales:0.3,piedra:0.2,metal:0.3,ganado:1.0}; // COMER MEJOR: el pan (comida) es inelástico (no comes 4× pan), pero el rico
+  // pasa a CARNE (ganado=1, como un lujo) y a MÁS/MEJOR ropa (paño/lino/fustán/cuero elásticos) → el sobreconsumo va ahí, no al grano.
+  // el resto (seda, especias, vino, pieles, azúcar, ámbar, cera…) = 1
+// PROSPERIDAD por sobreconsumo (bonuses PEQUEÑOS y realistas): cada bien, al consumirse por ENCIMA de la
+// subsistencia, aporta a su(s) canal(es). El score del canal = satisfacción (consumido/básico) por encima de 1,
+// con rendimientos decrecientes → un bonus pequeño. FASE 1: solo la NATALIDAD está enganchada (el resto, futuro).
+const BONUS_BIEN={
+  pescado:{natalidad:1.2}, sal:{natalidad:0.8}, aceite:{natalidad:0.8}, // (la comida/grano NO: es subsistencia, ya cuenta vía la despensa)
+  ganado:{natalidad:0.6,campoProd:0.6}, pano:{natalidad:1.0}, lienzo:{natalidad:0.8}, fustan:{natalidad:0.8},
+  petroleo:{campoProd:1.2,militar:1.0}, metal:{campoProd:0.7}, cuero:{campoProd:0.5,militar:0.6}, // petroleo = caballos
+  hulla:{indProd:1.0}, carbon:{indProd:0.8},
+  vino:{moral:0.8}, seda:{moral:1.2}, pieles:{moral:1.0}, ambar:{moral:0.8}, azucar:{moral:0.8}, raros:{moral:1.0}, cera:{moral:1.0},
+  armas:{militar:1.5}, acero:{militar:1.0}, bronce:{militar:1.0},
+};
+const PROSP_CHANNELS=["natalidad","campoProd","indProd","moral","militar"];
+// PROSPERIDAD por PROVINCIA y por BIEN (cada bien su propia barra; el canal solo agrupa el TIPO de bonus, que STACKEA).
+// Progresión por PUNTOS mensuales: +1 el mes que hay EXCEDENTE de ese bien (precio ≤ referencia), −1 el mes que no.
+// Umbrales de nivel: I = 12 pts (1 año seguido) · II = 36 (3 años) · III = 60 (5 años). El estado vive en p.prosp[bien].
+const PROSP_LEVEL_PTS=[12,36,60];   // puntos acumulados para Nv I / II / III
+const PROSP_MAX_PTS=60;
+function prospLevel(pts){return pts>=60?3:pts>=36?2:pts>=12?1:0}
+const NAT_BONUS_PER_LEVEL=0.0001;   // +natalidad ANUAL por cada NIVEL de cada bien (0.01%/año); 7 bienes × 3 niv = 0.21% máx
+// canal → bienes que lo alimentan (invierte BONUS_BIEN)
+const CHANNEL_GOODS={}; for(const _g in BONUS_BIEN)for(const _ch in BONUS_BIEN[_g])(CHANNEL_GOODS[_ch]||(CHANNEL_GOODS[_ch]=[])).push(_g);
 // ---- Comercio ENTRE mercados nacionales (arbitraje; Bloque 3) ----
 // No hay "mercado internacional" como entidad: son transacciones entre los mercados de los reinos. El
 // burgués compra el bien donde su precio está BAJO (país con excedente) y lo vende donde está ALTO (país
@@ -248,12 +307,15 @@ function seedStrataWealth(){
 // BASE_INCOME≈2.4e-4 (ver arnés de validación). Todo tunable.
 const BASE_INCOME=2.4e-4;  // ducados por campesino y tick, antes del reparto (grifo único)
 const DIEZMO=0.10;         // fracción del flujo para el clero (fija)
-const ALCABALA=0.08;       // impuesto de la corona sobre el comercio (sobre las ventas del mercado)
+const ALCABALA=0.08;       // impuesto de la corona sobre el comercio INTERNO (ventas del mercado). Ajustable por nación (N.alcabala).
+const ALMOJ_DEFAULT=0.05;  // ALMOJARIFAZGO: aduana de la corona sobre el comercio EXTERIOR (arbitraje). Histórico Castilla ~5% (2,5% export/5% import). Ajustable (N.almojarifazgo).
 // Señorío de la provincia (derivado, sin estado nuevo): renta de la tierra y a quién va.
 //  capital→realengo (renta a la CORONA) · ciudad→abadengo (renta al CLERO) · resto→solariego (renta a la NOBLEZA)
 const MANOR_RENT={realengo:0.10,solariego:0.28,abadengo:0.22};
 function manorOf(p){return p.capital?"realengo":(p.urban?"abadengo":"solariego")}
-function taxRateOf(n){const N=S.nations[n];return N&&N.taxRate!=null?Math.max(0.02,Math.min(0.20,N.taxRate)):0.08} // palanca fiscal por nación
+function taxRateOf(n){const N=S.nations[n];return N&&N.taxRate!=null?Math.max(0.02,Math.min(0.20,N.taxRate)):0.08} // impuesto FEUDAL (parte de la corona del reparto), ajustable por nación
+function alcabalaOf(n){const N=S.nations[n];return N&&N.alcabala!=null?Math.max(0,Math.min(0.30,N.alcabala)):ALCABALA}      // ALCÁBALA (comercio interno), ajustable
+function almojOf(n){const N=S.nations[n];return N&&N.almojarifazgo!=null?Math.max(0,Math.min(0.60,N.almojarifazgo)):ALMOJ_DEFAULT} // ALMOJARIFAZGO (aduana comercio exterior), ajustable
 function flujoBase(p){ // flujo campesino por tick (mismos multiplicadores que la subsistencia)
   if(!p||p.owner>=NPLAY||p.wasteland||!p.pops)return 0;
   return p.pops.campesino*BASE_INCOME*structPPF(p)*(p.morale/100);
@@ -294,7 +356,7 @@ function jobsOf(b){return BUILD_JOBS[b]!=null?BUILD_JOBS[b]:JOBS_PER_LEVEL} // e
 // una fábrica que no se puede dotar solo produce a medias y drena su mantenimiento. La industria se
 // concentra así en los NÚCLEOS poblados (idea de diseño), y las provincias pobres quedan agrícolas.
 function canStaffIndustry(p,b){return !!p&&!p.wasteland&&specialistCap(p)>=jobsOf(b)}
-function buildJobs(p){let j=0;for(const b in BUILDINGS)j+=lvlOf(p,b)*jobsOf(b);return j}
+function buildJobs(p){let j=0;for(const b in BUILDINGS)j+=effLvl(p,b)*jobsOf(b);return j} // deshabilitados NO exigen empleos → liberan dotación
 function freeLabor(p){return Math.max(0,specialistCap(p)-(p.mob||0))}    // libres tras descontar movilizados
 function staffing(p){const j=buildJobs(p);return j>0?Math.min(1,freeLabor(p)/j):1} // dotación 0..1
 // Producción POP-DRIVEN: cada nivel de edificio ofrece jobsOf(b) puestos; los pops libres los cubren
@@ -335,23 +397,129 @@ function buildingYield(p,b){
     if(useTerr&&mul!==1)s.push(["Multiplicadores del reino","×"+nn(mul)]);
     return s;
   };
+  // producción MENSUAL (para el display): la base del edificio es por tick; se escala ×MONTH_TICKS para
+  // que la tarjeta, el total y el desglose EU4 estén en /mes y cuadren con la Tesorería (capa mensual).
   if(fx.prodAdd)for(const k in fx.prodAdd){
-    const aff=resAff(p,b,k), amt=fx.prodAdd[k]*terr*mor*st*(aff?1+AFFINITY:1)*mul;
-    out.push({res:k,amt,steps:S1(fx.prodAdd[k],aff,true)});
+    const aff=resAff(p,b,k), base=fx.prodAdd[k]*MONTH_TICKS, amt=base*terr*mor*st*(aff?1+AFFINITY:1)*mul;
+    out.push({res:k,amt,steps:S1(base,aff,true)});
   }
   if(fx.goldAdd){
-    const aff=(p.resType==="dinero"), amt=fx.goldAdd*mor*st*(aff?1+AFFINITY:1);
-    out.push({res:"dinero",amt,steps:S1(fx.goldAdd,aff,false)});
+    const aff=(p.resType==="dinero"), base=fx.goldAdd*MONTH_TICKS, amt=base*mor*st*(aff?1+AFFINITY:1);
+    out.push({res:"dinero",amt,steps:S1(base,aff,false)});
   }
   return out;
 }
 function nn(v){return (Math.round(v*100)/100).toString().replace(/\.?0+$/,"")||"0"} // 2 decimales, sin ceros de cola
 function canAfford(n,cost){
-  for(const k in cost)if(S.nations[n].res[k]<cost[k])return false;
+  for(const k in cost)if(tsyAvail(n,k)<cost[k])return false;
   return true;
 }
+/* ============ Capa de presentación MENSUAL de la tesorería del jugador ============
+ * El motor (economyTick) sigue moviendo res[k] cada tick, intacto. Para que el jugador
+ * vea y gaste su tesoro "mes a mes" mantenemos, SOLO para su nación:
+ *   S.tsyAccrual[k]  → suma del balance recurrente (nationEconomy) del mes EN CURSO
+ *   S.tsyMonthBal[k] → total recurrente del ÚLTIMO mes cerrado = la cifra "/mes" (estable)
+ *   S.monthKey       → mes de calendario en curso (para detectar el cambio de mes)
+ * El saldo COMPROMETIDO (lo que se muestra y se puede gastar) = res − max(0, acumulado):
+ * como res crece a la par que el acumulado, el comprometido se queda en el PRINCIPAL de
+ * inicio de mes; el beneficio del mes "llega" de golpe en el rollover (día de paga), y las
+ * pérdidas/gastos se notan al momento. La IA usa el saldo real (res), sin tocar nada. */
+function monthKeyOf(hour){const d=new Date(START_DATE+hour*3600e3);return d.getUTCFullYear()*12+d.getUTCMonth()}
+function resetTsyLedger(){ // (re)inicia el ledger al empezar/retomar partida o al tomar el mando
+  S.tsyAccrual={};S.monthKey=monthKeyOf(S.hour);S.tsyAlc=0;S.sFlow={};S.sConsume={};S.mktVol={};
+  S.tsyMonthBal={};
+  if(S.player>=0){const ec=nationEconomy(S.player).res;for(const k in ec)S.tsyMonthBal[k]=ec[k]*MONTH_TICKS} // semilla: proyección mensual del ritmo actual
+}
+// LOG ECONÓMICO MENSUAL (diagnóstico de series temporales para dejar el juego corriendo y analizar el log).
+// Cada mes cerrado guarda una foto del JUGADOR: riqueza y flujos COMPLETOS por estamento + mercado por bien
+// [prod,sold,discard,inv,price,dem]. Un botón lo descarga como JSON (ver main.js downloadEconLog). Barato (1/mes).
+const ESTATE_ABBR={campesino:"c",burgues:"b",clero:"cl",nobleza:"n"};
+function logEconMonth(monthIdx){
+  const n=S.player; if(n<0)return; const N=S.nations[n]; if(!N||!N.sWealth)return;
+  const yr=Math.floor(monthIdx/12), mo=(monthIdx%12)+1, d=yr+"-"+String(mo).padStart(2,"0");
+  let pop=0,camp=0; for(const p of S.provs)if(p.owner===n&&!p.wasteland){pop+=p.pop||0;if(p.pops)camp+=p.pops.campesino||0}
+  const W={},F={}; for(const k of STRATA){
+    W[ESTATE_ABBR[k]]=Math.round(N.sWealth[k]||0);
+    const src=(S.sFlow&&S.sFlow[k])||{},o={}; for(const c in src)o[c]=Math.round(src[c]); F[ESTATE_ABBR[k]]=o;
+  }
+  const M={},vol=S.mktVol||{},info=N.mktInfo||{},mkt=N.mkt||{},pr=N.mktPrice||{};
+  for(const g of MKT_TRADE){const v=vol[g]||{},mi=info[g]||{};
+    const prod=Math.round(v.prod||0),sold=Math.round(v.sold||0),disc=Math.round(v.discard||0),inv=Math.round(mkt[g]||0);
+    if(prod||sold||disc||inv)M[g]=[prod,sold,disc,inv,+((pr[g]||0).toFixed(2)),Math.round(mi.dem||0)]; // [prod,sold,discard,inv,price,dem]
+  }
+  S.econLog.push({d, pop:Math.round(pop), camp:Math.round(camp), duc:+(nationEconomy(n).res.dinero).toFixed(1), alc:Math.round(S.tsyAlc||0), W, F, M});
+  if(S.econLog.length>3600)S.econLog.shift(); // cap ~300 años de juego
+}
+// Lo llama hourTick con la foto de res ANTES de economyTick. El delta (después−antes) ES la economía
+// recurrente exacta del tick (los gastos del jugador —pay— ocurren FUERA del tick, no aquí), así que el
+// acumulado y la cifra "/mes" reconcilian con res al céntimo, sin la deriva de nationEconomy.
+function tsyTick(before){
+  if(S.player<0||!before)return;
+  const mk=monthKeyOf(S.hour);
+  if(mk!==S.monthKey){
+    if(S.econLogOn)logEconMonth(S.monthKey);   // foto del mes que CIERRA (usa sFlow/mktVol/tsyAlc antes de limpiarlos)
+    S.tsyMonthBal=S.tsyAccrual;S.tsyAccrual={};S.tsyAlc=0;S.sFlow={};S.sConsume={};S.mktVol={};S.monthKey=mk // cierra el mes: se "cobra" la alcábala y se reinician los desgloses de estamentos
+  }
+  const R=S.nations[S.player].res;
+  for(const k in R){const d=R[k]-(before[k]||0);if(d)S.tsyAccrual[k]=(S.tsyAccrual[k]||0)+d}
+  S.tsyAlc=(S.tsyAlc||0)+(S.nations[S.player].alcabalaRate||0)+(S.nations[S.player].almojRate||0); // impuestos de comercio VARIABLES (alcábala interna + almojarifazgo aduana) acumulados este mes
+}
+function tsyAvail(n,k){ // saldo comprometido (mostrable/gastable) del recurso k de la nación n
+  const v=(S.nations[n].res[k])||0;
+  if(n!==S.player||!S.tsyAccrual)return v;      // la IA (y el arranque) usan el saldo real
+  return v-Math.max(0,S.tsyAccrual[k]||0);      // retiene el beneficio pendiente del mes en curso
+}
+function tsyMonthBal(k){return (S.tsyMonthBal&&S.tsyMonthBal[k])||0}
+// PROSPERIDAD (todas las naciones): una vez al MES, cada provincia gana +1 punto por cada bien en EXCEDENTE (precio ≤
+// referencia) y pierde −1 por cada bien en falta. Cada bien tiene su barra (0..60 pts). Lo llama hourTick cada tick;
+// se autodispara solo al cambiar de mes de calendario. El estado (p.prosp[bien]) vive por provincia (conquista = arranca a 0).
+function prosperityTick(){
+  const mk=monthKeyOf(S.hour);
+  if(mk===S.prospMonthKey)return;
+  S.prospMonthKey=mk;
+  for(const p of S.provs){
+    if(p.owner>=NPLAY||p.wasteland)continue;
+    const N=S.nations[p.owner]; if(!N||!N.mktInfo)continue;
+    if(!p.prosp)p.prosp={};
+    for(const g in BONUS_BIEN){
+      const mi=N.mktInfo[g], price=(mi&&mi.price!=null)?mi.price:(MKT_PRICE[g]||1), ref=MKT_PRICE[g]||1;
+      p.prosp[g]=Math.max(0,Math.min(PROSP_MAX_PTS,(p.prosp[g]||0)+(price<=ref*1.08?1:-1)));
+    }
+  }
+}
+// Telemetría del DESGLOSE de estamentos (solo la nación del jugador): acumula, por estamento y categoría,
+// el dinero que ENTRA (+) y SALE (−) de su riqueza este mes. Es pura telemetría (no toca la economía real).
+// Se muestra en la ventana de Estamentos. Se resetea al cambiar de mes (ver tsyTick) → total del mes en curso.
+function recFlow(n,estate,cat,amt){
+  if(n!==S.player||!amt)return;
+  const f=S.sFlow||(S.sFlow={}),e=f[estate]||(f[estate]={});
+  e[cat]=(e[cat]||0)+amt;
+}
+// Consumo detallado POR BIEN de cada estamento (solo jugador, mes en curso): cuánto compra (cantidad) y
+// cuánto gasta (dinero) en cada bien. Alimenta el desglose "qué compra cada estrato" en la ventana de Estamentos.
+function recBuy(n,estate,good,qty,spend){
+  if(n!==S.player||!(qty>0))return;
+  const f=S.sConsume||(S.sConsume={}),e=f[estate]||(f[estate]={}),c=e[good]||(e[good]=[0,0]);
+  c[0]+=qty;c[1]+=spend;
+}
+// VOLUMEN FÍSICO por bien (solo jugador, mes en curso): cuánto se PRODUCE y pone en el mercado, cuánto se VENDE, y
+// cuánto se TIRA (producido por encima del tope de inventario = sobreproducción pura). Diagnostica si el campesino
+// sobreproduce (mucho prod y descarte, poca venta) vs. abastece justo. Alimenta el panel de Mercado (volumen).
+function recVol(n,g,field,amt){
+  if(n!==S.player||!(amt>0))return;
+  const f=S.mktVol||(S.mktVol={}),e=f[g]||(f[g]={prod:0,sold:0,discard:0});
+  e[field]+=amt;
+}
 function pay(n,cost){for(const k in cost)S.nations[n].res[k]-=cost[k]}
-function lvlOf(p,b){return p.buildings[b]||0}
+function lvlOf(p,b){return p.buildings[b]||0}                          // nivel ESTRUCTURAL (existe, aunque esté deshabilitado)
+// ---- Ciclo de vida de edificios: DESHABILITAR / degradar / destruir / reparar ----
+// Un edificio deshabilitado no produce, no consume insumos, no exige dotación ni paga mantenimiento (libera
+// dotación para otros), pero se DEGRADA poco a poco; al llegar la condición a 0 se destruye (baja un nivel).
+// Reactivarlo cuesta reparar la parte degradada (coste de creación prorrateado). Estado en p.bOff / p.bCond.
+const BLDG_DEGRADE=1/(4*YR_TICKS);                                    // condición perdida por tick deshabilitado (~4 años de juego de 1→0)
+function bOff(p,b){return !!(p.bOff&&p.bOff[b])}                      // ¿edificio DESHABILITADO?
+function bCond(p,b){return (p.bCond&&p.bCond[b]!=null)?p.bCond[b]:1}  // condición 0..1 (1 = perfecto)
+function effLvl(p,b){return bOff(p,b)?0:(p.buildings[b]||0)}          // nivel OPERATIVO (0 si deshabilitado): lo usan producción/dotación/insumos/mantenimiento
 function costFor(p,b){
   const B=BUILDINGS[b],lvl=lvlOf(p,b),f=B.unique?1:(1+0.5*lvl),c={};
   for(const k in B.cost)c[k]=Math.round(B.cost[k]*f);
@@ -364,7 +532,7 @@ function timeFor(p,b){
   return Math.max(24,Math.round(h));
 }
 function buildSpeedBonus(p){
-  let s=0;for(const b in BUILDINGS){const fx=BUILDINGS[b].fx;if(fx.buildSpeed)s+=fx.buildSpeed*lvlOf(p,b)}
+  let s=0;for(const b in BUILDINGS){const fx=BUILDINGS[b].fx;if(fx.buildSpeed)s+=fx.buildSpeed*effLvl(p,b)}
   return Math.min(0.6,s);
 }
 // Sin límite por edificio (los HUECOS de construcción por población limitan el total): las obras
@@ -383,17 +551,17 @@ function buildBlock(p,b){
   return null;
 }
 function provProdMul(p){
-  let m=1;for(const b in BUILDINGS){const fx=BUILDINGS[b].fx;if(fx.prodMul)m+=fx.prodMul*lvlOf(p,b)}
+  let m=1;for(const b in BUILDINGS){const fx=BUILDINGS[b].fx;if(fx.prodMul)m+=fx.prodMul*effLvl(p,b)}
   return m;
 }
 function provDefMul(p){
-  let m=1;for(const b in BUILDINGS){const fx=BUILDINGS[b].fx;if(fx.def)m+=fx.def*lvlOf(p,b)}
+  let m=1;for(const b in BUILDINGS){const fx=BUILDINGS[b].fx;if(fx.def)m+=fx.def*effLvl(p,b)}
   return m;
 }
 function provUpkeep(p){
   const u={};
   for(const b in BUILDINGS){
-    const lvl=lvlOf(p,b),up=BUILDINGS[b].up;if(!lvl||!up)continue;
+    const lvl=effLvl(p,b),up=BUILDINGS[b].up;if(!lvl||!up)continue;   // deshabilitado (effLvl 0) no paga mantenimiento
     for(const k in up)u[k]=(u[k]||0)+up[k]/12*lvl;
   }
   return u;
@@ -433,7 +601,7 @@ function provEconomyByOwner(p){
   const mor=p.morale/100,terr=TERRAINS[p.terrain].prod,st=staffing(p),mul=1+(provProdMul(p)-1)*st;
   const bucket=(o,k,v)=>{(out[o]||(out[o]={}));out[o][k]=(out[o][k]||0)+v};
   for(const b in BUILDINGS){
-    const lvl=lvlOf(p,b);if(!lvl)continue;
+    const lvl=effLvl(p,b);if(!lvl)continue;                          // deshabilitado (effLvl 0) no produce ni paga mantenimiento
     const o=bOwnerOf(p,b),fx=BUILDINGS[b].fx;
     if(fx.prodAdd)for(const k in fx.prodAdd)bucket(o,k,fx.prodAdd[k]*lvl*terr*mor*st*(resAff(p,b,k)?1+AFFINITY:1)*mul);
     if(fx.goldAdd)bucket(o,"dinero",fx.goldAdd*lvl*mor*st*(p.resType==="dinero"?1+AFFINITY:1));
@@ -448,6 +616,37 @@ function provEconomy(p){ // economía que rinde a la CORONA: reparto feudal (su 
   const cr=provEconomyByOwner(p).corona||{};
   for(const k in cr)out.res[k]=(out.res[k]||0)+cr[k];
   return out;
+}
+// Beneficio NETO mensual del edificio b (a precios de mercado ACTUALES): producción − insumos − mantenimiento.
+// + = gana, − = pierde. Lo usan la UI (avisar de edificios ruinosos) y (futuro) la IA (deshabilitar los que pierden).
+// Usa el nivel ESTRUCTURAL (lo que rendiría OPERATIVO), para poder decidir si merece la pena tenerlo encendido.
+function buildingProfit(p,b){
+  const lvl=p.buildings[b]||0; if(!lvl)return 0;
+  const B=BUILDINGS[b]; if(!B.fx)return 0;
+  const N=(p.owner<NPLAY)?S.nations[p.owner]:null;
+  const price=k=>k==="dinero"?1:((N&&N.mktPrice&&N.mktPrice[k]!=null)?N.mktPrice[k]:(MKT_PRICE[k]||1));
+  const mor=p.morale/100,terr=TERRAINS[p.terrain].prod,st=staffing(p),mul=1+(provProdMul(p)-1)*st;
+  let v=0;
+  if(B.fx.prodAdd)for(const k in B.fx.prodAdd)v+=B.fx.prodAdd[k]*lvl*terr*mor*st*mul*price(k)*MONTH_TICKS;
+  if(B.fx.goldAdd)v+=B.fx.goldAdd*lvl*mor*st*MONTH_TICKS;
+  if(B.inputs)for(const k in B.inputs)v-=B.inputs[k]*lvl*terr*mor*st*mul*price(k)*MONTH_TICKS;
+  if(B.up)for(const k in B.up)v-=B.up[k]/12*lvl*price(k);
+  return v;
+}
+function degradeBuildings(){ // 1 tick: los edificios DESHABILITADOS pierden condición; al llegar a 0 se destruyen (−1 nivel)
+  for(const p of S.provs){
+    if(!p.bOff)continue;
+    for(const b in p.bOff){
+      if(!p.bOff[b]||!(p.buildings[b]>0))continue;
+      if(!p.bCond)p.bCond={};
+      const c=(p.bCond[b]!=null?p.bCond[b]:1)-BLDG_DEGRADE;
+      if(c<=0){
+        p.buildings[b]=Math.max(0,(p.buildings[b]||0)-1);                                   // se cae un nivel
+        if(p.buildings[b]<=0){delete p.bOff[b];delete p.bCond[b];if(p.bOwner)delete p.bOwner[b]} // destruido del todo
+        else p.bCond[b]=1;                                                                    // queda nivel: sigue deshabilitado, condición reiniciada
+      } else p.bCond[b]=c;
+    }
+  }
 }
 function provBreakdown(p){
   const income=[],upkeep=[];let mano=0;
@@ -466,6 +665,10 @@ function provBreakdown(p){
     const bu=BUILDINGS[b].up,lvl=lvlOf(p,b);if(!lvl||!bu||bOwnerOf(p,b)!=="corona")continue; // mantenimiento solo de los de la corona
     for(const k in bu)upkeep.push({label:BUILDINGS[b].label,res:k,amt:bu[k]/12*lvl});
   }
+  // los importes son por tick; se escalan a /mes para el display (cuadran con la Tesorería mensual). La
+  // soldadesca (mano) es un stock, no se escala.
+  for(const it of income)it.amt*=MONTH_TICKS;
+  for(const it of upkeep)it.amt*=MONTH_TICKS;
   for(const it of income)net[it.res]=(net[it.res]||0)+it.amt;
   for(const it of upkeep)net[it.res]=(net[it.res]||0)-it.amt;
   return{income,upkeep,net,mano};
@@ -484,7 +687,8 @@ function nationEconomy(n){
   }
   for(const r in up)res[r]=(res[r]||0)-up[r];
   for(const k in NEED_PC)res[k]=(res[k]||0)-pop*NEED_PC[k]; // necesidades de confort de la población
-  res.dinero=(res.dinero||0)+(S.nations[n].alcabalaRate||0); // alcabala del comercio (reconcilia con el tick)
+  // NOTA: la alcábala (variable) ya NO se suma aquí — es la parte impredecible del ingreso; el display la
+  // muestra aparte como ACUMULADO del mes (S.tsyAlc). Esta tasa es el ingreso FIJO/predecible del reino.
   return{res,provs:prov.length,troops,pop,army:up};
 }
 /* ---- Libro mayor del reino (Tesorería) ----
@@ -522,7 +726,7 @@ function nationLedger(n){
     for(const r in uu)push(r,"Mantenimiento del ejército",UNITS[u].label,-uu[r]*a.units[u]);
   }
   for(const k in NEED_PC)push(k,"Necesidades de la población",RES_LABEL[k],-pop*NEED_PC[k]); // consumo de confort
-  push("dinero","Comercio","Alcabala",S.nations[n].alcabalaRate||0); // impuesto de la corona sobre el mercado
+  // la ALCÁBALA (variable) NO va en el libro de tasas fijas: se muestra aparte como acumulado del mes (S.tsyAlc)
   return items;
 }
 function armyCount(a){let t=0;for(const k in a.units)t+=a.units[k];return t}
@@ -616,7 +820,7 @@ function economyTick(dt=1){
     for(const k of NONGRAIN)basicDem[n][k]=(basicDem[n][k]||0)+subsCons(p,k); // demanda de básicos (para el precio del mercado)
     // CADENAS: demanda de insumos de las fábricas de esta provincia (la compran del mercado del reino, ver abajo)
     {const morF=p.morale/100, terrF=TERRAINS[p.terrain].prod, stF=staffing(p), mulF=1+(provProdMul(p)-1)*stF;
-     for(const b in p.buildings){const lvl=p.buildings[b]||0;if(!lvl)continue;const B=BUILDINGS[b];if(!B.inputs)continue;
+     for(const b in p.buildings){const lvl=effLvl(p,b);if(!lvl)continue;const B=BUILDINGS[b];if(!B.inputs)continue; // deshabilitado no compra insumos
        for(const k in B.inputs)factDem[n][k]=(factDem[n][k]||0)+B.inputs[k]*lvl*terrF*morF*stF*mulF;}}
     const N=S.nations[n];ensureMarket(N);const R=N.res;
     const byOwner=provEconomyByOwner(p),cr=byOwner.corona||{};
@@ -629,13 +833,14 @@ function economyTick(dt=1){
     // mantenimiento (neto negativo) lo COMPRAN (coste en dinero a precio de referencia), así no hay reserva negativa.
     for(const e of ESTATES_BUILD){const eo=byOwner[e];if(!eo)continue;
       for(const k in eo){const v=eo[k]*dt;
-        if(k==="dinero"){N.sWealth[e]+=v;continue}
+        if(k==="dinero"){N.sWealth[e]+=v;recFlow(n,e,v>=0?"Producción de edificios":"Mantenimiento de edificios",v);continue}
         if(v>=0){N.sRes[e][k]=(N.sRes[e][k]||0)+v; if(MKT_GOODS.indexOf(k)>=0)N.mkt[k]=(N.mkt[k]||0)+v}
-        else N.sWealth[e]+=v*(MKT_PRICE[k]||1)}} // consumo de mantenimiento en bienes → comprado (coste en dinero)
+        else{const c=v*(MKT_PRICE[k]||1);N.sWealth[e]+=c;recFlow(n,e,"Mantenimiento de edificios",c)}}} // consumo de mantenimiento en bienes → comprado (coste en dinero)
     // reparto feudal del flujo campesino a los estamentos (la parte de la corona ya va arriba)
     const fb=flujoBase(p)*dt;
-    if(fb>0){const rr=repartoRates(p,taxRateOf(n));
-      N.sWealth.clero+=fb*rr.clero; N.sWealth.nobleza+=fb*rr.nobleza; N.sWealth.campesino+=fb*rr.campesino}
+    if(fb>0){const rr=repartoRates(p,taxRateOf(n));const campCash=fb*rr.campesino*CAMP_CASH; // solo una fracción se MONETIZA (resto = sustento en especie)
+      N.sWealth.clero+=fb*rr.clero; N.sWealth.nobleza+=fb*rr.nobleza; N.sWealth.campesino+=campCash;
+      recFlow(n,"clero","Reparto feudal",fb*rr.clero);recFlow(n,"nobleza","Reparto feudal",fb*rr.nobleza);recFlow(n,"campesino","Reparto feudal",campCash)}
   }
   // Por nación: mantenimiento del ejército y necesidades de confort (consumo/mercado/desabastecimiento).
   for(let n=0;n<NPLAY;n++){
@@ -661,44 +866,69 @@ function economyTick(dt=1){
     if(!S.nations[n].alive)continue;
     const N=S.nations[n];ensureMarket(N);const str=nationStrata[n],W=N.sWealth;
     W.burgues+=STRATA_INCOME.burgues*str.burgues*dt;                 // solo el burgués tiene sueldo flat; el resto vive del reparto feudal
+    recFlow(n,"burgues","Sueldo (comercio)",STRATA_INCOME.burgues*str.burgues*dt);
     if(!N.mktInfo)N.mktInfo={};
+    // SOBRECONSUMO por estrato: extra deseado sobre la cesta básica según su riqueza (rendim. decrecientes). Rico→más.
+    const over={};
+    for(const k of STRATA){
+      let baseSpend=0;for(const g of MKT_TRADE)baseSpend+=(LUX_NEED[k][g]||0)*str[k]*(MKT_PRICE[g]||1);
+      const ratio=baseSpend>0?(W[k]||0)/(baseSpend*OVER_HORIZON):0;
+      over[k]=OVER_MAX*ratio/(ratio+OVER_K);
+    }
     let revTotal=0;
     for(const g of MKT_TRADE){                                        // lujos + COMIDA (las élites compran grano para comer)
       let stock=N.mkt[g]||0,rev=0,demand=0,sold=0;
-      for(const k of STRATA)demand+=(LUX_NEED[k][g]||0)*str[k]*dt;    // demanda total del bien este tick (élites)
+      const oe=OVER_ELAST[g]!=null?OVER_ELAST[g]:1;                    // elasticidad de sobreconsumo del bien (Engel)
+      for(const k of STRATA)demand+=(LUX_NEED[k][g]||0)*str[k]*(1+over[k]*oe)*dt; // básico + sobreconsumo elástico
       if(basicDem[n][g])demand+=basicDem[n][g]*dt;                    // básicos: demanda de subsistencia/construcción del campesinado (da precio dinámico)
       if(factDem[n][g])demand+=factDem[n][g]*dt;                      // CADENAS: demanda de insumos de las fábricas (da precio a la materia prima)
-      // precio dinámico: del llenado del inventario respecto a su tope (demanda×días). Vacío→caro, lleno→barato.
+      // PRECIO LIBRE de mercado: emerge del llenado del inventario respecto a su objetivo (demanda×días), en forma
+      // multiplicativa (positivo siempre, ilimitado hacia arriba si escasea). fill 0.5 = referencia (×1). Sin banda.
+      const ref=MKT_PRICE[g];
       const cap=(demand/dt)*24*capDays(g);
-      const fill=cap>0?Math.min(1,stock/cap):0.5;                    // 0.5 = referencia (precio base) si no hay demanda
-      const targetMul=Math.max(PRICE_MIN,Math.min(PRICE_MAX,1+PRICE_K*(1-2*fill)));
-      let price=N.mktPrice[g]!=null?N.mktPrice[g]:MKT_PRICE[g];
-      price+=(MKT_PRICE[g]*targetMul-price)*Math.min(1,PRICE_ADJ*dt); // desliza hacia el objetivo (EMA)
+      const fill=cap>0?stock/cap:0.5;
+      let mul=Math.pow(0.5/Math.max(fill,0.02),PRICE_ELAST);
+      // SIN TOPE de precio (decisión de Sergio): el precio sube LIBREMENTE con la escasez y se equilibra por la
+      // DEMANDA (quien no puede pagarlo se cae vía frac). No hay cap por disposición a pagar ni PRICE_MULMAX.
+      const targetMul=Math.max(PRICE_MULMIN,mul);
+      let price=N.mktPrice[g]!=null?N.mktPrice[g]:ref;
+      price+=(ref*targetMul-price)*Math.min(1,PRICE_ADJ*dt);         // desliza hacia el objetivo (EMA)
+      if(price<ref*PRICE_MULMIN)price=ref*PRICE_MULMIN;              // suelo de seguridad (nunca 0/negativo)
       N.mktPrice[g]=price;
-      for(const k of STRATA){
-        const need=(LUX_NEED[k][g]||0)*str[k]*dt;
+      // COMPRA con DISPOSICIÓN A PAGAR: cada estrato compra su deseo pleno al precio de referencia, MENOS según el
+      // precio sube hacia SU reserva (ref×RMUL) y NADA por encima; un poco MÁS si está barato (DMAX). Se sirve primero
+      // al de mayor disposición (por si escasea): así el noble consigue su seda y el campesino se cae del paño caro.
+      for(const k of RMUL_ORDER){
+        const need=(LUX_NEED[k][g]||0)*str[k]*(1+over[k]*oe)*dt;     // deseo = cesta básica × (1 + sobreconsumo elástico por riqueza)
         if(need<=0)continue;
-        const buy=Math.min(need,stock,(W[k]||0)/price);             // limitado por deseo, stock y bolsillo (al precio actual)
-        if(buy>0){W[k]-=buy*price;stock-=buy;rev+=buy*price;sold+=buy}
+        const res=ref*(RMUL[k]||1.5);
+        const frac=Math.max(0,Math.min(DMAX,(res-price)/(res-ref))); // 1 a precio ref · 0 a la reserva · >1 si barato
+        const buy=Math.min(need*frac,stock,(W[k]||0)/price);         // limitado por deseo elástico, stock y bolsillo
+        if(buy>0){W[k]-=buy*price;stock-=buy;rev+=buy*price;sold+=buy;recFlow(n,k,"Necesidades (lujos)",-buy*price);recBuy(n,k,g,buy,buy*price)}
       }
       // CADENAS: las FÁBRICAS compran su materia prima del mercado. El industrial (burgués) paga; el productor de
       // la materia (campesino) cobra su parte. Así la lana/uva/cobre… tienen demanda real → comercian y ponen precio.
       const fneed=(factDem[n][g]||0)*dt;
       if(fneed>0){const fbuy=Math.min(fneed,stock,(W.burgues||0)/price);
-        if(fbuy>0){const t=fbuy*price;stock-=fbuy;W.burgues-=t*(1-BURGUES_MARGIN);W.campesino+=t*(1-BURGUES_MARGIN);sold+=fbuy}}
+        if(fbuy>0){const t=fbuy*price;stock-=fbuy;W.burgues-=t*(1-BURGUES_MARGIN);W.campesino+=t*(1-BURGUES_MARGIN);sold+=fbuy;
+          recFlow(n,"burgues","Compra de materias primas",-t*(1-BURGUES_MARGIN));recFlow(n,"campesino","Venta de materias primas",t*(1-BURGUES_MARGIN))}}
       W.burgues+=rev*BURGUES_MARGIN;                                 // los burgueses (comerciantes) se quedan un margen de la venta al consumidor
+      recFlow(n,"burgues","Comisión de mercado",rev*BURGUES_MARGIN);
       // El VENDEDOR cobra el resto: la COMIDA y las materias primas del campo → campesino; las MANUFACTURAS → el
       // industrial (burgués) que las fabricó (así recupera lo que pagó por la materia prima). Cierra la cadena.
-      if(g==="comida")W.campesino+=rev*(1-BURGUES_MARGIN);
-      else if(MANUF.has(g))W.burgues+=rev*(1-BURGUES_MARGIN);
+      if(g==="comida"||g==="ganado"){W.campesino+=rev*(1-BURGUES_MARGIN);recFlow(n,"campesino",g==="ganado"?"Venta de ganado":"Venta de comida",rev*(1-BURGUES_MARGIN))}
+      else if(MANUF.has(g)){W.burgues+=rev*(1-BURGUES_MARGIN);recFlow(n,"burgues","Venta de manufacturas",rev*(1-BURGUES_MARGIN))}
       revTotal+=rev;
+      recVol(n,g,"sold",sold);
+      if(cap>0&&stock>cap)recVol(n,g,"discard",stock-cap);           // sobreproducción TIRADA (producido por encima del tope de inventario)
       N.mkt[g]=cap>0?Math.min(stock,cap):stock;                      // sobreoferta topada; los bienes escasos quedan bajos
       // info para el panel (flujo/mes, escasez y precio): el mercado trabaja y el precio se mueve con la oferta
       N.mktInfo[g]={dem:demand/dt*730,sold:sold/dt*730,short:sold<demand*0.98,price};
     }
-    N.res.dinero+=revTotal*ALCABALA;                                 // ALCABALA: la corona cobra del comercio (compensa el ×3 urbano perdido)
-    N.alcabalaRate=revTotal/dt*ALCABALA;                             // por tick, para reconciliar el display de Tesorería
-    for(const k of STRATA){const cap=(WEALTH_CAP[k]||0.1)*str[k];if(W[k]>cap)W[k]=cap;if(W[k]<0)W[k]=0}
+    N.res.dinero+=revTotal*alcabalaOf(n);                            // ALCABALA: la corona cobra del comercio INTERNO (compensa el ×3 urbano perdido)
+    N.alcabalaRate=revTotal/dt*alcabalaOf(n);                        // por tick (dinero real que entró). Es VARIABLE por naturaleza (mercado):
+    // el display NO la proyecta como tasa; la ACUMULA tick a tick (ver tsyTick → S.tsyAlc) y la "cobra" a fin de mes.
+    for(const k of STRATA)if(W[k]<0)W[k]=0; // sin TOPE artificial (se quitó): la riqueza la nivela la economía, no un clamp. Solo suelo en 0.
     N.prosp=str.burgues>0?Math.min(1.5,(W.burgues/str.burgues)/PROSP_REF):1; // prosperidad burguesa (Fase C)
   }
   // Comida del EJÉRCITO (pop-driven): cada ejército consume grano por sus pops. El slider a.supply
@@ -740,12 +970,12 @@ function economyTick(dt=1){
       const cap=storeCap(p,"comida");
       if(p.store.comida==null)p.store.comida=cap*0.6;
       p.store.comida+=subsBalance(p,"comida")*dt;
-      if(p.store.comida>cap){const over=p.store.comida-cap;p.store.comida=cap;if(N)N.mkt.comida=(N.mkt.comida||0)+over} // excedente → mercado
+      if(p.store.comida>cap){const over=p.store.comida-cap;p.store.comida=cap;if(N){N.mkt.comida=(N.mkt.comida||0)+over;recVol(n,"comida","prod",over)}} // excedente → mercado
       if(p.store.comida<0){
         let deficit=-p.store.comida;p.store.comida=0;
         if(N){ // comprar grano del mercado nacional (lo que otras provincias vendieron); el burgués cobra su margen
           const price=N.mktPrice.comida||MKT_PRICE.comida, buy=Math.min(deficit,N.mkt.comida||0);
-          if(buy>0){N.mkt.comida-=buy;deficit-=buy;const turn=buy*price;N.sWealth.burgues+=turn*BURGUES_MARGIN;N.sWealth.campesino-=turn*BURGUES_MARGIN}
+          if(buy>0){N.mkt.comida-=buy;deficit-=buy;const turn=buy*price;N.sWealth.burgues+=turn*BURGUES_MARGIN;N.sWealth.campesino-=turn*BURGUES_MARGIN;recFlow(n,"burgues","Margen de básicos",turn*BURGUES_MARGIN);recFlow(n,"campesino","Compra de básicos",-turn*BURGUES_MARGIN)}
         }
         const cons=subsCons(p,"comida")*dt;
         if(cons>0&&deficit/cons>FAMINE_DEF){p.pop=Math.max(0,(p.pop||0)-deficit*STARVE_RATE);famine=true} // no pudo importar grano → hambruna
@@ -754,10 +984,10 @@ function economyTick(dt=1){
     // --- MADERA/PIEDRA/HIERRO: excedente → stock del mercado nacional; déficit → comprar del stock ---
     if(N)for(const k of NONGRAIN){
       const net=subsBalance(p,k)*dt;
-      if(net>=0){N.mkt[k]=(N.mkt[k]||0)+net}                                     // excedente campesino → mercado del reino
+      if(net>=0){N.mkt[k]=(N.mkt[k]||0)+net;recVol(n,k,"prod",net)}              // excedente campesino → mercado del reino
       else{                                                                      // déficit: comprar del stock (lo no cubierto es inerte; los básicos no matan de hambre)
         const price=N.mktPrice[k]||MKT_PRICE[k]||1, buy=Math.min(-net,N.mkt[k]||0);
-        if(buy>0){N.mkt[k]-=buy;const turn=buy*price;N.sWealth.burgues+=turn*BURGUES_MARGIN;N.sWealth.campesino-=turn*BURGUES_MARGIN;bSold[n][k]=(bSold[n][k]||0)+buy}
+        if(buy>0){N.mkt[k]-=buy;const turn=buy*price;N.sWealth.burgues+=turn*BURGUES_MARGIN;N.sWealth.campesino-=turn*BURGUES_MARGIN;bSold[n][k]=(bSold[n][k]||0)+buy;recFlow(n,"burgues","Margen de básicos",turn*BURGUES_MARGIN);recFlow(n,"campesino","Compra de básicos",-turn*BURGUES_MARGIN)}
       }
     }
     // --- ESPECIALIDAD (resType): la provincia produce SU materia prima (lana/uva/cobre/pescado…) por terreno →
@@ -765,10 +995,14 @@ function economyTick(dt=1){
     // haya fábrica; las fábricas y otras provincias la compran (cadenas). El campesino cobra al venderla (al comprarla). ---
     if(N&&isRawSpecialty(p.resType)){
       const g=p.resType, prod=(p.pop||0)*RESTYPE_RATE/YR_TICKS*terrMul(p,g)*(p.morale/100)*dt;
-      if(prod>0)N.mkt[g]=(N.mkt[g]||0)+prod;
+      if(prod>0){N.mkt[g]=(N.mkt[g]||0)+prod;recVol(n,g,"prod",prod)}
     }
     p.famine=famine;
-    if(!famine){const cap=storeCap(p,"comida");const fill=cap>0?p.store.comida/cap:0;p.pop=(p.pop||0)*(1+POP_GROWTH_BASE*(0.4+fill)*dt)}
+    // crecimiento: base×(despensa) + BONUS de natalidad por prosperidad (la barra por-bien la lleva prosperityTick, mensual).
+    // El bonus STACKEA: cada NIVEL logrado de cada bien de salud suma NAT_BONUS_PER_LEVEL (anual). Pequeño y de largo plazo.
+    if(!famine){const cap=storeCap(p,"comida");const fill=cap>0?p.store.comida/cap:0;
+      let natB=0; if(p.prosp)for(const g of (CHANNEL_GOODS.natalidad||[]))natB+=prospLevel(p.prosp[g]||0)*NAT_BONUS_PER_LEVEL;
+      p.pop=(p.pop||0)*(1+(POP_GROWTH_BASE*(0.4+fill)+natB/YR_TICKS)*dt)}
     if(p.pops&&pop0>0){const f=(p.pop||0)/pop0;for(const k in p.pops)p.pops[k]*=f} // estratos siguen a la población
     // Fase C: movilidad campesino<->burgués hacia la fracción objetivo de la provincia
     if(p.pops&&p.owner<NPLAY){
@@ -800,7 +1034,8 @@ function economyTick(dt=1){
   // con déficit/stock bajo): mueve stock del mercado barato al caro, y los precios CONVERGEN. NO hay "mercado
   // internacional" como entidad: son transacciones entre los mercados de los reinos, movidas por los burgueses,
   // que se quedan el DIFERENCIAL (comprar barato/vender caro). Global sin distancia en v1 (futuro: coste por
-  // distancia/ruta). Solo mueve mkt+sWealth: el Tesoro de la corona NO se toca (reconciliación intacta).
+  // distancia/ruta). La corona grava la aduana (ALMOJARIFAZGO, ver almojOf) → res.dinero + tsyAlc (variable, como la alcábala).
+  for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(N&&N.alive)N.almojRate=0} // reset aduana/tick (se acumula en el arbitraje de abajo)
   for(const g of MKT_TRADE){
     const ref=MKT_PRICE[g]||1, node=[];
     for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(!N||!N.alive)continue;ensureMarket(N);if(!N.mktInfo[g])N.mktInfo[g]={price:N.mktPrice[g]||ref};
@@ -815,7 +1050,10 @@ function economyTick(dt=1){
       if(q>1e-9){
         A.N.mkt[g]=Math.max(0,(A.N.mkt[g]||0)-q); B.N.mkt[g]=(B.N.mkt[g]||0)+q; // el stock viaja del mercado barato al caro
         const half=q*(B.p-A.p)*(1-TRADE_COST)*0.5;                            // el mercader de cada punta se lleva medio diferencial
-        A.N.sWealth.burgues+=half; B.N.sWealth.burgues+=half;
+        const taxA=half*almojOf(A.N.idx), taxB=half*almojOf(B.N.idx);         // ALMOJARIFAZGO: la corona de cada reino grava la aduana del comercio EXTERIOR
+        A.N.res.dinero+=taxA; A.N.almojRate=(A.N.almojRate||0)+taxA/dt; A.N.sWealth.burgues+=half-taxA;
+        B.N.res.dinero+=taxB; B.N.almojRate=(B.N.almojRate||0)+taxB/dt; B.N.sWealth.burgues+=half-taxB;
+        recFlow(A.N.idx,"burgues","Arbitraje",half-taxA);recFlow(B.N.idx,"burgues","Arbitraje",half-taxB);
         A.N.mktInfo[g].exp=(A.N.mktInfo[g].exp||0)+q/dt*730;                   // exporta (panel)
         B.N.mktInfo[g].imp=(B.N.mktInfo[g].imp||0)+q/dt*730;                   // importa (panel)
       }
@@ -836,6 +1074,9 @@ function economyTick(dt=1){
 
 export {
   canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, nationLedger, isOccupied, occupierOf, provLoot, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, recruitable, taxOf, moraleGrowth, MORALE_MIN, MORALE_HOSTILE, SOLD_FRAC, foodCons, foodBalance, foodCap, foodFill, harvestMul, subsProd, subsCons, subsBalance, storeCap, storeOf, SUBS_BASICS, specialistCap, buildJobs, freeLabor, staffing, employedIn, jobsOf, buildingYield, buildSlots, usedSlots, structPPF, JOBS_PER_LEVEL, NEED_PC, NEED_PRICE, FOOD_PRICE, economyTick,
-  MKT_GOODS, MKT_TRADE, MKT_PRICE, ensureMarket, seedStrataWealth, flujoBase, repartoRates, taxRateOf, manorOf, canStaffIndustry, bOwnerOf, provEconomyByOwner, ESTATES_BUILD,
-  BASICS, TERRAIN_CAT, terrMul, terrCatMul, RES_RAW_CATS
+  MKT_GOODS, MKT_TRADE, MKT_PRICE, ensureMarket, seedStrataWealth, flujoBase, repartoRates, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, manorOf, canStaffIndustry, bOwnerOf, provEconomyByOwner, ESTATES_BUILD,
+  BASICS, TERRAIN_CAT, terrMul, terrCatMul, RES_RAW_CATS,
+  MONTH_TICKS, resetTsyLedger, tsyTick, tsyAvail, tsyMonthBal, recFlow, BONUS_BIEN, PROSP_CHANNELS,
+  bOff, bCond, effLvl, buildingProfit, degradeBuildings,
+  prosperityTick, prospLevel, PROSP_LEVEL_PTS, PROSP_MAX_PTS, CHANNEL_GOODS, NAT_BONUS_PER_LEVEL
 };

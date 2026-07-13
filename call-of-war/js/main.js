@@ -5,7 +5,7 @@ import {
   enterEditor, exitEditor, pushUndo, restoreWorldFromSnap, toggleRoadEdit, setProvinceOwner, dpSimplify, simplifyRing, traceProvince, applyShape, mergeProvinces, rasterPoly, keepLargestFragment, splitProvince, refreshEditorPanel, vertexAt, nearestSegment
 } from "./editor.js";
 import {
-  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, refreshArmyPanel, buildRealmMenu, refreshTreasury, refreshEstates, refreshMercado
+  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, refreshArmyPanel, buildRealmMenu, refreshTreasury, refreshEstates, refreshMercado, refreshFiscal
 } from "./ui.js";
 import {
   atWar, declareWar, makePeace, underTruce, spawnArmy, setupNations, tryRoad, nbrs, bfsPath, startLeg, orderMove, takeTile, updateDuchy, isKeyTile, hourTick, resolveBattles, applyDamage, mergeIdle, aiTurn, findTarget, tryBuild, tryRecruit, disbandUnit, raiseLevies, checkVictory, armiesIn,
@@ -15,7 +15,7 @@ import {
   hex2rgb, provColor, paintAll, paintBorders, repaintProvince, roadCurve, drawRoads, fitCanvas, clampPan, armyPos, draw, drawArrow, drawEditorOverlay, NCOL, TCOL, WASTECOL, baseC, baseCtx, roadsC, canvas, baseData, clearSelOutline
 } from "./render.js";
 import {
-  canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, armyCount, armyFood, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, recruitable
+  canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, armyCount, armyFood, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, recruitable, resetTsyLedger
 } from "./economy.js";
 import {
   mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, rebuildProvinceData, kmBetween, roadKey, hasRoad, landPath, generateRoads
@@ -117,6 +117,25 @@ window.setBuildCat=function(k){S.buildFilter=k;refreshBuildBar()};
 // barra inferior de edificios (estilo EU4): resumen de la provincia + tarjetas por categoría
 
 window.tryBuild=tryBuild;window.tryRecruit=tryRecruit;
+// Ciclo de vida de edificios: deshabilitar (libera dotación, deja de producir/pagar) o reactivar (reparando la parte degradada)
+window.toggleBuilding=function(pid,b){
+  const p=S.provs[pid]; if(!p||p.owner!==S.player||!(p.buildings[b]>0))return;
+  if(!p.bOff)p.bOff={}; if(!p.bCond)p.bCond={};
+  if(p.bOff[b]){ // REACTIVAR: repara la parte degradada (coste de creación prorrateado)
+    const cond=p.bCond[b]!=null?p.bCond[b]:1, frac=Math.max(0,1-cond);
+    if(frac>0.001){
+      const base=costFor(p,b),cost={}; for(const k in base)cost[k]=Math.round(base[k]*frac);
+      if(!canAfford(S.player,cost)){log("No puedes pagar la reparación de "+BUILDINGS[b].label+" en "+p.name+".");return}
+      pay(S.player,cost);
+    }
+    delete p.bOff[b]; p.bCond[b]=1;
+    log(BUILDINGS[b].label+" reactivada en "+p.name+(frac>0.001?" (reparada)":"")+".");
+  } else { // DESHABILITAR
+    p.bOff[b]=true; if(p.bCond[b]==null)p.bCond[b]=1;
+    log(BUILDINGS[b].label+" deshabilitada en "+p.name+": libera dotación y deja de producir; se degradará poco a poco.");
+  }
+  refreshBuildBar(); refreshTop();
+};
 window.haltArmy=function(){if(S.selArmy){S.selArmy.path=[];S.selArmy.legDone=0;S.selArmy.legTotal=0;refreshSide()}};
 // slider de suministro del ejército: solo actualiza el % y la etiqueta (no reconstruye el panel, para
 // no cortar el arrastre); el resto de la ventana se refresca en el siguiente tick.
@@ -162,6 +181,53 @@ window.openMercado=function(){
   document.getElementById("mercadoOverlay").style.display="flex";
   refreshMercado();
 };
+// --- Cortes · Hacienda: ajustar los impuestos de la corona (feudal / alcábala / almojarifazgo) ---
+window.openFiscal=function(){
+  if(S.player<0)return;
+  document.getElementById("fiscalOverlay").style.display="flex";
+  refreshFiscal();
+};
+window.setTax=function(kind,val){
+  if(S.player<0)return;
+  const N=S.nations[S.player], v=Math.max(0,(+val||0)/100);
+  if(kind==="feudal")N.taxRate=v; else if(kind==="alcabala")N.alcabala=v; else if(kind==="almoj")N.almojarifazgo=v;
+  refreshFiscal(); refreshTop();
+};
+// --- LOG ECONÓMICO EN VIVO: el motor acumula S.econLog (una foto por mes, ver economy.js logEconMonth). Un
+// enviador asíncrono (fuera del tick) ENVÍA las fotos nuevas por POST a un recolector local (node, puerto 8124)
+// que las añade a un fichero que Claude lee en vivo. Funciona en CUALQUIER navegador (sin File System Access API).
+// Fallback: botón "💾 Descargar". ---
+let _logPosted=0,_logBusy=false,_logWarned=false;
+window.startEconLog=async function(){
+  S.econLogOn=true;
+  try{
+    await fetch("http://localhost:8124/",{method:"GET"});
+    log("📝 Log en vivo ACTIVO: enviando al recolector (puerto 8124). Déjalo correr; Claude lo lee del disco.");
+  }catch(e){
+    alert("El recolector de log (puerto 8124) no responde.\nPídele a Claude que lo arranque.\nMientras tanto puedes usar 💾 para descargar el log.");
+  }
+};
+async function flushEconLog(){
+  if(_logBusy||!S.econLogOn||S.econLog.length<=_logPosted)return;
+  _logBusy=true;
+  const slice=S.econLog.slice(_logPosted);
+  const body=slice.map(x=>JSON.stringify(x)).join("\n")+"\n"; // text/plain = petición simple (sin preflight CORS)
+  try{
+    await fetch("http://localhost:8124/log",{method:"POST",headers:{"Content-Type":"text/plain"},body});
+    _logPosted=S.econLog.length;
+  }catch(e){ if(!_logWarned){console.warn("[econlog] recolector no disponible (puerto 8124); usa 💾 Descargar");_logWarned=true} }
+  _logBusy=false;
+}
+setInterval(flushEconLog,2000);
+window.downloadEconLog=function(){
+  if(!S.econLog.length){alert("El log está vacío todavía. Deja correr el juego unos meses.");return}
+  const blob=new Blob([S.econLog.map(x=>JSON.stringify(x)).join("\n")+"\n"],{type:"application/json"});
+  const url=URL.createObjectURL(blob),a=document.createElement("a");
+  a.href=url; a.download="basileus_econ_"+(S.econLog[S.econLog.length-1].d||"log")+".jsonl";
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),1000);
+  log("💾 Log económico descargado ("+S.econLog.length+" meses).");
+};
+window.clearEconLog=function(){S.econLog.length=0;_logPosted=0;log("Log económico reiniciado.")};
 window.setTreasuryTab=function(t){S.treasuryTab=t;S.treasuryPath=[];refreshTreasury()};
 window.treasuryDrill=function(key){S.treasuryPath.push(key);refreshTreasury()};
 window.treasuryBack=function(len){S.treasuryPath=S.treasuryPath.slice(0,len);refreshTreasury()};
@@ -239,6 +305,7 @@ window.takeControl=function(n){
   S.player=n;
   S.nations[n].ai=false;
   S.started=true;
+  resetTsyLedger(); // reinicia el tesoro mensual para la nación que tomas
   S.recruitProv=S.nations[n].capital;
   buildRealmMenu();
   const cap=S.provs[S.nations[n].capital];

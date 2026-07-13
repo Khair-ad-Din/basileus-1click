@@ -9,6 +9,13 @@ export const S = {
   duchies: [], reports: [],
   roads: new Map(), roadQueue: [], customRoads: false, // clave "a|b" -> nivel (1..3)
   player: -1, hour: 0, acc: 0, speed: 1, started: false, gameOver: false,
+  // capa de presentación mensual de la tesorería del jugador (ver economy.js: tsyTick/tsyAvail)
+  tsyAccrual: {}, tsyMonthBal: {}, monthKey: -1, tsyAlc: 0, // tsyAlc = alcábala acumulada del mes en curso
+  sFlow: {}, // desglose de flujos de riqueza por estamento (mes en curso): {estamento:{categoria:importe}}
+  sConsume: {}, // consumo por estamento y BIEN (mes en curso): {estamento:{bien:[cantidad,gasto]}}
+  mktVol: {}, // volumen físico por bien (mes en curso): {bien:{prod,sold,discard}}
+  econLog: [], econLogOn: true, // LOG económico mensual (series temporales para diagnóstico); botón lo descarga
+  prospMonthKey: -1, // mes de calendario del último tick de prosperidad (para el +1/−1 mensual por bien)
   selProv: -1, selArmy: null, battleFlash: {},
   // vista (compartida por render, entrada y guardado)
   zoom: 1, panX: 0, panY: 0, terrainView: false, popView: false, resView: false, showGraph: true,

@@ -1,7 +1,7 @@
 // sim.js
 import { BUILDINGS, GARR_CITADEL, GARR_FORT, GARR_MIN, GOLD_PER_WS, LEVY_RAISE_HOURS, NATIONS, NEUTRAL, NPLAY, RES_BUILDING, RES_KEYS, SIEGE_BASE_H, START_STOCK, TERRAINS, UNITS, WAR_LOCK_HOURS, WS_BATTLE, WS_DUCHY_BASE, WS_DUCHY_PER } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyDef, armyHp, armySpd, bOwnerOf, buildBlock, buildJobs, buildMax, buildSlots, canAfford, canStaffIndustry, costFor, economyTick, ESTATES_BUILD, foodFill, storeCap, SUBS_BASICS, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor, usedSlots, seedStrataWealth } from "./economy.js";
+import { armyAtk, armyCount, armyDef, armyHp, armySpd, bOwnerOf, buildBlock, buildJobs, buildMax, buildSlots, canAfford, canStaffIndustry, costFor, economyTick, ESTATES_BUILD, foodFill, storeCap, SUBS_BASICS, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor, usedSlots, seedStrataWealth, tsyTick, recFlow, specialistCap, jobsOf, prosperityTick, degradeBuildings } from "./economy.js";
 import { buildDuchies, hasRoad, roadLvl, isDuchyCap, kmBetween, roadKey } from "./mapgen.js";
 import { drawRoads, paintBorders, repaintProvince } from "./render.js";
 import { saveGame } from "./save.js";
@@ -26,7 +26,10 @@ function setupNations(){
     // demasiado pequeñas quedan agrícolas y no arruinan a los reinos extensos con fábricas ociosas.
     if(p.owner<NPLAY){
       p.sold=soldCap(p);p.bOwner=p.bOwner||{};
-      const b=RES_BUILDING[p.resType];if(b&&canStaffIndustry(p,b))p.buildings[b]=1;   // fábrica de la CORONA (resType)
+      // fábrica de la CORONA del resType, sembrada a NIVEL 2 (Paso 2): más producción de arranque para que el
+      // mundo no empiece con oferta ≈0. Nivel 2 solo si la provincia puede dotar dos niveles; si no, nivel 1.
+      const b=RES_BUILDING[p.resType];
+      if(b&&canStaffIndustry(p,b)){const B=BUILDINGS[b];p.buildings[b]=(specialistCap(p)>=2*jobsOf(b)&&(B.unique?1:(B.max||3)>=2))?2:1;}
       // E2: base inicial por estamento (lever de nivelado). Urbano: el burgués tiene su comercio (INGRESO)
       // y el clero su templo (moral + COSTE); rural: la nobleza su cuartel (leva + COSTE). Todo tunable.
       if(p.urban){seedEstateBld(p,"mercado","burgues");seedEstateBld(p,"templo","clero");}
@@ -393,7 +396,8 @@ function estateBuild(){
       if(!(p.pops[e]>0))continue;                        // sin presencia, no construye aquí
       const b=pickEstateBuild(p,e,N);
       if(!b)continue;
-      N.sWealth[e]-=estateCostDinero(costFor(p,b));      // paga la obra de su riqueza
+      const bcost=estateCostDinero(costFor(p,b));
+      N.sWealth[e]-=bcost;recFlow(p.owner,e,"Construcción",-bcost);      // paga la obra de su riqueza
       p.buildQueue.push({b,hoursLeft:timeFor(p,b),owner:e});
       break;                                             // una obra por provincia
     }
@@ -401,8 +405,12 @@ function estateBuild(){
 }
 function hourTick(){
   S.hour++;
+  const tsyBefore=S.player>=0?{...S.nations[S.player].res}:null; // foto del tesoro antes del tick (para el delta recurrente exacto)
   economyTick(); // secciones 0/1/1b: movilizados, economía+necesidades por nación, comida/población/soldadesca (sin DOM)
+  tsyTick(tsyBefore); // capa mensual: acumula el delta recurrente del jugador y publica la cifra "/mes" al cambiar de mes (sin tocar el motor)
+  prosperityTick(); // prosperidad por provincia/bien: +1/−1 punto al mes según excedente (se autodispara al cambiar de mes)
   if(S.hour%24===0)estateBuild(); // E2: los estamentos levantan su tipo de edificio con su riqueza (1 vez/día)
+  degradeBuildings(); // ciclo de vida: los edificios deshabilitados se degradan y, a condición 0, se destruyen
   // 2. construcción
   for(const p of S.provs){
     if(p.buildQueue.length){
@@ -831,6 +839,7 @@ function findTarget(from,n,enemies,wantNeutral,myPower,garrison){
 function tryBuild(pid,b){
   const p=S.provs[pid];
   if(p.owner!==S.player||isOccupied(p)||buildBlock(p,b))return;
+  if(!canAfford(S.player,costFor(p,b)))return; // solvencia sobre el saldo comprometido (tesoro mensual)
   pay(S.player,costFor(p,b));
   p.buildQueue.push({b,hoursLeft:timeFor(p,b)});
   refreshSide();refreshTop();refreshBuildBar();

@@ -4,6 +4,7 @@ import { S } from "./state.js";
 import { assignPopulation, assignResources, assignTerrain, isolateWastePockets, mulberry32, rebuildProvinceData, seedStrata } from "./mapgen.js";
 import { canvas, clampPan, drawRoads, paintAll } from "./render.js";
 import { hourTick, syncDuchyOcc } from "./sim.js";
+import { resetTsyLedger } from "./economy.js";
 import { buildRealmMenu, fmtDur, log, refreshSide, refreshTop } from "./ui.js";
 
 // Reconstruye S.roads como Map clave->nivel. Compatible hacia atrás: los guardados y el mapa
@@ -71,13 +72,16 @@ function loadProvMap(snap){
 function roundStore(store){ // reservas locales por bien (redondeadas), o null
   if(!store)return null;const o={};for(const k in store)o[k]=Math.round(store[k]);return o;
 }
+function roundProsp(pr){ // barras de prosperidad por canal (2 decimales), o null
+  if(!pr)return null;const o={};for(const k in pr)o[k]=Math.round(pr[k]*100)/100;return o;
+}
 function saveGame(){
   if(!S.started||S.gameOver||S.player<0)return;
   try{
     const s={v:4,t:Date.now(),hour:S.hour,player:S.player,armyIdSeq:S.armyIdSeq,
       wars:[...S.wars],truces:[...S.truces],roads:[...S.roads],roadQueue:S.roadQueue,reports:S.reports,
-      nations:S.nations.map(x=>({res:x.res,ai:x.ai,capital:x.capital,alive:x.alive,startProvs:x.startProvs,sWealth:x.sWealth,sRes:x.sRes,mkt:x.mkt,taxRate:x.taxRate})),
-      provs:S.provs.map(p=>[p.owner,Math.round(p.morale*10)/10,p.buildings,p.buildQueue,p.recruitQueue,Math.round(p.pop||0),Math.round(p.sold||0),roundStore(p.store),p.occupier==null?-1:p.occupier,p.siege||null,p.bOwner||null]),
+      nations:S.nations.map(x=>({res:x.res,ai:x.ai,capital:x.capital,alive:x.alive,startProvs:x.startProvs,sWealth:x.sWealth,sRes:x.sRes,mkt:x.mkt,taxRate:x.taxRate,alcabala:x.alcabala,almojarifazgo:x.almojarifazgo})),
+      provs:S.provs.map(p=>[p.owner,Math.round(p.morale*10)/10,p.buildings,p.buildQueue,p.recruitQueue,Math.round(p.pop||0),Math.round(p.sold||0),roundStore(p.store),p.occupier==null?-1:p.occupier,p.siege||null,p.bOwner||null,roundProsp(p.prosp),p.bOff||null,roundProsp(p.bCond)]),
       armies:S.armies.map(a=>({id:a.id,nation:a.nation,prov:a.prov,units:a.units,src:a.src,path:a.path,legDone:a.legDone,legTotal:a.legTotal,supply:a.supply})),
       mapCheck:S.provs.length+"|"+S.provs[0].name};
     localStorage.setItem("basileus_save",JSON.stringify(s));
@@ -110,6 +114,9 @@ function continueGame(){
     p.occupier=d[8]!=null?d[8]:-1; // control militar (ocupación EU4)
     p.siege=d[9]||null;            // asedio en curso {by,need,prog}
     p.bOwner=d[10]||{};            // E2: dueño de cada edificio por estamento (vacío = todo corona)
+    p.prosp=d[11]||{};             // barras de prosperidad por canal (sobreconsumo sostenido)
+    p.bOff=d[12]||{};              // edificios DESHABILITADOS (ciclo de vida)
+    p.bCond=d[13]||{};             // condición 0..1 de los deshabilitados (degradación)
     seedStrata(p);                 // Fase A: re-derivar estratos con la población cargada
   });
   syncDuchyOcc(); // recomputar occBy de cada ducado a partir de la ocupación cargada
@@ -119,6 +126,7 @@ function continueGame(){
   S.started=true;S.gameOver=false;S.selProv=-1;S.selArmy=null;S.battleFlash={};
   document.getElementById("startOverlay").style.display="none";
   S.recruitProv=S.nations[S.player].capital;
+  resetTsyLedger(); // reinicia la capa de tesoro mensual para la partida retomada
   buildRealmMenu();
   paintAll();drawRoads();
   const cap=S.provs[S.nations[S.player].capital];

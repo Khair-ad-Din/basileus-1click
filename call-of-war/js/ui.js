@@ -1,7 +1,7 @@
 // ui.js
 import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, RES_DESC, RES_ICON, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, WAR_LOCK_HOURS, terrainFx, STRATA, STRATA_INFO, RES_ART, RES_CAT } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildingYield, buildJobs, buildMax, buildSlots, canAfford, costFor, employedIn, foodBalance, foodCap, foodCons, foodFill, harvestMul, subsProd, subsCons, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationEconomy, nationLedger, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, MKT_GOODS, MKT_TRADE, MKT_PRICE, BASICS, terrMul, terrCatMul, RES_RAW_CATS } from "./economy.js";
+import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildingYield, buildJobs, buildMax, buildSlots, canAfford, costFor, employedIn, foodBalance, foodCap, foodCons, foodFill, harvestMul, subsProd, subsCons, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationEconomy, nationLedger, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, MKT_GOODS, MKT_TRADE, MKT_PRICE, BASICS, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, resetTsyLedger, tsyAvail, tsyMonthBal, BONUS_BIEN, PROSP_CHANNELS, prospLevel, PROSP_LEVEL_PTS, PROSP_MAX_PTS, CHANNEL_GOODS, NAT_BONUS_PER_LEVEL, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, buildingProfit } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
 import { canvas, clampPan } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
@@ -51,6 +51,46 @@ function foodLine(p){ // despensa de comida: llenado, balance como % del consumo
 // Sección "Reservas" (categoría propia, como Balance): TODO el grano local en la MISMA unidad que el
 // consumo de las tropas (grano/mes), con desglose producción campesina / consumo población / consumo
 // tropas, el neto, el crecimiento anual, la despensa y cuánto aguanta o tarda en llenarse.
+// Ventana dedicada de PROSPERIDAD (pestaña propia, como Construir/Caminos/Ejércitos). Muestra TODOS los canales con su
+// barra de XP (0..3), tendencia (▲/▼/=), y por canal los BIENES que lo alimentan con ✓ (excedente) o ✗ (falta), más la
+// satisfacción actual vs el umbral del siguiente nivel → el jugador ve qué excedentes necesita para activar cada modificador.
+const PROSP_META=[
+  ["natalidad","🍞","Natalidad","+ crecimiento de población",true],
+  ["campoProd","🌾","Productividad del campo","+ producción agrícola",false],
+  ["indProd","🏭","Productividad industrial","+ producción de fábricas",false],
+  ["moral","⛪","Moral y prestigio","+ moral (contento, legitimidad)",false],
+  ["militar","⚔","Poder militar","+ ejército / leva",false],
+];
+function prosperityWinHTML(p){
+  const N=S.nations[S.player], pr=p.prosp||{}, minfo=(N&&N.mktInfo)||{};
+  const ROMAN=["","I","II","III"];
+  let h="<div class='winh'>"+uiIcon('poblacion')+" Prosperidad"+iInfo("Cada bien que la provincia consigue en EXCEDENTE (✓, precio ≤ referencia) suma +1 punto al mes a SU barra; si falta (✗), −1. Niveles: I = 12 pts (1 año seguido) · II = 36 (3 años) · III = 60 (5 años). Cada nivel logrado de cada bien da un bonus pequeño que STACKEA con los demás bienes del mismo tipo. De momento solo la Natalidad aplica efecto.")+"</div>";
+  for(const[ch,ico,lab,eff,active]of PROSP_META){
+    const goods=CHANNEL_GOODS[ch]||[];
+    // efecto del canal (natalidad: crecimiento de población anual = Σ niveles × bono, con su máximo posible)
+    let effLine;
+    if(active){let cur=0;for(const g of goods)cur+=prospLevel(pr[g]||0)*NAT_BONUS_PER_LEVEL;const max=goods.length*3*NAT_BONUS_PER_LEVEL;
+      effLine="<span style='color:var(--pos)'>+"+(cur*100).toFixed(2)+"%</span> / +"+(max*100).toFixed(2)+"% al año";}
+    else effLine="<i>próximamente</i>";
+    h+="<div style='margin:9px 0 2px;display:flex;align-items:center;gap:7px;border-top:1px solid #2f363d;padding-top:7px'>"+
+       "<span style='font-size:15px'>"+ico+"</span><b style='flex:1'>"+lab+"</b></div>";
+    h+="<div style='font-size:10px;color:#7a828b;margin:0 0 3px 22px'>"+eff+": "+effLine+"</div>";
+    for(const g of goods){
+      const pts=pr[g]||0, lvl=prospLevel(pts);
+      const price=(minfo[g]&&minfo[g].price!=null)?minfo[g].price:(MKT_PRICE[g]||1), ref=MKT_PRICE[g]||1, ok=price<=ref*1.08;
+      const fillLvl=lvl>=3?3:lvl+1;                                   // nivel-objetivo (I→II→III); en máx queda III
+      const prev=lvl>0?PROSP_LEVEL_PTS[lvl-1]:0, next=lvl<3?PROSP_LEVEL_PTS[lvl]:PROSP_MAX_PTS;
+      const frac=lvl>=3?1:(pts-prev)/(next-prev);
+      h+="<div style='display:flex;align-items:center;gap:6px;font-size:11px;margin:1px 0 1px 22px'>"+
+         "<span title='"+ta(RES_LABEL[g]||g)+"'>"+resImg(g)+"</span>"+
+         "<span style='width:12px;color:"+(ok?"var(--pos)":"var(--neg)")+"' title='"+(ok?"excedente (+1/mes)":"falta (−1/mes)")+"'>"+(ok?"✓":"✗")+"</span>"+
+         "<span style='width:42px;text-align:right;color:#9aa3ad'>"+pts+"/"+next+"</span>"+
+         "<span style='flex:1;height:7px;background:#2a2f36;border-radius:4px;overflow:hidden'><span style='display:block;height:100%;width:"+Math.round(frac*100)+"%;background:"+(lvl>=1?"var(--pos)":"#7a828b")+"'></span></span>"+
+         "<b style='width:20px;text-align:center;color:"+(lvl>=1?"var(--pos)":"#7a828b")+"'>"+ROMAN[fillLvl]+"</b></div>";
+    }
+  }
+  return h;
+}
 function reservesSection(p){
   if(p.wasteland)return "";
   const prodM=subsProd(p,"comida")*730, consM=subsCons(p,"comida")*730, troopM=troopDrainOn(p)*730;
@@ -129,14 +169,19 @@ function resImg(k){
 function buildResBar(){
   const bar=document.getElementById("resbar");
   if(bar.dataset.built)return;
-  // cada bien: sprite + stock actual + balance mensual (+/-) inline
-  const cell=(k,cls)=>"<span class='res "+cls+"'>"+resImg(k)+
-    "<b id='r_"+k+"'>0</b><small class='rd' id='d_"+k+"'></small></span>";
-  let h=RES_STRAT.map(k=>cell(k,"strat")).join("");
-  h+="<span class='sep'></span>";
-  h+=RES_TRADE.map(k=>cell(k,"trade")).join("");
-  h+="<span class='sep'></span><span class='res' title='Soldadesca del reino (cupo movilizable disponible)'>"+uiIcon('soldadesca')+"<b id='r_mano'>0</b></span>";
-  bar.innerHTML=h;bar.dataset.built="1";
+  // El topbar es ahora un RESUMEN DE TESORERÍA (solo ducados): stock + ingresos/gastos FIJOS y la ALCÁBALA
+  // acumulada (variable, se cobra a fin de mes). Las materias primas viven en Tesorería › Inventario y en el Mercado.
+  const sep="<span class='barsep'></span>",hdr=t=>"<span class='reshdr'>"+t+"</span>";
+  bar.innerHTML=
+    "<span class='res' title='Ducados del tesoro — lo que puedes gastar este mes'>"+resImg('dinero')+"<b id='t_duc'>0</b> <small class='reslab'>ducados</small></span>"+sep+
+    hdr("Fijo")+
+    "<span class='res' title='Ingreso FIJO y predecible: impuestos feudales + producción de la corona + minas'><small class='reslab'>Ingresos</small> <b id='t_inc' class='pos'>0</b> <small class='reslab'>/mes</small></span>"+
+    "<span class='res' title='Gastos: mantenimiento del ejército + necesidades de la población'><small class='reslab'>Gastos</small> <b id='t_exp' class='neg'>0</b> <small class='reslab'>/mes</small></span>"+
+    "<span class='res' title='Balance neto FIJO (ingresos − gastos). No incluye la alcábala, que es variable.'><small class='reslab'>Balance</small> <b id='t_net'>0</b> <small class='reslab'>/mes</small></span>"+sep+
+    hdr("Variable")+
+    "<span class='res' title='Alcábala: 8% sobre las ventas del mercado nacional. Es VARIABLE por naturaleza, así que se acumula tick a tick y se cobra entera a fin de mes.'><small class='reslab'>Alcábala</small> <b id='t_alc' class='pos'>0</b> <small class='reslab'>acum.</small></span>"+sep+
+    "<span class='res' title='Soldadesca del reino (cupo movilizable disponible)'>"+uiIcon('soldadesca')+"<b id='t_mano'>0</b></span>";
+  bar.dataset.built="1";
 }
 function refreshTop(){
   // la fecha avanza siempre (también en modo observador, sin jugador)
@@ -151,25 +196,19 @@ function refreshTop(){
     return;
   }
   buildResBar();
-  const R=S.nations[S.player].res;
-  const inc=nationEconomy(S.player).res;
-  for(const k of RES_KEYS){
-    const el=document.getElementById("r_"+k);if(!el)continue;
-    el.textContent=fmt(R[k]);
-    const g=inc[k]||0;
-    el.title=RES_LABEL[k]+": "+(g>=0?"+":"")+(Math.round(g*10)/10)+"/mes\n\n"+(RES_DESC[k]||"");
-    el.style.color="#fff";
-    // balance mensual (+/-) mostrado inline junto al stock — verde ingreso, rojo pérdida
-    const dd=document.getElementById("d_"+k);
-    if(dd){
-      const gv=Math.abs(g)>=10?Math.round(g):Math.round(g*10)/10;
-      dd.textContent=(g>=0?"+":"")+gv;
-      dd.title="Balance de "+RES_LABEL[k]+": "+(g>=0?"+":"")+(Math.round(g*10)/10)+"/mes";
-      dd.style.color=g<-0.05?"var(--neg)":g>0.05?"var(--pos)":"var(--muted)";
-    }
-  }
+  // Resumen de tesorería (ducados). Ingreso/gasto FIJO en vivo (refleja tus decisiones al instante), de la
+  // misma fuente que la Tesorería; la ALCÁBALA (variable) va aparte como acumulado del mes.
+  let inc=0,exp=0;
+  for(const it of nationLedger(S.player)){if(it.res!=="dinero")continue;if(it.amt>=0)inc+=it.amt;else exp+=it.amt}
+  inc*=MONTH_TICKS;exp*=MONTH_TICKS;const net=inc+exp;
+  const setV=(id,txt,cls)=>{const el=document.getElementById(id);if(!el)return;el.textContent=txt;if(cls!=null)el.className=cls};
+  setV("t_duc",fmt(tsyAvail(S.player,"dinero")));
+  setV("t_inc","+"+fmt(inc),"pos");
+  setV("t_exp",(exp<-0.5?"−":"")+fmt(Math.abs(exp)),"neg");
+  setV("t_net",(net>=0?"+":"−")+fmt(Math.abs(net)),net<0?"neg":"pos");
+  setV("t_alc","+"+fmt(S.tsyAlc||0),"pos");
   let realmSold=0;for(const p of S.provs)if(p.owner===S.player&&!p.wasteland&&!isOccupied(p))realmSold+=soldAvail(p);
-  document.getElementById("r_mano").textContent=fmt(realmSold);
+  setV("t_mano",fmt(realmSold));
 }
 function costStr(cost,mano){
   const parts=[];
@@ -233,7 +272,7 @@ function fxOtherText(B){
 }
 function costLine(c,owner){
   return Object.keys(c).map(k=>{
-    const no=owner!=null&&S.nations[owner].res[k]<c[k];
+    const no=owner!=null&&tsyAvail(owner,k)<c[k];
     return "<span"+(no?" class='no'":"")+">"+resImg(k)+fmt(c[k])+"</span>";
   }).join(" ");
 }
@@ -404,10 +443,29 @@ function buildTilesHTML(p){
       const jb=jobsOf(b);
       const jobsHtml=jb>0?"<div class='jobs2'>"+uiIcon('poblacion')+" "+fmtPop(jb)+" empleos/niv</div>":"";
       const onclick=(!inQ&&!maxed&&!block)?" onclick='tryBuild("+p.id+",\""+b+"\")'":"";
-      tiles+="<div class='"+cls+"'"+onclick+" data-tip=\""+ta(B.desc)+"\">"+
+      // ---- ciclo de vida (solo edificios YA construidos): rentabilidad + deshabilitar/reactivar + barra de condición ----
+      const off=lvl>0&&!!(p.bOff&&p.bOff[b]);
+      let ctrl="";
+      if(lvl>0){
+        const isEco=!!(B.fx&&(B.fx.prodAdd||B.fx.goldAdd))||!!B.inputs;
+        const prof=isEco?buildingProfit(p,b):null;
+        const profTxt=prof!=null?"<span class='"+(prof>=0?"pos":"neg")+"' style='font-weight:bold'>"+(prof>=0?"+":"−")+fmt(Math.abs(prof))+"🪙/mes</span>":"<span></span>";
+        const bs="display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:11px;margin-top:5px;padding:3px 7px;border-radius:5px;cursor:pointer;";
+        if(off){
+          const cond=(p.bCond&&p.bCond[b]!=null)?p.bCond[b]:1;
+          let rep=0;const base=costFor(p,b);for(const k in base)rep+=base[k]*(1-cond);rep=Math.round(rep);
+          ctrl="<div style='"+bs+"background:#3a2a22' onclick='event.stopPropagation();toggleBuilding("+p.id+",\""+b+"\")' title='Reactivar (repara la parte degradada)'>"+
+            "<span style='flex:1;height:5px;background:#241a14;border-radius:3px;overflow:hidden;display:inline-block'><i style='display:block;height:100%;background:#c98a3a;width:"+Math.round(cond*100)+"%'></i></span>"+
+            "<span style='color:#e0a860;white-space:nowrap'>▶ Reactivar"+(cond<0.995?" · "+rep+"🪙":"")+"</span></div>";
+        } else {
+          ctrl="<div style='"+bs+"background:#262b31' onclick='event.stopPropagation();toggleBuilding("+p.id+",\""+b+"\")' title='Deshabilitar: libera dotación y deja de producir'>"+
+            profTxt+"<span style='color:#9aa3ad;white-space:nowrap'>⏸ Off</span></div>";
+        }
+      }
+      tiles+="<div class='"+cls+"'"+onclick+(off?" style='opacity:.62'":"")+" data-tip=\""+ta(B.desc)+"\">"+
         "<img class='bic' src='assets/buildings/"+b+".png' alt='"+B.label+"' title='"+B.label+"' onerror=\"this.replaceWith(bemoji('"+B.icon+"'))\">"+
         "<div class='th'><span class='nm'>"+B.label+"</span>"+lvBadge+"</div>"+
-        "<div class='ben'>"+benefitHTML(p,b)+jobsHtml+"</div>"+
+        "<div class='ben'>"+benefitHTML(p,b)+jobsHtml+"</div>"+ctrl+
         "<div class='foot2'>"+upStr+foot+"</div></div>";
     }
     cats+="<div class='bcat'><div class='lab'>"+label+"</div><div class='btiles'>"+tiles+"</div></div>";
@@ -477,7 +535,7 @@ function refreshProvTabs(){
   const p=S.provs[S.selProv];
   const own=p.owner===S.player&&!p.wasteland&&!isOccupied(p);
   if(!own){el.className="";el.style.display="none";return}
-  const tabs=[["build","trabajo","Construir"],["roads","caminos","Caminos"],["army","espadas","Ejércitos"]];
+  const tabs=[["build","trabajo","Construir"],["roads","caminos","Caminos"],["army","espadas","Ejércitos"],["prosp","poblacion","Prosperidad"]];
   el.innerHTML=tabs.map(t=>"<div class='ptab"+(S.provTab===t[0]?" on":"")+"' onclick='setProvTab(\""+t[0]+"\")'>"+
     uiIcon(t[1],true)+"<span class='lb'>"+t[2]+"</span></div>").join("");
   el.className="show";el.style.display="flex";
@@ -500,6 +558,7 @@ function refreshProvWin(){
   tabs.className="";tabs.style.display="none";
   let body;
   if(S.provTab==="roads")body="<div class='winh'>"+uiIcon('caminos')+" Caminos</div>"+roadsHTML(p);
+  else if(S.provTab==="prosp")body=prosperityWinHTML(p);
   else body="<div class='winh'>"+uiIcon('espadas')+" Ejércitos y reclutamiento</div>"+armyHTML(p);
   win.innerHTML="<div class='winbody'>"+body+"</div>";
   win.className="show list";win.style.display="block";
@@ -545,7 +604,11 @@ function tsyTesoro(items){ // pestaña TESORO: balance de Ducados
     h+=inc.length?inc.map(x=>tsyRow(x.key,x.amt,"dinero",x.key)).join(""):"<div class='trow tdim'>Sin ingresos</div>";
     h+="<div class='tsec'>Gastos</div>";
     h+=exp.length?exp.map(x=>tsyRow(x.key,x.amt,"dinero",x.key)).join(""):"<div class='trow tdim'>Sin gastos</div>";
-    h+=tsyTotal("Balance neto",tsySum(dm),"dinero");
+    h+=tsyTotal("Balance neto (fijo)",tsySum(dm),"dinero");
+    // la ALCÁBALA (variable) no entra en el balance fijo: se acumula el mes y se cobra al cierre
+    if((S.tsyAlc||0)>0.5)h+="<div class='trow' style='margin-top:6px;border-top:1px solid #3a4047;padding-top:6px'>"+
+      "<span>⏳ Alcábala acumulada <small style='color:#7a828b'>· se cobra a fin de mes</small></span>"+
+      "<b class='pos'>+"+n1(S.tsyAlc)+" "+resImg('dinero')+"</b></div>";
   }else{
     const group=path[0],sel=dm.filter(x=>x.group===group);
     const subs=tsyAgg(sel,"sub").sort((a,b)=>Math.abs(b.amt)-Math.abs(a.amt));
@@ -556,14 +619,14 @@ function tsyTesoro(items){ // pestaña TESORO: balance de Ducados
   return h;
 }
 function tsyInv(items){ // pestaña INVENTARIO: el resto de recursos, en balance
-  const inv=items.filter(x=>x.res!=="dinero"),path=S.treasuryPath,R=S.nations[S.player].res;
+  const inv=items.filter(x=>x.res!=="dinero"),path=S.treasuryPath;
   let h="";
   if(path.length===0){
     const byRes=tsyAgg(inv,"res");
     h+="<div class='trow thead'><span>Recurso</span><span>Stock · balance/mes</span></div>";
     let any=false;
     const rowOf=k=>{
-      const net=(byRes.find(r=>r.key===k)||{amt:0}).amt,stock=R[k]||0;
+      const net=(byRes.find(r=>r.key===k)||{amt:0}).amt,stock=tsyAvail(S.player,k);
       if(Math.abs(net)<0.005&&stock<0.5)return"";
       any=true;
       return "<div class='trow click' onclick=\"treasuryDrill('"+k+"')\"><span>"+resImg(k)+" "+RES_LABEL[k]+" <span class='tarrow'>›</span></span>"+
@@ -600,7 +663,10 @@ function refreshTreasury(){
   if(!ov||ov.style.display!=="flex")return;
   const body=document.getElementById("treasuryBody");
   if(S.player<0){body.innerHTML="<p style='text-align:center;color:#9aa3ad'>Estás en modo observador. Toma el mando de una nación (desde el <b>Registro</b>) para ver su tesorería.</p>";return}
-  const N=NATIONS[S.player],items=nationLedger(S.player);
+  const N=NATIONS[S.player];
+  // el libro mayor rinde importes por tick; se escalan a /mes para que la magnitud y los signos
+  // cuadren con el balance "/mes" del topbar (la capa de presentación mensual)
+  const items=nationLedger(S.player).map(it=>({...it,amt:it.amt*MONTH_TICKS}));
   const tab=(k,lab)=>"<span class='ttab"+(S.treasuryTab===k?" on":"")+"' onclick=\"setTreasuryTab('"+k+"')\">"+lab+"</span>";
   let h="<div class='tsyhead'><span class='chip' style='background:"+N.color+"'></span> "+N.name+"</div>";
   h+="<div class='ttabs'>"+tab("tesoro","🪙 Tesoro")+tab("inv","📦 Inventario")+"</div>";
@@ -617,7 +683,10 @@ function buildRealmMenu(){
     {img:"btn_tesoreria",on:"openTreasury()"},
     {img:"btn_leyes",dis:1},
     {img:"btn_estamentos",on:"openEstates()"},
-    {emoji:"🏪",on:"openMercado()",title:"Mercado"}
+    {emoji:"⚖️",on:"openFiscal()",title:"Cortes · Hacienda (ajustar impuestos)"},
+    {emoji:"🏪",on:"openMercado()",title:"Mercado"},
+    {emoji:"📝",on:"startEconLog()",title:"Log económico EN VIVO (elige un fichero; se rellena mientras juegas)"},
+    {emoji:"💾",on:"downloadEconLog()",title:"Descargar el log económico acumulado (JSON)"}
   ];
   el.innerHTML="<div class='rmEscudo' title='"+N.name+"'><span class='rmEscCol' style='background:"+N.color+"'></span>"+
       "<img src='assets/ui/escudo.png' alt='"+N.name+"'></div>"+
@@ -636,10 +705,11 @@ function refreshMetricsLog(){
   let h="<div class='mlog'><span class='sh' style='background:"+N.color+"'></span>"+
     "<div><b>"+N.name+"</b><div style='color:#9aa3ad;font-size:11px'>"+ne.provs+" provincias · "+uiIcon('poblacion')+" "+fmtPop(realmPop)+"<br>"+ne.troops+" tropas</div></div></div>";
   h+="<h3>Tesorería del reino <span style='color:#7a828b;font-weight:normal'>/mes</span></h3>";
-  const bal=ne.res;
+  const bal={};for(const k of RES_KEYS)bal[k]=(ne.res[k]||0)*MONTH_TICKS; // tasa mensual EN VIVO (refleja tus decisiones al instante; alcábala suavizada)
   const kpiRow=(k,v)=>"<div class='kpi'><span>"+resImg(k)+" "+RES_LABEL[k]+"</span><span class='v "+(v<0?"neg":"pos")+"'>"+(v>=0?"+":"")+n1(v)+"</span></div>";
   let anyBal=false;
-  if(Math.abs(bal.dinero||0)>0.05){h+=kpiRow("dinero",bal.dinero);anyBal=true;} // Ducados primero
+  if(Math.abs(bal.dinero||0)>0.05){h+=kpiRow("dinero",bal.dinero);anyBal=true;} // Ducados primero (ingreso FIJO)
+  if((S.tsyAlc||0)>0.5){h+="<div class='kpi'><span>⏳ Alcábala <small style='color:#7a828b'>acum.</small></span><span class='v pos'>+"+n1(S.tsyAlc)+"</span></div>";anyBal=true;} // variable: se cobra a fin de mes
   for(const[cat,ico,lab]of RESCAT_META){ // el resto AGRUPADO por categoría
     const ks=RES_KEYS.filter(k=>k!=="dinero"&&RES_CAT[k]===cat&&Math.abs(bal[k]||0)>0.05).sort((a,b)=>bal[b]-bal[a]);
     if(!ks.length)continue;
@@ -821,7 +891,8 @@ function ledgerRows(){
   const rows=[];
   for(let n=0;n<NPLAY;n++){
     if(!S.nations[n].alive)continue;
-    const income=nationEconomy(n).res.dinero||0;
+    // ingreso /mes para comparar naciones: fijo + alcábala PROYECTADA (aquí sí, como tasa, porque no hay acumulado por nación)
+    const income=((nationEconomy(n).res.dinero||0)+(S.nations[n].alcabalaRate||0))*MONTH_TICKS;
     rows.push({n,name:NATIONS[n].name,color:NATIONS[n].color,provs:provsBy[n],pop:popBy[n],
       troops:Math.round(troopsBy[n]),str:Math.round(strBy[n]),income,
       pc:popBy[n]>0?income*1e5/popBy[n]:0}); // riqueza per cápita: ducados netos/mes por 100.000 hab
@@ -914,7 +985,7 @@ function refreshPeace(){
   h+="<h3 style='margin-top:14px'>Cedes a "+NATIONS[m].name+"</h3>";
   if(!con.length)h+="<div class='sm' style='color:#9aa3ad'>No ocupa ningún ducado tuyo.</div>";
   for(const d of con)h+=duchyRow(d,S.peaceSel.has(d.id),duchyValue(d),"−");
-  const maxGive=Math.max(0,Math.floor(S.nations[S.player].res.dinero||0));
+  const maxGive=Math.max(0,Math.floor(tsyAvail(S.player,"dinero")));
   h+="<div class='recrow'><span class='u'>Ofrecer oro <span class='sm'>(máx "+fmt(maxGive)+")</span></span>"+
     "<span class='cst'><input type='number' min='0' max='"+maxGive+"' value='"+S.peaceGive+"' style='width:88px' oninput='setPeaceGive(this.value)'> <span class='sm'>(−"+n1(S.peaceGive/GOLD_PER_WS)+" pts)</span></span></div>";
   let demandCost=0,concedeVal=0;
@@ -963,6 +1034,7 @@ function showNationPicker(){
     S.nations[S.player].ai=false;
     document.getElementById("startOverlay").style.display="none";
     S.started=true;
+    resetTsyLedger(); // arranca el tesoro mensual del jugador
     S.recruitProv=S.nations[S.player].capital;
     buildRealmMenu();
     const cap=S.provs[S.nations[S.player].capital];
@@ -1016,6 +1088,29 @@ function refreshEstates(){
       h+="<div style='font-size:11px;color:#9aa3ad;margin-top:2px;padding-left:23px'>"+bTxt+"</div>";
       if(resP.length)h+="<div style='font-size:11px;color:#7a828b;padding-left:23px'>📦 "+resP.join(" · ")+"</div>";
     }
+    // DESGLOSE de flujos de riqueza del estamento (mes en curso): de dónde entra y en qué se gasta
+    const fl=(S.sFlow&&S.sFlow[k])||{};
+    const cats=Object.keys(fl).filter(c=>Math.abs(fl[c])>0.5).sort((a,b)=>Math.abs(fl[b])-Math.abs(fl[a]));
+    if(cats.length){
+      let net=0;for(const c of cats)net+=fl[c];
+      h+="<div style='padding-left:23px;margin-top:4px'>"+
+         "<div style='font-size:9px;color:#7a828b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:1px'>Flujo este mes</div>";
+      for(const c of cats)h+="<div style='display:flex;font-size:11px;justify-content:space-between;gap:8px'>"+
+        "<span style='color:#9aa3ad'>"+c+"</span><span style='color:"+(fl[c]<0?"var(--neg)":"var(--pos)")+"'>"+(fl[c]>=0?"+":"−")+nf(Math.abs(fl[c]))+"</span></div>";
+      h+="<div style='display:flex;font-size:11px;justify-content:space-between;gap:8px;border-top:1px solid #3a4047;margin-top:2px;padding-top:2px'>"+
+        "<span style='color:#c9c2ae'>Neto del mes</span><span style='color:"+(net<0?"var(--neg)":"var(--pos)")+"'>"+(net>=0?"+":"−")+nf(Math.abs(net))+" 🪙</span></div></div>";
+    }
+    // DESGLOSE de CONSUMO por bien (qué compra el estamento en el mercado, cantidad y gasto)
+    const cons=(S.sConsume&&S.sConsume[k])||{};
+    const goods=Object.keys(cons).filter(g=>cons[g][1]>0.5).sort((a,b)=>cons[b][1]-cons[a][1]);
+    if(goods.length){
+      h+="<div style='padding-left:23px;margin-top:4px'>"+
+         "<div style='font-size:9px;color:#7a828b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px'>Compra por bien (gasto · cantidad)</div>"+
+         "<div style='display:flex;flex-wrap:wrap;gap:3px 12px'>";
+      for(const g of goods)h+="<span style='font-size:11px;color:#c9c2ae;white-space:nowrap' title='"+(RES_LABEL[g]||g)+"'>"+
+        resImg(g)+" "+nf(cons[g][1])+"🪙 <span style='color:#7a828b'>("+nf(cons[g][0])+")</span></span>";
+      h+="</div></div>";
+    }
     h+="</div>";
   }
   h+="<p style='color:#7a828b;font-size:11px;margin-top:10px;text-align:center'>Los estratos ganan por su rol, comen y compran sus lujos. El comercio de bienes vive ahora en la ventana <b>🏪 Mercado</b>.</p>";
@@ -1032,10 +1127,12 @@ function refreshMercado(){
   const nf=v=>Math.round(v).toLocaleString("es-ES");
   const n1v=v=>Math.round(v*10)/10;
   // agregados de comercio (valor = volumen × precio; /mes, se anualiza ×12)
-  let expVal=0,impVal=0,intVal=0,expVol=0,impVol=0,intVol=0;
+  const vol=S.mktVol||{}; // VOLUMEN físico del mes en curso (producido/vendido/tirado por bien; solo jugador)
+  let expVal=0,impVal=0,intVal=0,expVol=0,impVol=0,intVol=0,prodVol=0,discVol=0,discVal=0;
   for(const g of MKT_TRADE){const mi=info[g]||{},pr=mi.price!=null?mi.price:MKT_PRICE[g];
     expVal+=(mi.exp||0)*pr; impVal+=(mi.imp||0)*pr; intVal+=(mi.sold||0)*pr;
-    expVol+=mi.exp||0; impVol+=mi.imp||0; intVol+=mi.sold||0;}
+    expVol+=mi.exp||0; impVol+=mi.imp||0; intVol+=mi.sold||0;
+    const vg=vol[g]||{}; prodVol+=vg.prod||0; discVol+=vg.discard||0; discVal+=(vg.discard||0)*pr;}
   const bal=expVal-impVal;
   let h="<div class='tsyhead'><span class='chip' style='background:"+N.color+"'></span> "+N.name+" · comercio de bienes</div>";
   // tarjetas resumen
@@ -1048,26 +1145,33 @@ function refreshMercado(){
     card("Exportación",nf(expVal)+"🪙",nf(expVol)+" u/mes · "+nf(expVal*12)+"🪙/año","var(--pos)")+
     card("Importación",nf(impVal)+"🪙",nf(impVol)+" u/mes · "+nf(impVal*12)+"🪙/año","#d6a15a")+
     card("Comercio interno",nf(intVal)+"🪙",nf(intVol)+" u/mes (dentro del reino)")+
+    card("Producción al mercado",nf(prodVol)+" u",nf(prodVol)+" u/mes (materias del campo)")+
+    card("Tirado (sobreproducción)",nf(discVol)+" u",nf(discVal)+"🪙 desperdiciado /mes",discVol>1?"var(--neg)":"#7a828b")+
     "</div>";
   // tabla por bien, agrupada en Básicos y Lujos
   const th="<div style='display:flex;font-size:10px;color:#7a828b;padding:3px 1px 2px;border-bottom:1px solid #2a2f36'>"+
-    "<span style='flex:1'>bien</span><span style='width:66px;text-align:right'>precio</span><span style='width:64px;text-align:right'>stock</span>"+
-    "<span style='width:70px;text-align:right'>demanda</span><span style='width:66px;text-align:right'>interno</span>"+
-    "<span style='width:60px;text-align:right'>exporta</span><span style='width:60px;text-align:right'>importa</span></div>";
+    "<span style='flex:1'>bien</span><span style='width:60px;text-align:right'>precio</span><span style='width:58px;text-align:right'>stock</span>"+
+    "<span style='width:60px;text-align:right'>producido</span><span style='width:62px;text-align:right'>demanda</span><span style='width:58px;text-align:right'>vendido</span>"+
+    "<span style='width:56px;text-align:right' title='producido por encima del tope de inventario = sobreproducción tirada'>tirado</span>"+
+    "<span style='width:52px;text-align:right'>exporta</span><span style='width:52px;text-align:right'>importa</span></div>";
   const rowFor=g=>{
     const mi=info[g]||{}, price=mi.price!=null?mi.price:MKT_PRICE[g], ref=MKT_PRICE[g];
     const dev=ref>0?Math.round((price/ref-1)*100):0;
     const pcol=price>ref*1.05?"var(--neg)":(price<ref*0.95?"var(--pos)":"#9aa3ad");
     const expTxt=(mi.exp>1)?"<span style='color:var(--pos)'>↗"+nf(mi.exp)+"</span>":"<span style='color:#5a6470'>—</span>";
     const impTxt=(mi.imp>1)?"<span style='color:#d6a15a'>↙"+nf(mi.imp)+"</span>":"<span style='color:#5a6470'>—</span>";
+    const vg=vol[g]||{}, prodTxt=(vg.prod>1)?nf(vg.prod):"<span style='color:#5a6470'>—</span>";
+    const discTxt=(vg.discard>1)?"<span style='color:var(--neg)'>"+nf(vg.discard)+"</span>":"<span style='color:#5a6470'>—</span>";
     return "<div style='display:flex;align-items:center;font-size:12px;padding:2px 1px'>"+
       "<span style='flex:1'>"+(RES_ICON[g]||"")+" "+RES_LABEL[g]+"</span>"+
-      "<span style='width:66px;text-align:right;color:"+pcol+"' title='ref. "+ref+"🪙 · "+(dev>=0?"+":"")+dev+"%'>"+n1v(price)+"🪙</span>"+
-      "<span style='width:64px;text-align:right;color:var(--txt)'>"+nf(mkt[g]||0)+"</span>"+
-      "<span style='width:70px;text-align:right;color:#9aa3ad'>"+nf(mi.dem||0)+"</span>"+
-      "<span style='width:66px;text-align:right;color:#9aa3ad'>"+nf(mi.sold||0)+"</span>"+
-      "<span style='width:60px;text-align:right'>"+expTxt+"</span>"+
-      "<span style='width:60px;text-align:right'>"+impTxt+"</span></div>";
+      "<span style='width:60px;text-align:right;color:"+pcol+"' title='ref. "+ref+"🪙 · "+(dev>=0?"+":"")+dev+"%'>"+n1v(price)+"🪙</span>"+
+      "<span style='width:58px;text-align:right;color:var(--txt)'>"+nf(mkt[g]||0)+"</span>"+
+      "<span style='width:60px;text-align:right;color:#9aa3ad'>"+prodTxt+"</span>"+
+      "<span style='width:62px;text-align:right;color:#9aa3ad'>"+nf(mi.dem||0)+"</span>"+
+      "<span style='width:58px;text-align:right;color:#9aa3ad'>"+nf(mi.sold||0)+"</span>"+
+      "<span style='width:56px;text-align:right'>"+discTxt+"</span>"+
+      "<span style='width:52px;text-align:right'>"+expTxt+"</span>"+
+      "<span style='width:52px;text-align:right'>"+impTxt+"</span></div>";
   };
   // agrupado POR CATEGORÍA (cereal, cultivo, ganadería, bosque, minería, mar, manufacturas, comercio)
   const MKT_CATS=[["cereal","🌾","Cereal"],["cultivo","🍇","Cultivo"],["ganado","🐑","Ganadería"],
@@ -1086,6 +1190,32 @@ function refreshMercado(){
   h+="<p style='color:#7a828b;font-size:11px;margin-top:8px;text-align:center'>Los burgueses compran los bienes donde están baratos (excedente) y los venden donde están caros (déficit): el comercio hace CONVERGER los precios entre reinos.</p>";
   body.innerHTML=h;
 }
+// ---- Cortes · Hacienda Real: ajustar los impuestos/gravámenes de la corona ----
+function refreshFiscal(){
+  const ov=document.getElementById("fiscalOverlay");
+  if(!ov||ov.style.display!=="flex")return;
+  const body=document.getElementById("fiscalBody");
+  if(S.player<0){body.innerHTML="<p style='text-align:center;color:#9aa3ad'>Toma el mando de una nación para gestionar su hacienda.</p>";return}
+  const n=S.player, N=S.nations[n];
+  const nf=v=>Math.round(v).toLocaleString("es-ES"), pct=v=>Math.round(v*100);
+  const feud=taxRateOf(n), alc=alcabalaOf(n), alm=almojOf(n);
+  const alcInc=(N.alcabalaRate||0)*MONTH_TICKS, almInc=(N.almojRate||0)*MONTH_TICKS;
+  const coronaMes=nationEconomy(n).res.dinero*MONTH_TICKS;
+  const slider=(label,val,min,max,kind,info,inc)=>
+    "<div style='background:#20252b;border:1px solid #2f363d;border-radius:8px;padding:11px 13px;margin-bottom:9px'>"+
+      "<div style='display:flex;justify-content:space-between;align-items:baseline'>"+
+        "<span style='font-weight:bold'>"+label+iInfo(info)+"</span>"+
+        "<span style='font-family:monospace;font-size:15px;color:var(--title)'>"+pct(val)+"%</span></div>"+
+      (inc!=null?"<div style='font-size:11px;color:#8aa478'>≈ +"+nf(inc)+"🪙/mes a la corona (variable)</div>":"")+
+      "<input type='range' min='"+min+"' max='"+max+"' value='"+pct(val)+"' step='1' style='width:100%;margin-top:6px' oninput='setTax(\""+kind+"\",this.value)'></div>";
+  let h="<div style='text-align:center;font-size:12px;color:#9aa3ad;margin-bottom:11px'>Ingreso fijo de la corona: <b style='color:var(--title)'>"+nf(coronaMes)+"🪙/mes</b> + comercio (abajo)</div>";
+  h+=slider("🌾 Impuesto feudal",feud,2,20,"feudal","La parte de la corona del reparto feudal (sobre la producción del campesino). Histórico Castilla ~8%. Más ingreso, pero empobrece al campesino y le baja la moral.",null);
+  h+=slider("🏪 Alcábala (comercio interno)",alc,0,30,"alcabala","Impuesto sobre las VENTAS del mercado interno del reino. Histórico Castilla ~10% (empezó más bajo). Ingreso variable según cuánto se comercie.",alcInc);
+  h+=slider("⚓ Almojarifazgo (aduana exterior)",alm,0,60,"almoj","Aduana sobre el comercio EXTERIOR (el arbitraje entre reinos, que enriquece a los burgueses). Histórico Castilla ~5% (2,5% exportación / 5% importación). Súbelo para frenar ese enriquecimiento y financiar a la corona.",almInc);
+  h+="<div style='background:#1c2026;border:1px solid #2a2f36;border-radius:8px;padding:9px 13px;margin-bottom:4px;opacity:.75'>"+
+      "<div style='display:flex;justify-content:space-between;align-items:baseline'><span>⛪ Diezmo (Iglesia)"+iInfo("El 10% de la producción del campesino va al CLERO, no a la corona. Fijo: es derecho de la Iglesia.")+"</span><span style='font-family:monospace'>"+pct(DIEZMO)+"%</span></div></div>";
+  body.innerHTML=h;
+}
 export {
-  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, buildRealmMenu, refreshMetricsLog, refreshArmyPanel, refreshTreasury, refreshEstates, refreshMercado
+  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, buildRealmMenu, refreshMetricsLog, refreshArmyPanel, refreshTreasury, refreshEstates, refreshMercado, refreshFiscal
 };

@@ -34,6 +34,9 @@
   #bottombar .bbSpacer{flex:1 1 auto}
   .res{display:flex;align-items:center;gap:4px;white-space:nowrap}
   .res b{color:#fff}
+  .res b.pos{color:var(--pos)}.res b.neg{color:var(--neg)}
+  .barsep{width:1px;height:24px;background:#3a4047;margin:0 8px;display:inline-block;flex:0 0 auto}
+  .reshdr{color:#8a929c;font-size:9px;font-weight:bold;text-transform:uppercase;letter-spacing:.8px;margin-right:3px;flex:0 0 auto}
   .reslab{color:#9aa3ad;font-size:11px}
   .chip{width:14px;height:14px;border-radius:3px;border:1px solid #000;display:inline-block}
   #dateBox{color:#c9c2ae;white-space:nowrap;font-size:13px}
@@ -466,6 +469,15 @@
     <h1 style="text-align:center;margin-bottom:2px">🏪 Mercado del reino</h1>
     <p style="text-align:center;color:#9aa3ad;font-size:12px;margin:0 0 12px">Comercio de bienes: precios, oferta/demanda interna y comercio exterior.</p>
     <div id="mercadoBody"></div>
+  </div>
+</div>
+
+<div class="overlay" id="fiscalOverlay" style="display:none">
+  <div class="panel" style="min-width:460px;max-width:560px;max-height:88vh;overflow:auto">
+    <button class="panelX" title="Cerrar" onclick="document.getElementById('fiscalOverlay').style.display='none'">✕</button>
+    <h1 style="text-align:center;margin-bottom:2px">⚖️ Cortes · Hacienda Real</h1>
+    <p style="text-align:center;color:#9aa3ad;font-size:12px;margin:0 0 12px">Ajusta los impuestos y gravámenes de la corona.</p>
+    <div id="fiscalBody"></div>
   </div>
 </div>
 
