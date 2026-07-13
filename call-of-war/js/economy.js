@@ -908,9 +908,16 @@ function economyTick(dt=1){
       const cap=(demand/dt)*24*capDays(g);
       const fill=cap>0?stock/cap:0.5;
       let mul=Math.pow(0.5/Math.max(fill,0.02),PRICE_ELAST);
-      // SIN TOPE de precio (decisión de Sergio): el precio sube LIBREMENTE con la escasez y se equilibra por la
-      // DEMANDA (quien no puede pagarlo se cae vía frac). No hay cap por disposición a pagar ni PRICE_MULMAX.
-      const targetMul=Math.max(PRICE_MULMIN,mul);
+      // TECHO por DISPOSICIÓN A PAGAR = la CURVA DE DEMANDA (no una banda ficticia): el precio no puede superar lo que
+      // paga el comprador de MAYOR reserva que quiere este bien (ref×RMUL). Por encima NADIE compra → el mercado se
+      // congela (precio disparado, ventas 0, sin corregir porque el precio lo mueve el llenado, no las ventas; le pasaba
+      // al grano y al tinte, de oferta fina). Con este techo el precio sube con la escasez HASTA donde se paga y ahí se vacía.
+      let maxRmul=0;
+      for(const k of STRATA)if((LUX_NEED[k][g]||0)>0)maxRmul=Math.max(maxRmul,RMUL[k]);
+      if((factDem[n][g]||0)>0)maxRmul=Math.max(maxRmul,RMUL_FACT);
+      if((basicDem[n][g]||0)>0)maxRmul=Math.max(maxRmul,RMUL_BASIC);
+      if(maxRmul>0)mul=Math.min(mul,0.92*maxRmul);
+      const targetMul=Math.max(PRICE_MULMIN,Math.min(PRICE_MULMAX,mul));
       let price=N.mktPrice[g]!=null?N.mktPrice[g]:ref;
       price+=(ref*targetMul-price)*Math.min(1,PRICE_ADJ*dt);         // desliza hacia el objetivo (EMA)
       if(price<ref*PRICE_MULMIN)price=ref*PRICE_MULMIN;              // suelo de seguridad (nunca 0/negativo)
