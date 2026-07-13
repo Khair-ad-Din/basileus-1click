@@ -532,11 +532,13 @@ const RES_SPEC={
   pescado:{z:[[50.5,59,-5,10],[57.5,66.5,3,13],[53.5,60.5,9,27],[38,42,25,30]],coast:true},
   pieles:{z:[[51.5,64,26,52],[57.5,66.5,9,28],[53.5,60,19,31]],terr:["bosque","tundra"]},
   cera:{z:[[51.5,63,26,52],[49.5,55.5,14,25],[53.5,58.5,19,29],[30,36,-6,11]],terr:["bosque","llanura","pradera","colinas"]},
-  ambar:{z:[[53.5,56.5,17.5,22.5]],coast:true},
+  ambar:{z:[[53,57.5,14,24]],coast:true}, // costa báltica (Prusia/Pomerania/Lituania), ampliada para que caiga en ≥ varias costeras
   cobre:{z:[[59,62,14,17.5],[46.2,48,10,13],[47.5,49.6,17,22]],terr:["montana","colinas"]},
-  estano:{z:[[49.8,51.2,-6,-3.2]],terr:["montana","colinas"]},
+  // estaño: Cornualles + Erzgebirge + Galicia + Alpes; terreno RELAJADO (montana/colinas casi no caían) para que ≥ varias provincias lo produzcan → resucita el bronce
+  estano:{z:[[49.3,51.4,-6,-2.5],[50,51,12,14],[42,43.5,-8.5,-6],[46,48,10,13.5]],terr:["montana","colinas","llanura","pradera","vega"]},
   hulla:{z:[[54,56,-2.2,-0.8],[50,51.3,4.5,6.5],[51,53,-4.5,-3],[50,51.6,15.5,19.5],[51,52.2,6,8.2]],terr:["montana","colinas","llanura"]},
-  alumbre:{z:[[38,39.6,26,28.2],[41.6,42.6,11.4,12.5]],terr:["montana","colinas","desierto"]},
+  // alumbre: Focea (Anatolia occ.) + Tolfa (Lacio); cajas AMPLIADAS y terreno relajado (antes 0 provincias) → desbloquea el paño de calidad
+  alumbre:{z:[[37.5,40.5,25,29.5],[41,43,10.5,13.2]],terr:["montana","colinas","llanura","estepa","vega"]},
   // ---- manufacturas de ciudad (se prefieren en urbes; su fábrica compra la materia del mercado) ----
   pano:{z:[[49.3,52.6,1.3,5.7],[42.8,46,8.3,13.2],[49.8,55.5,-5.6,1.7],[41,44.6,-1.2,4.6]],urban:true},
   lienzo:{z:[[50.5,52.6,6.8,9.2],[47,49.5,3,5.5],[47.5,49.2,9.3,11.3],[29,31.5,29,32.5]],urban:true},

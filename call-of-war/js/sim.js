@@ -1,7 +1,7 @@
 // sim.js
 import { BUILDINGS, GARR_CITADEL, GARR_FORT, GARR_MIN, GOLD_PER_WS, LEVY_RAISE_HOURS, NATIONS, NEUTRAL, NPLAY, RES_BUILDING, RES_KEYS, SIEGE_BASE_H, START_STOCK, TERRAINS, UNITS, WAR_LOCK_HOURS, WS_BATTLE, WS_DUCHY_BASE, WS_DUCHY_PER } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyDef, armyHp, armySpd, bOwnerOf, buildBlock, buildJobs, buildMax, buildSlots, canAfford, canStaffIndustry, costFor, economyTick, ESTATES_BUILD, foodFill, storeCap, SUBS_BASICS, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor, usedSlots, seedStrataWealth, tsyTick, recFlow, specialistCap, jobsOf, prosperityTick, degradeBuildings, buildingProfit, sourceableSet, inputsSourceable } from "./economy.js";
+import { armyAtk, armyCount, armyDef, armyHp, armySpd, bOwnerOf, buildBlock, buildJobs, buildMax, buildSlots, canAfford, canStaffIndustry, costFor, economyTick, ESTATES_BUILD, foodFill, storeCap, SUBS_BASICS, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor, usedSlots, seedStrataWealth, tsyTick, recFlow, specialistCap, jobsOf, prosperityTick, degradeBuildings, buildingProfit, buildingOutput, sourceableSet, inputsSourceable } from "./economy.js";
 import { buildDuchies, hasRoad, roadLvl, isDuchyCap, kmBetween, roadKey } from "./mapgen.js";
 import { drawRoads, paintBorders, repaintProvince } from "./render.js";
 import { saveGame } from "./save.js";
@@ -361,15 +361,20 @@ function advanceSiege(p,by,atkList){
 const ESTATE_BUILDS={
   clero:["catedral","templo","vinedo","universidad"],
   nobleza:["fortaleza","cuartel","granja","aserradero","cantera","mina","minaPlata","minaOro"],
-  burgues:["telar","sederia","especiar","salina","lonja","mercado","gremio","puerto","almacen"],
+  burgues:["telar","telarLino","fustaneria","aceria","fundibronce","armeria","sederia","carbonera","almazara","ingenio","curtiduria","especiar","salina","lonja","mercado","gremio","puerto","almacen"],
 };
+// NOTA: las MANUFACTURAS nuevas (fustán/armas/acero/bronce/lienzo/…) van al repertorio del burgués para que la IA las
+// CONSTRUYA donde el insumo sea obtenible y sean rentables (gate inputsSourceable + buildingProfit ya lo controlan). Las
+// MATERIAS PRIMAS (cobre/estaño/alumbre/…) NO se añaden: siguen zonificadas por resType (producción histórica por terreno).
 // precio nominal de los insumos de obra (ducados/unidad) para que el estamento valore el coste y lo pague de su bolsillo
 const BUILD_MAT_PRICE={dinero:1,materiales:1,piedra:1,metal:2,comida:0.8,pano:2.2,vino:2.2,sal:1.6,seda:5,raros:4,petroleo:2};
 const ESTATE_BUILD_KEEP=4; // colchón: solo construyen si su riqueza supera KEEP× el coste (invierten el excedente, no el principal)
 function estateCostDinero(cost){let t=0;for(const k in cost)t+=cost[k]*(BUILD_MAT_PRICE[k]||1);return t}
 // IA de ajuste del mercado: deshabilita las FÁBRICAS que pierden dinero (sobreoferta / insumo caro) y reactiva
 // (reparando) las que vuelven a ser rentables. Histéresis (deadband) para no oscilar. Solo fábricas de producción.
-const BLDG_LOSS=-50, BLDG_GAIN=100; // umbrales mensuales en ducados (deshabilitar bajo −50/mes, reactivar sobre +100/mes)
+const BLDG_LOSS=-120, BLDG_GAIN=100; // umbrales mensuales en ducados: tolera pérdidas pequeñas (no apagar toda una industria por poco); apaga solo lo claramente ruinoso; reactiva sobre +100/mes
+const ESTATE_FILLER=250; // puntuación de la infraestructura sin ingreso directo (gremio/lonja/almacén/puerto): relleno cuando no hay fábrica más rentable
+const SUPPLY_MARGIN=1.15; // la IA construye una fábrica SOLO si la capacidad (construida + EN OBRA) del bien aún no cubre la demanda del reino × este margen. Así calcula cuántas hacen falta (demanda/producción-por-fábrica) y no sobre-construye pese al lag de 4 meses de obra.
 function autoManageBuildings(p,owners){
   const N=S.nations[p.owner]; if(!N)return;
   for(const b in p.buildings){
@@ -388,7 +393,8 @@ function autoManageBuildings(p,owners){
     }
   }
 }
-function pickEstateBuild(p,e,N,src){ // primer edificio del repertorio del estamento que sea construible, asequible y RENTABLE aquí
+function pickEstateBuild(p,e,N,src,cap,dem){ // el edificio del repertorio del estamento MÁS RENTABLE que aún HAGA FALTA aquí
+  let best=null,bestScore=-Infinity;
   for(const b of ESTATE_BUILDS[e]){
     if(lvlOf(p,b)>0&&bOwnerOf(p,b)!==e)continue;          // ya existe y es de otro (o de la corona) → no lo toco
     if(lvlOf(p,b)>=buildMax(p,b))continue;
@@ -403,13 +409,30 @@ function pickEstateBuild(p,e,N,src){ // primer edificio del repertorio del estam
     if(economic&&freeLabor(p)<buildJobs(p)+JOBS_PER_LEVEL)continue;
     // solo invierten el EXCEDENTE: guardan un colchón (KEEP× el coste) para seguir comiendo y no arruinarse
     if(N.sWealth[e]<estateCostDinero(costFor(p,b))*ESTATE_BUILD_KEEP)continue;
-    if((B.inputs||fx.prodAdd)&&buildingProfit(p,b,lvlOf(p,b)+1)<=0)continue; // no construir FÁBRICAS que ya darían PÉRDIDAS (evita sobre-construir en el vacío)
-    return b;
+    // PREVISIÓN DE DEMANDA: ¿la capacidad (construida + EN OBRA) del bien ya cubre la demanda del reino? entonces NO hace
+    // falta otra fábrica (aunque el precio siga alto por el lag de obra). Así la IA calcula cuántas hacen falta y no se pasa.
+    const outG=fx.prodAdd?Object.keys(fx.prodAdd)[0]:null;
+    if(outG&&(cap[outG]||0)>=(dem[outG]||0)*SUPPLY_MARGIN)continue;
+    // PUNTUAR por RENTABILIDAD y elegir la mejor: fábricas/comercio por su beneficio mensual esperado (skip si no renta);
+    // la infra sin ingreso directo (gremio/lonja/almacén/puerto), relleno de baja prioridad. Así, entre lo que hace falta,
+    // la IA persigue lo más escaso/caro (p.ej. fustán) → completa las cadenas donde de verdad hacen falta.
+    let score;
+    if(B.inputs||fx.prodAdd||fx.goldAdd){ score=buildingProfit(p,b,lvlOf(p,b)+1); if(score<=0)continue; }
+    else score=ESTATE_FILLER;
+    if(score>bestScore){bestScore=score;best=b;}
   }
-  return null;
+  return best;
 }
 function estateBuild(){
   const src=sourceableSet(); // bienes obtenibles ahora (gate de construcción); se calcula 1 vez por pasada
+  // por reino: CAPACIDAD de producción (construida + EN OBRA) de cada bien, y su DEMANDA → la IA calcula cuántas fábricas faltan
+  const cap=Array.from({length:NPLAY},()=>({})), dem=Array.from({length:NPLAY},()=>({}));
+  for(const p of S.provs){
+    if(p.owner>=NPLAY||p.wasteland)continue; const n=p.owner;
+    for(const b in p.buildings){if(!(p.buildings[b]>0))continue;const o=buildingOutput(p,b);if(o.g)cap[n][o.g]=(cap[n][o.g]||0)+o.q;}       // capacidad construida
+    if(p.buildQueue)for(const q of p.buildQueue){const o=buildingOutput(p,q.b,1);if(o.g)cap[n][o.g]=(cap[n][o.g]||0)+o.q;}                // + capacidad EN OBRA (1 nivel)
+  }
+  for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(N&&N.mktInfo)for(const g in N.mktInfo)dem[n][g]=N.mktInfo[g].dem||0;}
   for(const p of S.provs){
     if(p.owner>=NPLAY||p.wasteland||isOccupied(p))continue;
     const N=S.nations[p.owner];if(!N||!N.sWealth)continue;
@@ -419,11 +442,12 @@ function estateBuild(){
     const order=ESTATES_BUILD.slice().sort((a,b)=>(p.pops[b]||0)-(p.pops[a]||0));
     for(const e of order){
       if(!(p.pops[e]>0))continue;                        // sin presencia, no construye aquí
-      const b=pickEstateBuild(p,e,N,src);
+      const b=pickEstateBuild(p,e,N,src,cap[p.owner],dem[p.owner]);
       if(!b)continue;
       const bcost=estateCostDinero(costFor(p,b));
       N.sWealth[e]-=bcost;recFlow(p.owner,e,"Construcción",-bcost);      // paga la obra de su riqueza
       p.buildQueue.push({b,hoursLeft:timeFor(p,b),owner:e});
+      const o=buildingOutput(p,b,1);if(o.g)cap[p.owner][o.g]=(cap[p.owner][o.g]||0)+o.q; // suma la capacidad recién encolada → las demás provincias ya la cuentan (no todas construyen lo mismo a la vez)
       break;                                             // una obra por provincia
     }
   }

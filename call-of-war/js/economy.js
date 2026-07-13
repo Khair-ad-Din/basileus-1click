@@ -633,6 +633,15 @@ function buildingProfit(p,b,lvlArg){
   if(B.up)for(const k in B.up)v-=B.up[k]/12*lvl*price(k);
   return v;
 }
+// Producción (unidades/MES) del bien PRINCIPAL de la fábrica b a un nivel dado. La IA la usa para calcular CUÁNTAS
+// fábricas hacen falta para cubrir la demanda (demanda / producción-por-fábrica), en vez de construir a ciegas.
+function buildingOutput(p,b,lvlArg){
+  const lvl=lvlArg!=null?lvlArg:(p.buildings[b]||0);
+  const B=BUILDINGS[b]; if(!lvl||!B.fx||!B.fx.prodAdd)return {g:null,q:0};
+  const g=Object.keys(B.fx.prodAdd)[0];
+  const mor=p.morale/100,terr=TERRAINS[p.terrain].prod,st=staffing(p),mul=1+(provProdMul(p)-1)*st;
+  return {g, q:B.fx.prodAdd[g]*lvl*terr*mor*st*mul*MONTH_TICKS};
+}
 // Conjunto de bienes OBTENIBLES ahora mismo por cualquier reino: básicos universales + los que produce alguna
 // provincia por su especialidad (terreno) + los que hay en algún mercado (importables por arbitraje global). GATE de
 // construcción (Opción 1): no levantar una fábrica cuyo INSUMO no exista en el alcance. Como la producción es por
@@ -1088,6 +1097,6 @@ export {
   MKT_GOODS, MKT_TRADE, MKT_PRICE, ensureMarket, seedStrataWealth, flujoBase, repartoRates, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, manorOf, canStaffIndustry, bOwnerOf, provEconomyByOwner, ESTATES_BUILD,
   BASICS, TERRAIN_CAT, terrMul, terrCatMul, RES_RAW_CATS,
   MONTH_TICKS, resetTsyLedger, tsyTick, tsyAvail, tsyMonthBal, recFlow, BONUS_BIEN, PROSP_CHANNELS,
-  bOff, bCond, effLvl, buildingProfit, degradeBuildings, sourceableSet, inputsSourceable,
+  bOff, bCond, effLvl, buildingProfit, buildingOutput, degradeBuildings, sourceableSet, inputsSourceable,
   prosperityTick, prospLevel, PROSP_LEVEL_PTS, PROSP_MAX_PTS, CHANNEL_GOODS, NAT_BONUS_PER_LEVEL
 };
