@@ -42,5 +42,6 @@ export const S = {
   // negociación de paz (pantalla estilo EU4): con quién, ducados en la mesa, oro exigido/ofrecido,
   // modo ("out"=propones tú / "in"=oferta de la IA) y la oferta pendiente de la IA
   peaceWith: -1, peaceSel: new Set(), peaceGold: 0, peaceGive: 0, peaceMode: "out", incomingPeace: null,
+  callToArms: null, // llamada a las armas pendiente para el jugador (defensa de aliado/liga): {coalId,victim,leadA,attackers}
   editUndoStack: [], editBackup: null, editDirty: false
 };

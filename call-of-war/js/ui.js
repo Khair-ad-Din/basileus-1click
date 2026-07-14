@@ -1072,6 +1072,21 @@ function refreshLeagues(){
   }
   el.innerHTML=h;
 }
+// Llamada a las armas (Fase 7): atacan a un aliado/co-miembro de liga del jugador → decidir si acude a
+// defenderlo (entra en el bando defensor de la coalición) o rehúsa (rompe el vínculo + reputación).
+function refreshCallToArms(){
+  const el=document.getElementById("callToArmsBody"); if(!el)return;
+  const c=S.callToArms; if(!c){el.innerHTML="";return;}
+  const ally=hasPact(S.player,c.victim)==="alliance", inLg=sameLeague(S.player,c.victim);
+  let h="<div style='margin-bottom:10px'><b>"+NATIONS[c.leadA].name+"</b> y su coalición atacan a "+
+    "<span class='chip' style='background:"+NATIONS[c.victim].color+"'></span> <b>"+NATIONS[c.victim].name+"</b>, "+
+    ((ally&&inLg)?"tu aliado y co-miembro de liga.":(ally?"tu aliado.":"co-miembro de tu liga."))+"</div>";
+  h+="<div class='sm' style='color:#9aa3ad;margin-bottom:4px'>Atacantes: "+c.attackers.map(a=>NATIONS[a].name).join(", ")+"</div>";
+  h+="<div class='sm' style='color:#c9a86a;margin-bottom:14px'>Si rehúsas, romperás el vínculo y tu reputación sufrirá (traición).</div>";
+  h+="<div style='display:flex;gap:8px'><button class='uiBtn' style='border-color:#8fb06a' onclick='acceptCallToArms()'>⚔ Acudir a defender</button>"+
+     "<button class='uiBtn' style='border-color:#a85a5a' onclick='rejectCallToArms()'>Rehusar</button></div>";
+  el.innerHTML=h;
+}
 // Registro (ledger estilo EU4): tabla ordenable de todas las naciones vivas con provincias,
 // población, tropas, fuerza militar e ingreso neto de ducados/mes. Referencia para balancear.
 let ledgerSort="pop";
@@ -1409,5 +1424,5 @@ function refreshFiscal(){
   body.innerHTML=h;
 }
 export {
-  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, buildRealmMenu, refreshMetricsLog, refreshArmyPanel, refreshTreasury, refreshEstates, refreshMercado, refreshFiscal, refreshCouncil, refreshCoalPeace, refreshLeagues
+  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, buildRealmMenu, refreshMetricsLog, refreshArmyPanel, refreshTreasury, refreshEstates, refreshMercado, refreshFiscal, refreshCouncil, refreshCoalPeace, refreshLeagues, refreshCallToArms
 };

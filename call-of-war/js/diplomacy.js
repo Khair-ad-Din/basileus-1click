@@ -285,6 +285,23 @@ function breakPact(a,b){
   return{ok:true,type:t,rel,hits};
 }
 
+// Rehusar una LLAMADA A LAS ARMAS (defender a un aliado/co-miembro de liga atacado): fallar al bando
+// SEVERA el vínculo con la víctima (rompe la alianza y/o te saca de la liga compartida) y golpea tu
+// REPUTACIÓN igual que una traición (impulso "betray" a la víctima + reparto a terceros). Uniforme para
+// alianzas y ligas (decisión de Sergio). Devuelve {broke:[...tipos], rel, hits}.
+function refuseDefense(defender,victim){
+  if(!validPair(defender,victim))return{ok:false};
+  const broke=[];
+  if(hasPact(defender,victim)){S.pacts.delete(relKey(defender,victim));broke.push("pacto");}
+  if(sameLeague(defender,victim)){leaveLeague(defender);broke.push("liga");}
+  const rel=addImpulse(defender,victim,"betray",-BETRAY_TENSION);
+  const cand=new Set([...nationNeighbors(defender),...nationNeighbors(victim)]);
+  cand.delete(defender);cand.delete(victim);
+  const hits=[];
+  for(const c of cand){if(!S.nations[c]||!S.nations[c].alive)continue;addImpulse(defender,c,"betray",-BETRAY_FANOUT);hits.push(c);}
+  return{ok:true,broke,rel,hits};
+}
+
 // ¿Puede A declararle la guerra a B? Bloqueado si hay PACTO (rómpelo antes) o si falta tensión.
 // Devuelve {ok, need, pact} donde need = tensión que aún falta.
 function canDeclareWar(a,b){
@@ -394,4 +411,4 @@ export { relKey, getRel, setRel, addImpulse, relBreakdown, relTier, relTick, nat
   insult, giftGold, canInsult, isEmbargoed, setEmbargo, fabricateClaim, hasClaim, duchyOwner,
   conquestFanout, nationNeighbors, hasPact, canPact, formPact, breakPact,
   MAX_LEAGUE, leagueOf, sameLeague, leagueById, createLeague, canApplyLeague, applyToLeague,
-  resolveApplication, proposeExpel, leaveLeague };
+  resolveApplication, proposeExpel, leaveLeague, refuseDefense };

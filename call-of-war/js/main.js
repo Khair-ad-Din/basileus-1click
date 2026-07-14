@@ -5,15 +5,15 @@ import {
   enterEditor, exitEditor, pushUndo, restoreWorldFromSnap, toggleRoadEdit, setProvinceOwner, dpSimplify, simplifyRing, traceProvince, applyShape, mergeProvinces, rasterPoly, keepLargestFragment, splitProvince, refreshEditorPanel, vertexAt, nearestSegment
 } from "./editor.js";
 import {
-  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, refreshArmyPanel, buildRealmMenu, refreshTreasury, refreshEstates, refreshMercado, refreshFiscal, refreshCouncil, refreshCoalPeace, refreshLeagues
+  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, refreshArmyPanel, buildRealmMenu, refreshTreasury, refreshEstates, refreshMercado, refreshFiscal, refreshCouncil, refreshCoalPeace, refreshLeagues, refreshCallToArms
 } from "./ui.js";
 import {
   atWar, declareWar, makePeace, underTruce, spawnArmy, setupNations, tryRoad, nbrs, bfsPath, startLeg, orderMove, takeTile, updateDuchy, isKeyTile, hourTick, resolveBattles, applyDamage, mergeIdle, aiTurn, findTarget, tryBuild, tryRecruit, disbandUnit, raiseLevies, checkVictory, armiesIn,
   getWar, warscore, duchyValue, occupiedDuchiesBy, report, coalitionOf, coalitionPeace
 } from "./sim.js";
 import { insult, giftGold, isEmbargoed, setEmbargo, fabricateClaim, getRel, THRESH, formPact, breakPact, hasPact,
-  leagueOf, createLeague, applyToLeague, resolveApplication, proposeExpel, leaveLeague } from "./diplomacy.js";
-import { openCouncil, councilToggle, councilConvene, launchCouncil, cancelCouncil } from "./council.js";
+  leagueOf, createLeague, applyToLeague, resolveApplication, proposeExpel, leaveLeague, refuseDefense } from "./diplomacy.js";
+import { openCouncil, councilToggle, councilConvene, launchCouncil, cancelCouncil, playerJoinDefense } from "./council.js";
 import {
   hex2rgb, provColor, paintAll, paintBorders, repaintProvince, roadCurve, drawRoads, fitCanvas, clampPan, armyPos, draw, drawArrow, drawEditorOverlay, NCOL, TCOL, WASTECOL, baseC, baseCtx, roadsC, canvas, baseData, clearSelOutline
 } from "./render.js";
@@ -407,6 +407,25 @@ window.leagueLeave=function(){
   if(r.ok){report("🛡","<b>"+NATIONS[S.player].name+"</b> abandona <b>"+nm+"</b>.",[S.player]);log(r.disbanded?("Sales de "+nm+"; la liga se disuelve."):("Sales de "+nm+"."));}
   refreshLeagues();refreshDiplomacy();
 };
+// --- LLAMADA A LAS ARMAS (Fase 7): atacan a un aliado/co-miembro de liga → acudir a defender o rehusar. ---
+function closeCallToArms(){const el=document.getElementById("callToArmsOverlay");if(el)el.style.display="none";}
+window.openCallToArms=function(){if(!S.callToArms)return;document.getElementById("callToArmsOverlay").style.display="flex";refreshCallToArms();};
+window.acceptCallToArms=function(){
+  const c=S.callToArms;if(!c)return;
+  const joined=playerJoinDefense(c.coalId);
+  if(joined)report("⚔","<b>"+NATIONS[S.player].name+"</b> acude a defender a <b>"+NATIONS[c.victim].name+"</b>.",[S.player,c.victim,...c.attackers]);
+  else log("La guerra ya no admite tu ayuda.");
+  S.callToArms=null;closeCallToArms();
+  refreshDiplomacy();refreshTop();
+};
+window.rejectCallToArms=function(){
+  const c=S.callToArms;if(!c){closeCallToArms();return;}
+  const r=refuseDefense(S.player,c.victim); // rehusar SEVERA el vínculo + reputación (traición)
+  report("💔","<b>"+NATIONS[S.player].name+"</b> rehúsa acudir en defensa de <b>"+NATIONS[c.victim].name+"</b>.",[S.player,c.victim,...(r.hits||[])]);
+  log("Rehúsas la llamada a las armas de "+NATIONS[c.victim].name+((r.broke&&r.broke.length)?" (rompes "+r.broke.join(" y ")+"; tu reputación sufre).":"."));
+  S.callToArms=null;closeCallToArms();
+  refreshDiplomacy();refreshLeagues();
+};
 
 /* ============================= Observador / tomar-soltar el mando ============================= */
 // Modo espectador: la partida corre con TODAS las naciones bajo IA (S.player=-1). Desde el
@@ -517,7 +536,7 @@ function regenerateWorld(){
   setTimeout(()=>{
     S.provs=[];S.armies=[];S.wars=new Map();S.truces=new Map();S.armyIdSeq=1;S.duchies=[];S.reports=[];
     S.rel=new Map();S.relMonthKey=-1;S.dipCd=new Map();S.dipSel=-1;S.embargoes=new Set();S.claims=new Set();S.pacts=new Map();
-    S.council=null;S.coalitions=new Map();S.coalSeq=0;S.leagues=[];S.leagueSeq=0;
+    S.council=null;S.coalitions=new Map();S.coalSeq=0;S.leagues=[];S.leagueSeq=0;S.callToArms=null;
     S.peaceWith=-1;S.peaceSel=new Set();S.peaceGold=0;S.incomingPeace=null;
     S.player=-1;S.hour=0;S.acc=0;S.started=false;S.gameOver=false;
     S.selProv=-1;S.selArmy=null;S.battleFlash={};clearSelOutline();
@@ -947,6 +966,8 @@ setInterval(()=>{
   if(steps){refreshTop();refreshSide();refreshTreasury();refreshEstates();refreshMercado()} // los refresh solo actúan si su overlay está abierto
   // oferta de paz de la IA: abrir la pantalla si no hay ya un overlay visible
   if(S.incomingPeace&&document.getElementById("peaceOverlay").style.display!=="flex")window.openIncomingPeace();
+  // llamada a las armas: atacan a un aliado/co-miembro de liga → abrir la pantalla de decisión
+  if(S.callToArms&&document.getElementById("callToArmsOverlay").style.display!=="flex")window.openCallToArms();
 },250);
 
 /* ============================= Partida guardada ============================= */

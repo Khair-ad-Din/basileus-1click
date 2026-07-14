@@ -84,15 +84,27 @@ function resolveDefenders(coal){
   const defender=coal.leadD, joined=[];
   for(let n=0;n<NPLAY;n++){
     if(n===defender||!alive(n)||coal.atk.includes(n)||coal.def.includes(n))continue;
-    if(n===S.player)continue; // al JUGADOR no se le arrastra a defender sin consentir (llamada a las armas = UI futura)
     if(hasPact(defender,n)!=="alliance"&&!sameLeague(defender,n))continue; // ni aliado ni co-miembro de liga
-    if(coal.atk.some(a=>hasPact(n,a)))continue;            // no lucha contra un aliado suyo
+    if(coal.atk.some(a=>hasPact(n,a)))continue;            // no lucha contra un aliado suyo (ni el jugador)
+    if(n===S.player){ // al JUGADOR se le OFRECE acudir (llamada a las armas), no se le arrastra sin consentir
+      if(!S.callToArms)S.callToArms={coalId:coal.id,victim:defender,leadA:coal.leadA,attackers:coal.atk.slice()};
+      continue;
+    }
     if(aiVoteDefend(n,defender,coal.leadA)!=="join")continue;
     coal.def.push(n);
     for(const a of coal.atk)declareWar(a,n,{force:true,coal:coal.id,quiet:true});
     joined.push(n);
   }
   return joined;
+}
+// El JUGADOR ACEPTA una llamada a las armas: entra en el bando defensor de la coalición y se crean sus
+// guerras pairwise contra cada atacante. Devuelve true si se unió. Lo invoca el handler de la UI.
+function playerJoinDefense(coalId){
+  const coal=S.coalitions.get(coalId); if(!coal)return false;
+  const p=S.player; if(p<0||coal.def.includes(p)||coal.atk.includes(p))return false;
+  coal.def.push(p);
+  for(const a of coal.atk)declareWar(a,p,{force:true,coal:coalId,quiet:true});
+  return true;
 }
 
 // ---- CONSEJO OFENSIVO DE LA IA (Fase 7a) ----
@@ -118,4 +130,4 @@ function aiOpenWar(leader,target){
   return{ok:true,coal};
 }
 
-export { openCouncil, councilToggle, councilConvene, councilSupport, launchCouncil, cancelCouncil, aiVote, resolveDefenders, aiOpenWar };
+export { openCouncil, councilToggle, councilConvene, councilSupport, launchCouncil, cancelCouncil, aiVote, resolveDefenders, aiOpenWar, playerJoinDefense };
