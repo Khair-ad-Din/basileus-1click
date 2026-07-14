@@ -4,7 +4,7 @@
 // en la Etapa 2) o la CANCELA si no reúne apoyos. Ver memoria basileus-diplomacy-design.
 import { NPLAY, NATIONS } from "./config.js";
 import { S } from "./state.js";
-import { getRel, hasPact, canDeclareWar, relKey } from "./diplomacy.js";
+import { getRel, hasPact, canDeclareWar, relKey, sameLeague } from "./diplomacy.js";
 import { declareWar, report } from "./sim.js";
 
 function alive(n){return n>=0&&n<NPLAY&&S.nations[n]&&S.nations[n].alive;}
@@ -75,14 +75,16 @@ function aiVoteDefend(ally,defender,attackerLeader){
   if(countWars(ally)>=2)return "decline";
   return "join";
 }
-// Tras lanzar una coalición, el DEFENSOR (líder def) reúne a SUS aliados (su propio consejo defensivo):
-// los que acuden entran en el bando defensor y se crean sus guerras pairwise contra cada atacante. Solo
-// acuden si pueden luchar contra TODOS los atacantes (sin pacto con ninguno). Devuelve los que se unieron.
+// Tras lanzar una coalición, el DEFENSOR (líder def) reúne a SUS aliados y CO-MIEMBROS DE LIGA (su propio
+// consejo defensivo): candidatos = quienes tienen ALIANZA con él o comparten LIGA (Fase 6c, liga defensiva).
+// Cada uno VOTA como los aliados (aiVoteDefend). Los que acuden entran en el bando defensor y se crean sus
+// guerras pairwise contra cada atacante. Solo acuden si pueden luchar contra TODOS los atacantes (sin pacto
+// con ninguno). Devuelve los que se unieron.
 function resolveDefenders(coal){
   const defender=coal.leadD, joined=[];
   for(let n=0;n<NPLAY;n++){
     if(n===defender||!alive(n)||coal.atk.includes(n)||coal.def.includes(n))continue;
-    if(hasPact(defender,n)!=="alliance")continue;
+    if(hasPact(defender,n)!=="alliance"&&!sameLeague(defender,n))continue; // ni aliado ni co-miembro de liga
     if(coal.atk.some(a=>hasPact(n,a)))continue;            // no lucha contra un aliado suyo
     if(aiVoteDefend(n,defender,coal.leadA)!=="join")continue;
     coal.def.push(n);

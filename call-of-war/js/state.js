@@ -14,6 +14,7 @@ export const S = {
   council: null, // consejo de deliberación activo (guerra ofensiva): {leader,target,candidates,invited:Map,phase}
   coalitions: new Map(), coalSeq: 0, // coaliciones de guerra id→{atk,def,leadA,leadD,start}; las guerras pairwise llevan .coal
   coalPeace: null, // pantalla de paz conjunta del jugador: {coalId, sel:Set(duchyIds), gold}
+  leagues: [], leagueSeq: 0, // ligas defensivas: [{id,name,founder,members[],apps[]}]; org. multi-miembro (Fase 6c)
   roads: new Map(), roadQueue: [], customRoads: false, // clave "a|b" -> nivel (1..3)
   player: -1, hour: 0, acc: 0, speed: 1, started: false, gameOver: false,
   // capa de presentación mensual de la tesorería del jugador (ver economy.js: tsyTick/tsyAvail)

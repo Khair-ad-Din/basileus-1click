@@ -8,7 +8,7 @@
 // olvida a su velocidad; `relBreakdown` da el desglose para el tooltip. Los umbrales (declarar guerra ≤
 // −50, aliarse ≥ +50…) leen la relación efectiva. La "infamia" NO es un escalar aparte: conquistar reparte
 // tensión (impulsos) a la víctima y a los vecinos.
-import { NPLAY, START_DATE } from "./config.js";
+import { NPLAY, NATIONS, START_DATE } from "./config.js";
 import { S } from "./state.js";
 
 const REL_MIN=-100, REL_MAX=100;
@@ -28,6 +28,11 @@ const NAP_BONUS=5;        // no agresión: leve concordia estructural mientras d
 const ALLY_BONUS=15;      // alianza: concordia estructural mayor
 const BETRAY_TENSION=30;  // golpe de tensión (impulso "betray", decae ~8 años) al traicionado al ROMPER un pacto
 const BETRAY_FANOUT=8;    // reputación: tensión a TERCEROS (vecinos de ambos) — quedas como poco fiable
+// LIGAS DEFENSIVAS (Fase 6c): la liga es una ORGANIZACIÓN multi-miembro, no un pacto por par.
+const MAX_LEAGUE=5;        // tope de miembros por liga (evita el 'blob' que arrastra a media Europa; tunable)
+const LEAGUE_BONUS=5;      // concordia ESTRUCTURAL entre cada par de co-miembros (mientras compartan liga)
+const LEAGUE_ADMIT_MIN=0;  // un miembro vota SÍ a admitir a un aspirante si no está tenso con él (getRel≥esto)
+const LEAGUE_EXPEL_MAX=0;  // un miembro vota expulsar a otro si su relación con él cayó por debajo (getRel<esto)
 
 function clamp(x){return x<REL_MIN?REL_MIN:x>REL_MAX?REL_MAX:x}
 function monthKeyOf(hour){const d=new Date(START_DATE+hour*3600e3);return d.getUTCFullYear()*12+d.getUTCMonth()}
@@ -38,11 +43,17 @@ function relKey(a,b){return a<b?a+"|"+b:b+"|"+a}
 function pactBonus(a,b){const t=S.pacts.get(relKey(a,b));return t==="alliance"?ALLY_BONUS:t==="nap"?NAP_BONUS:0;}
 // Tipo de pacto activo entre a y b, o null.
 function hasPact(a,b){return S.pacts.get(relKey(a,b))||null;}
-// Aporte ESTRUCTURAL (permanente mientras dure la condición): guerra, frontera y PACTOS (y futuros
+// LIGAS: una nación pertenece como mucho a UNA liga. Helpers de pertenencia (usados por structural).
+function leagueById(id){for(const L of S.leagues)if(L.id===id)return L;return null;}
+function leagueOf(n){for(const L of S.leagues)if(L.members.includes(n))return L;return null;}
+function sameLeague(a,b){if(a===b)return false;const L=leagueOf(a);return !!L&&L.members.includes(b);}
+// Bonus estructural entre co-miembros de una misma liga (mientras compartan liga).
+function leagueBonus(a,b){return sameLeague(a,b)?LEAGUE_BONUS:0;}
+// Aporte ESTRUCTURAL (permanente mientras dure la condición): guerra, frontera, PACTOS y LIGA (y futuros
 // embargo/mercado). Se COMPUTA de otro estado, no se guarda.
 function structural(a,b){
   if(atWarPair(a,b))return BASE_WAR;
-  return (nationAdjSet().has(relKey(a,b))?BASE_BORDER:0)+pactBonus(a,b);
+  return (nationAdjSet().has(relKey(a,b))?BASE_BORDER:0)+pactBonus(a,b)+leagueBonus(a,b);
 }
 // Suma de los IMPULSOS guardados del par (los que decaen).
 function impSum(a,b){const m=S.rel.get(relKey(a,b));if(!m)return 0;let s=0;for(const k in m)s+=m[k];return s;}
@@ -72,6 +83,7 @@ function relBreakdown(a,b){
   else{
     if(nationAdjSet().has(relKey(a,b)))out.push({label:"Frontera",v:BASE_BORDER});
     const t=hasPact(a,b); if(t)out.push({label:t==="alliance"?"Alianza":"No agresión", v:pactBonus(a,b)});
+    if(sameLeague(a,b))out.push({label:"Liga",v:LEAGUE_BONUS});
   }
   const m=S.rel.get(relKey(a,b));
   if(m)for(const k in m)if(Math.abs(m[k])>=0.5)out.push({label:IMP_LABEL[k]||k,v:m[k]});
@@ -121,6 +133,7 @@ function relTick(){
     for(const k in m){const r=DECAY[k];if(r==null)continue;m[k]*=r;if(Math.abs(m[k])<0.05)delete m[k];}
     if(!Object.keys(m).length)S.rel.delete(key);
   }
+  leagueTick(); // ligas: poda muertos, solicitudes IA y resolución de ligas sin el jugador (mensual)
 }
 
 // ================= ACCIONES (Fase 4) =================
@@ -275,11 +288,110 @@ function breakPact(a,b){
 // ¿Puede A declararle la guerra a B? Bloqueado si hay PACTO (rómpelo antes) o si falta tensión.
 // Devuelve {ok, need, pact} donde need = tensión que aún falta.
 function canDeclareWar(a,b){
+  if(sameLeague(a,b))return{ok:false,league:true}; // co-miembros de liga no se atacan (bloque defensivo)
   if(hasPact(a,b))return{ok:false,pact:true};
   const cur=getRel(a,b), ok=cur<=THRESH.war;
   return{ok, need:ok?0:cur-THRESH.war}; // p.ej. cur=-20 → faltan 30 puntos de tensión
 }
 
+// ================= LIGAS DEFENSIVAS (Fase 6c) =================
+// La liga es una ENTIDAD multi-miembro (S.leagues=[{id,name,founder,members[],apps[]}]) con GESTIÓN propia:
+// los países APLICAN (canApplyLeague/applyToLeague) y los MIEMBROS votan por mayoría su admisión
+// (resolveApplication + aiVoteAdmit); también se EXPULSA por voto (proposeExpel) y se puede SALIR
+// (leaveLeague). Da un bonus ESTRUCTURAL +5 entre co-miembros (leagueBonus, arriba) y es DEFENSIVA:
+// atacar a un miembro convoca a los demás — ese rally vive en council.js (resolveDefenders, que los hace
+// votar con aiVoteDefend). Los co-miembros NO se declaran guerra (canDeclareWar). Una nación está en ≤1 liga.
+
+// Funda una liga con `founder` como primer miembro (no debe estar ya en otra). Nombre opcional.
+function createLeague(founder,name){
+  if(founder<0||founder>=NPLAY||!S.nations[founder]||!S.nations[founder].alive)return{ok:false,reason:"invalido"};
+  if(leagueOf(founder))return{ok:false,reason:"yaenliga"};
+  const id=(S.leagueSeq=(S.leagueSeq||0)+1);
+  const L={id,name:(name&&(""+name).trim())||("Liga de "+NATIONS[founder].name),founder,members:[founder],apps:[]};
+  S.leagues.push(L);
+  return{ok:true,league:L};
+}
+// ¿Puede `n` APLICAR a la liga `id`? Gate: vivo, sin liga, liga con hueco, sin haber aplicado/ser miembro,
+// y CONCORDIA ≥ THRESH.league con el FUNDADOR (que representa a la liga). Devuelve {ok, reason, need}.
+function canApplyLeague(n,id){
+  const L=leagueById(id);
+  if(!L)return{ok:false,reason:"noliga"};
+  if(n<0||n>=NPLAY||!S.nations[n]||!S.nations[n].alive)return{ok:false,reason:"invalido"};
+  if(L.members.includes(n))return{ok:false,reason:"yamiembro"};
+  if(leagueOf(n))return{ok:false,reason:"enotraliga"};
+  if(L.members.length>=MAX_LEAGUE)return{ok:false,reason:"llena"};
+  if(L.apps.includes(n))return{ok:false,reason:"yaaplico"};
+  const cur=getRel(n,L.founder), need=THRESH.league-cur;
+  return{ok:cur>=THRESH.league, need:need>0?need:0, reason:cur>=THRESH.league?"":"tension"};
+}
+function applyToLeague(n,id){
+  const c=canApplyLeague(n,id); if(!c.ok)return{ok:false,reason:c.reason,need:c.need};
+  leagueById(id).apps.push(n);
+  return{ok:true};
+}
+// Voto IA de un MIEMBRO sobre admitir a `applicant`: SÍ si no está tenso con él (getRel≥LEAGUE_ADMIT_MIN).
+function aiVoteAdmit(member,applicant){return getRel(member,applicant)>=LEAGUE_ADMIT_MIN;}
+// Resuelve una solicitud por VOTO de miembros (MAYORÍA estricta). El voto del jugador-miembro se pasa en
+// `playerVote` (bool) cuando procede; los demás miembros votan por aiVoteAdmit. Devuelve {ok,admitted,yes,total}.
+function resolveApplication(id,applicant,playerVote){
+  const L=leagueById(id); if(!L)return{ok:false,reason:"noliga"};
+  const ix=L.apps.indexOf(applicant); if(ix<0)return{ok:false,reason:"noaplico"};
+  L.apps.splice(ix,1);
+  const total=L.members.length;
+  if(!S.nations[applicant]||!S.nations[applicant].alive||leagueOf(applicant)||total>=MAX_LEAGUE)
+    return{ok:true,admitted:false,yes:0,total};
+  let yes=0;
+  for(const m of L.members)if((m===S.player&&playerVote!=null)?!!playerVote:aiVoteAdmit(m,applicant))yes++;
+  const admitted=yes*2>total;
+  if(admitted)L.members.push(applicant);
+  return{ok:true,admitted,yes,total};
+}
+// Voto IA de un miembro sobre EXPULSAR a `target`: SÍ si su relación con él se agrió (getRel<LEAGUE_EXPEL_MAX).
+function aiVoteExpel(member,target){return getRel(member,target)<LEAGUE_EXPEL_MAX;}
+// Expulsa a `target` por VOTO de los DEMÁS miembros (mayoría estricta). No se puede expulsar al fundador.
+// `playerVote` = voto del jugador-miembro (bool) si procede. Devuelve {ok,expelled,yes,total}.
+function proposeExpel(id,target,playerVote){
+  const L=leagueById(id); if(!L)return{ok:false,reason:"noliga"};
+  if(!L.members.includes(target))return{ok:false,reason:"nomiembro"};
+  if(target===L.founder)return{ok:false,reason:"fundador"};
+  const voters=L.members.filter(m=>m!==target), total=voters.length;
+  let yes=0;
+  for(const m of voters)if((m===S.player&&playerVote!=null)?!!playerVote:aiVoteExpel(m,target))yes++;
+  const expelled=yes*2>total;
+  if(expelled)L.members=L.members.filter(m=>m!==target);
+  return{ok:true,expelled,yes,total};
+}
+// Un miembro ABANDONA su liga. Si era el fundador, hereda members[0]; si queda vacía, se disuelve.
+function leaveLeague(n){
+  const L=leagueOf(n); if(!L)return{ok:false,reason:"noenliga"};
+  L.members=L.members.filter(m=>m!==n);
+  L.apps=L.apps.filter(a=>a!==n);
+  if(!L.members.length){S.leagues=S.leagues.filter(x=>x!==L);return{ok:true,disbanded:true};}
+  if(L.founder===n)L.founder=L.members[0];
+  return{ok:true,disbanded:false};
+}
+// Tick MENSUAL de ligas (llamado desde relTick). PODA miembros muertos y disuelve ligas vacías; las IA fuera
+// de liga con suficiente concordia con un fundador APLICAN; y se resuelven por voto las solicitudes de ligas
+// SIN el jugador (las de la liga del jugador esperan su decisión en la UI). IA MÍNIMA y PROVISIONAL (Fase 7).
+function leagueTick(){
+  for(const L of S.leagues.slice()){
+    L.members=L.members.filter(m=>S.nations[m]&&S.nations[m].alive);
+    L.apps=L.apps.filter(a=>S.nations[a]&&S.nations[a].alive&&!L.members.includes(a));
+    if(!L.members.length){S.leagues=S.leagues.filter(x=>x!==L);continue;}
+    if(!L.members.includes(L.founder))L.founder=L.members[0];
+  }
+  for(let n=0;n<NPLAY;n++){
+    if(n===S.player||!S.nations[n]||!S.nations[n].alive||leagueOf(n))continue;
+    for(const L of S.leagues){
+      if(L.members.length>=MAX_LEAGUE||L.apps.includes(n)||L.members.includes(n))continue;
+      if(getRel(n,L.founder)>=THRESH.league){L.apps.push(n);break;}
+    }
+  }
+  for(const L of S.leagues)if(!L.members.includes(S.player))for(const applicant of L.apps.slice())resolveApplication(L.id,applicant);
+}
+
 export { relKey, getRel, setRel, addImpulse, relBreakdown, relTier, relTick, nationAdjSet, THRESH, canDeclareWar,
   insult, giftGold, canInsult, isEmbargoed, setEmbargo, fabricateClaim, hasClaim, duchyOwner,
-  conquestFanout, nationNeighbors, hasPact, canPact, formPact, breakPact };
+  conquestFanout, nationNeighbors, hasPact, canPact, formPact, breakPact,
+  MAX_LEAGUE, leagueOf, sameLeague, leagueById, createLeague, canApplyLeague, applyToLeague,
+  resolveApplication, proposeExpel, leaveLeague };

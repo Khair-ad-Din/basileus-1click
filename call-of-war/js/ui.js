@@ -6,7 +6,8 @@ import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
 import { canvas, clampPan } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
 import { armiesIn, atWar, duchyValue, fortGarrison, occupiedDuchiesBy, tryBuild, tryRecruit, tryRoad, warscore, coalitionOf, coalScore, coalCededDuchies } from "./sim.js";
-import { getRel, relTier, THRESH, canDeclareWar, canInsult, isEmbargoed, hasClaim, relBreakdown, hasPact, canPact } from "./diplomacy.js";
+import { getRel, relTier, THRESH, canDeclareWar, canInsult, isEmbargoed, hasClaim, relBreakdown, hasPact, canPact,
+  MAX_LEAGUE, leagueOf, sameLeague, canApplyLeague } from "./diplomacy.js";
 
 // Metadata de las CATEGORÍAS de bienes (orden, icono, etiqueta), reutilizada por el Mercado, la Tesorería y
 // el panel del reino para agrupar los bienes por categoría. 'moneda' (Ducados) va aparte (su propia pestaña).
@@ -936,6 +937,9 @@ function refreshDiplomacy(){
   const locked=S.hour<WAR_LOCK_HOURS;
   let h="";
   if(locked)h+="<div class='sm' style='color:#c9a86a;margin-bottom:8px'>⚔ Paz obligada: no se puede declarar la guerra hasta dentro de "+fmtDur(WAR_LOCK_HOURS-S.hour)+".</div>";
+  { const myL=leagueOf(S.player);
+    h+="<div style='margin-bottom:8px'><button class='bbtn' onclick='openLeagues()' title='Ligas defensivas: al atacar a un miembro, los demás acuden a defenderlo'>🛡 Ligas defensivas"+
+       (myL?(" — "+myL.name):"")+"</button></div>"; }
   // detalle del país seleccionado (con sus acciones), si sigue vivo y no es el jugador
   if(S.dipSel>=0&&S.dipSel<NPLAY&&S.dipSel!==S.player&&S.nations[S.dipSel]&&S.nations[S.dipSel].alive)
     h+=dipDetailHTML(S.dipSel);
@@ -1018,6 +1022,54 @@ function refreshCoalPeace(){
   }else h+="<div class='sm' style='color:#c9a86a'>Aún no ocupas ningún ducado enemigo.</div>";
   h+="<div style='margin-top:12px'>💰 Oro exigido: <input id='coalGold' type='number' min='0' step='100' value='"+Math.round(cp.gold||0)+"' style='width:96px'> <span class='sm' style='color:#7a828b'>(sugerido ≤ "+goldCap+")</span></div>";
   h+="<div style='display:flex;gap:8px;margin-top:16px'><button class='uiBtn' style='border-color:#8fb06a' onclick='coalPeaceSign()'>🕊 Firmar paz conjunta</button><button class='uiBtn' onclick='coalPeaceCancel()'>Cancelar</button></div>";
+  el.innerHTML=h;
+}
+// Ligas defensivas (Fase 6c): ventana de GESTIÓN. Si el jugador está en una liga → miembros, solicitudes
+// pendientes (admitir/rechazar por VOTO), expulsar (por voto) y salir. Si no → fundar una, o APLICAR a las
+// existentes (gate de concordia ≥ THRESH.league con el fundador). El estado vive en S.leagues.
+function refreshLeagues(){
+  const el=document.getElementById("leagueBody"); if(!el)return;
+  const me=S.player;
+  if(me<0){el.innerHTML="<p style='text-align:center;color:#9aa3ad'>Toma el mando de un reino para gestionar ligas.</p>";return;}
+  const myL=leagueOf(me);
+  let h="";
+  if(myL){
+    const founder=myL.founder;
+    h+="<div style='margin-bottom:8px'><b style='font-size:15px'>🛡 "+myL.name+"</b> <span class='sm' style='color:#7a828b'>("+myL.members.length+"/"+MAX_LEAGUE+" miembros)</span></div>";
+    h+="<div class='sm' style='color:#9aa3ad;margin-bottom:4px'>Miembros:</div><table class='dip'>";
+    for(const m of myL.members){
+      h+="<tr><td><span class='chip' style='background:"+NATIONS[m].color+"'></span> "+NATIONS[m].name+
+         (m===founder?" <span class='sm' style='color:#c9a86a'>fundador</span>":"")+(m===me?" <span class='sm' style='color:#7a828b'>(tú)</span>":"")+"</td>";
+      h+=(m!==me&&m!==founder)?"<td><button class='bbtn sm' onclick='leagueExpel("+m+")' title='Propón expulsarlo: los miembros votan por mayoría'>Expulsar</button></td>":"<td></td>";
+      h+="</tr>";
+    }
+    h+="</table>";
+    if(myL.apps.length){
+      h+="<div class='sm' style='color:#9aa3ad;margin:14px 0 4px'>Solicitudes de ingreso <span class='statv' data-tip='Deciden los miembros por mayoría: tu voto cuenta junto al de los demás.'>ⓘ</span></div><table class='dip'>";
+      for(const ap of myL.apps){ const rv=getRel(me,ap);
+        h+="<tr><td><span class='chip' style='background:"+NATIONS[ap].color+"'></span> "+NATIONS[ap].name+" <span class='sm' style='color:#7a828b'>(rel "+(rv>0?"+":"")+Math.round(rv)+")</span></td>"+
+           "<td><button class='bbtn sm' onclick='leagueVote("+ap+",true)'>Admitir</button> <button class='bbtn sm' onclick='leagueVote("+ap+",false)'>Rechazar</button></td></tr>";
+      }
+      h+="</table>";
+    } else h+="<div class='sm' style='color:#7a828b;margin-top:14px'>Sin solicitudes pendientes.</div>";
+    h+="<div style='margin-top:18px'><button class='uiBtn' onclick='leagueLeave()' title='Abandonas la liga (si eres el fundador, la hereda otro miembro)'>Salir de la liga</button></div>";
+  }else{
+    h+="<div style='margin-bottom:16px;display:flex;gap:8px;align-items:center'><input id='leagueName' type='text' maxlength='28' placeholder='Nombre de la liga' style='width:200px'> "+
+       "<button class='uiBtn' style='border-color:#8fb06a' onclick='leagueFound()'>Fundar liga</button></div>";
+    if(S.leagues.length){
+      h+="<div class='sm' style='color:#9aa3ad;margin-bottom:4px'>Ligas existentes (aplica para entrar):</div><table class='dip'>";
+      for(const L of S.leagues){
+        const names=L.members.map(m=>NATIONS[m].name).join(", ");
+        h+="<tr><td><b>🛡 "+L.name+"</b> <span class='sm' style='color:#7a828b'>("+L.members.length+"/"+MAX_LEAGUE+")</span><br><span class='sm' style='color:#9aa3ad'>"+names+"</span></td>";
+        const ca=canApplyLeague(me,L.id);
+        if(ca.ok) h+="<td><button class='bbtn sm' onclick='leagueApply("+L.id+")'>Aplicar</button></td>";
+        else{ const tip=ca.reason==="llena"?"Liga completa":ca.reason==="tension"?("Necesitas "+Math.ceil(ca.need||0)+" de concordia más con "+NATIONS[L.founder].name):"No disponible";
+          h+="<td><button class='bbtn sm' disabled title=\""+tip+"\">Aplicar</button></td>"; }
+        h+="</tr>";
+      }
+      h+="</table>";
+    } else h+="<div class='sm' style='color:#7a828b'>No hay ligas todavía. Funda la primera.</div>";
+  }
   el.innerHTML=h;
 }
 // Registro (ledger estilo EU4): tabla ordenable de todas las naciones vivas con provincias,
@@ -1357,5 +1409,5 @@ function refreshFiscal(){
   body.innerHTML=h;
 }
 export {
-  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, buildRealmMenu, refreshMetricsLog, refreshArmyPanel, refreshTreasury, refreshEstates, refreshMercado, refreshFiscal, refreshCouncil, refreshCoalPeace
+  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, buildRealmMenu, refreshMetricsLog, refreshArmyPanel, refreshTreasury, refreshEstates, refreshMercado, refreshFiscal, refreshCouncil, refreshCoalPeace, refreshLeagues
 };

@@ -5,13 +5,14 @@ import {
   enterEditor, exitEditor, pushUndo, restoreWorldFromSnap, toggleRoadEdit, setProvinceOwner, dpSimplify, simplifyRing, traceProvince, applyShape, mergeProvinces, rasterPoly, keepLargestFragment, splitProvince, refreshEditorPanel, vertexAt, nearestSegment
 } from "./editor.js";
 import {
-  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, refreshArmyPanel, buildRealmMenu, refreshTreasury, refreshEstates, refreshMercado, refreshFiscal, refreshCouncil, refreshCoalPeace
+  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, refreshArmyPanel, buildRealmMenu, refreshTreasury, refreshEstates, refreshMercado, refreshFiscal, refreshCouncil, refreshCoalPeace, refreshLeagues
 } from "./ui.js";
 import {
   atWar, declareWar, makePeace, underTruce, spawnArmy, setupNations, tryRoad, nbrs, bfsPath, startLeg, orderMove, takeTile, updateDuchy, isKeyTile, hourTick, resolveBattles, applyDamage, mergeIdle, aiTurn, findTarget, tryBuild, tryRecruit, disbandUnit, raiseLevies, checkVictory, armiesIn,
   getWar, warscore, duchyValue, occupiedDuchiesBy, report, coalitionOf, coalitionPeace
 } from "./sim.js";
-import { insult, giftGold, isEmbargoed, setEmbargo, fabricateClaim, getRel, THRESH, formPact, breakPact, hasPact } from "./diplomacy.js";
+import { insult, giftGold, isEmbargoed, setEmbargo, fabricateClaim, getRel, THRESH, formPact, breakPact, hasPact,
+  leagueOf, createLeague, applyToLeague, resolveApplication, proposeExpel, leaveLeague } from "./diplomacy.js";
 import { openCouncil, councilToggle, councilConvene, launchCouncil, cancelCouncil } from "./council.js";
 import {
   hex2rgb, provColor, paintAll, paintBorders, repaintProvince, roadCurve, drawRoads, fitCanvas, clampPan, armyPos, draw, drawArrow, drawEditorOverlay, NCOL, TCOL, WASTECOL, baseC, baseCtx, roadsC, canvas, baseData, clearSelOutline
@@ -371,6 +372,41 @@ window.dipClaim=function(duchyId){
     log("Reclamas el "+r.duchy+". La tensión con "+NATIONS[r.owner].name+" sube.");}
   refreshDiplomacy();
 };
+// --- LIGAS DEFENSIVAS (Fase 6c): fundar, aplicar (voto IA al momento), votar solicitudes, expulsar, salir ---
+window.openLeagues=function(){document.getElementById("leagueOverlay").style.display="flex";refreshLeagues();};
+window.leagueFound=function(){
+  const el=document.getElementById("leagueName"), r=createLeague(S.player,el?el.value:"");
+  if(r.ok){report("🛡","<b>"+NATIONS[S.player].name+"</b> funda <b>"+r.league.name+"</b>, una liga defensiva.",[S.player]);log("Fundas "+r.league.name+".");}
+  else log("No puedes fundar una liga ahora.");
+  refreshLeagues();refreshDiplomacy();
+};
+window.leagueApply=function(id){
+  if(!applyToLeague(S.player,id).ok){log("No puedes aplicar a esa liga.");return;}
+  const r=resolveApplication(id,S.player), L=leagueOf(S.player); // los miembros (IA) votan al momento
+  if(r.admitted){report("🛡","<b>"+NATIONS[S.player].name+"</b> ingresa en <b>"+(L?L.name:"la liga")+"</b>.",[S.player]);log("Te admiten en la liga ("+r.yes+"/"+r.total+" votos).");}
+  else log("Tu solicitud fue rechazada ("+r.yes+"/"+r.total+" votos).");
+  refreshLeagues();refreshDiplomacy();
+};
+window.leagueVote=function(ap,accept){
+  const myL=leagueOf(S.player); if(!myL)return;
+  const r=resolveApplication(myL.id,ap,accept);
+  if(r.admitted){report("🛡","<b>"+NATIONS[ap].name+"</b> ingresa en <b>"+myL.name+"</b>.",[S.player,ap]);log(NATIONS[ap].name+" admitido ("+r.yes+"/"+r.total+").");}
+  else log(NATIONS[ap].name+" no fue admitido ("+r.yes+"/"+r.total+" votos).");
+  refreshLeagues();refreshDiplomacy();
+};
+window.leagueExpel=function(m){
+  const myL=leagueOf(S.player); if(!myL)return;
+  const r=proposeExpel(myL.id,m,true);
+  if(r.expelled){report("🛡","<b>"+NATIONS[m].name+"</b> es expulsado de <b>"+myL.name+"</b>.",[S.player,m]);log(NATIONS[m].name+" expulsado ("+r.yes+"/"+r.total+").");}
+  else log("No hay mayoría para expulsar a "+NATIONS[m].name+" ("+r.yes+"/"+r.total+").");
+  refreshLeagues();refreshDiplomacy();
+};
+window.leagueLeave=function(){
+  const myL=leagueOf(S.player); if(!myL)return;
+  const nm=myL.name, r=leaveLeague(S.player);
+  if(r.ok){report("🛡","<b>"+NATIONS[S.player].name+"</b> abandona <b>"+nm+"</b>.",[S.player]);log(r.disbanded?("Sales de "+nm+"; la liga se disuelve."):("Sales de "+nm+"."));}
+  refreshLeagues();refreshDiplomacy();
+};
 
 /* ============================= Observador / tomar-soltar el mando ============================= */
 // Modo espectador: la partida corre con TODAS las naciones bajo IA (S.player=-1). Desde el
@@ -481,7 +517,7 @@ function regenerateWorld(){
   setTimeout(()=>{
     S.provs=[];S.armies=[];S.wars=new Map();S.truces=new Map();S.armyIdSeq=1;S.duchies=[];S.reports=[];
     S.rel=new Map();S.relMonthKey=-1;S.dipCd=new Map();S.dipSel=-1;S.embargoes=new Set();S.claims=new Set();S.pacts=new Map();
-    S.council=null;S.coalitions=new Map();S.coalSeq=0;
+    S.council=null;S.coalitions=new Map();S.coalSeq=0;S.leagues=[];S.leagueSeq=0;
     S.peaceWith=-1;S.peaceSel=new Set();S.peaceGold=0;S.incomingPeace=null;
     S.player=-1;S.hour=0;S.acc=0;S.started=false;S.gameOver=false;
     S.selProv=-1;S.selArmy=null;S.battleFlash={};clearSelOutline();
