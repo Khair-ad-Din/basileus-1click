@@ -138,9 +138,11 @@ function declareWar(a,b,opts){
   if(S.pacts.has(warKey(a,b)))return false; // hay pacto (no agresión/alianza): rómpelo antes de la guerra
   if(!(opts&&opts.force)&&getRel(a,b)>THRESH.war)return false; // sin suficiente tensión no se puede declarar
   const lo=Math.min(a,b),hi=Math.max(a,b);
-  S.wars.set(warKey(a,b),{a:lo,b:hi,start:S.hour,tA:0,tB:0});
-  log(NATIONS[a].name+" declara la guerra a "+NATIONS[b].name+".");
-  report("⚔","<b>"+NATIONS[a].name+"</b> declara la guerra a <b>"+NATIONS[b].name+"</b>.",[a,b]);
+  S.wars.set(warKey(a,b),{a:lo,b:hi,start:S.hour,tA:0,tB:0,coal:(opts&&opts.coal)||null}); // coal = id de coalición (paz conjunta)
+  if(!(opts&&opts.quiet)){ // quiet: la coalición emite UN solo parte por su cuenta (no uno por par)
+    log(NATIONS[a].name+" declara la guerra a "+NATIONS[b].name+".");
+    report("⚔","<b>"+NATIONS[a].name+"</b> declara la guerra a <b>"+NATIONS[b].name+"</b>.",[a,b]);
+  }
   return true;
 }
 function tallyOf(w,nation){return nation===w.a?w.tA:w.tB}
@@ -236,6 +238,61 @@ function makePeace(a,b,terms){
   }
   checkVictory();
 }
+// ---- COALICIONES (Fase 6b, Etapa 2): warscore CONJUNTO + PAZ CONJUNTA ----
+// Aportación de un ATACANTE = suma de sus warscores pairwise contra los defensores.
+function coalMemberScore(coal,n){let s=0;for(const d of coal.def)s+=warscore(n,d);return s;}
+// Warscore CONJUNTO de la coalición (ventaja total del bando atacante).
+function coalScore(coal){let s=0;for(const a of coal.atk)s+=coalMemberScore(coal,a);return s;}
+// Coalición a la que pertenece la guerra a↔b (o null).
+function coalitionOf(a,b){const w=getWar(a,b);return w&&w.coal!=null?S.coalitions.get(w.coal):null;}
+// Ducados ocupados cedibles en la paz de esta coalición (ocupados por un ATACANTE, dueño DEFENSOR).
+function coalCededDuchies(coal){const o=[];for(const d of S.duchies)if(d.occBy>=0&&coal.atk.includes(d.occBy)&&coal.def.includes(S.provs[d.cap].owner))o.push(d.id);return o;}
+
+// PAZ CONJUNTA: los líderes firman por todo el bando. terms={duchies:[id…], gold}. Cada ducado se cede a
+// quien lo OCUPA; el ORO (lo paga el líder defensor) se reparte entre los atacantes con warscore POSITIVO,
+// proporcional a su aportación (los de warscore ≤0 quedan fuera del pool). Termina TODAS las guerras
+// pairwise de la coalición + treguas. El warscore se captura ANTES de ceder (para no perder la aportación).
+function coalitionPeace(coalId,terms){
+  const coal=S.coalitions.get(coalId);if(!coal)return false;
+  terms=terms||{};
+  const parts=[];let transferred=false;
+  // 1) capturar la aportación de cada atacante ANTES de ceder ducados
+  const scores=coal.atk.filter(n=>n<NPLAY).map(n=>({n,s:coalMemberScore(coal,n)})).filter(x=>x.s>0);
+  const totalPos=scores.reduce((a,x)=>a+x.s,0);
+  // 2) cesión de ducados ocupados (cada uno a su ocupante), con su infamia
+  for(const did of (terms.duchies||[])){
+    const d=S.duchies[did];if(!d||d.occBy<0||!coal.atk.includes(d.occBy)||!coal.def.includes(S.provs[d.cap].owner))continue;
+    const to=d.occBy,from=S.provs[d.cap].owner;
+    parts.push(NATIONS[from].name+" cede el "+d.name+" a "+NATIONS[to].name);
+    conquestFanout(to,from,did);transferDuchy(d,to);transferred=true;
+  }
+  // 3) oro: el líder defensor paga; se reparte entre atacantes de warscore positivo, proporcional
+  if(terms.gold>0&&totalPos>0){
+    const payer=coal.leadD;
+    const paid=Math.min(terms.gold,(S.nations[payer]&&S.nations[payer].res.dinero)||0);
+    if(paid>0){
+      S.nations[payer].res.dinero-=paid;
+      for(const x of scores)S.nations[x.n].res.dinero=((S.nations[x.n].res.dinero)||0)+paid*(x.s/totalPos);
+      parts.push(NATIONS[payer].name+" paga "+Math.round(paid)+" ducados (repartidos por warscore)");
+    }
+  }
+  // 4) terminar todas las guerras pairwise + tregua + levantar ocupación restante + parar marchas
+  for(const a of coal.atk)for(const d of coal.def){
+    S.wars.delete(warKey(a,d));S.truces.set(warKey(a,d),S.hour+17520);clearOccupation(a,d);
+    for(const ar of S.armies){if(ar.nation!==a&&ar.nation!==d)continue;const other=ar.nation===a?d:a;if(ar.path.some(p=>S.provs[p].owner===other)){ar.path=[];ar.legDone=0;ar.legTotal=0}}
+  }
+  S.coalitions.delete(coalId);
+  if(transferred)paintBorders();
+  log("Paz de coalición entre "+NATIONS[coal.leadA].name+" y "+NATIONS[coal.leadD].name+".");
+  report("🕊","Paz de coalición: <b>"+NATIONS[coal.leadA].name+"</b> y <b>"+NATIONS[coal.leadD].name+"</b> firman."+(parts.length?" "+parts.join("; ")+".":" Paz blanca."),[...coal.atk,...coal.def]);
+  for(const nn of [...coal.atk,...coal.def])if(nn<NPLAY&&S.nations[nn].alive&&nationProvCount(nn)===0){
+    S.nations[nn].alive=false;log(NATIONS[nn].name+" ha sido borrada del mapa.");report("☠","El reino de <b>"+NATIONS[nn].name+"</b> desaparece del mapa.",[nn]);
+  }
+  checkVictory();
+  return true;
+}
+// Términos que exige una coalición IA que va ganando: todos los ducados ocupados + oro por warscore.
+function aiCoalitionTerms(coal,sc){return{duchies:coalCededDuchies(coal),gold:Math.round(Math.max(0,sc)*GOLD_PER_WS)};}
 function underTruce(a,b){
   const t=S.truces.get(a<b?a+"|"+b:b+"|"+a);
   return t!==undefined&&S.hour<t;
@@ -807,6 +864,7 @@ function aiTurn(n){
   // paz: el bando que gana propone quedándose con 1 ducado (contiguo/por mar) u oro.
   for(const m of enemies){
     const w=getWar(n,m);if(!w)continue;
+    if(w.coal)continue; // guerra de COALICIÓN: la paz es conjunta (Etapa 2), no se firma pairwise aquí
     const ws=warscore(n,m);
     if(m===S.player){maybeOfferPlayerPeace(n,m,ws);continue}
     // IA vs IA: solo el que va ganando cierra la paz con sus condiciones
@@ -816,6 +874,14 @@ function aiTurn(n){
     }else if(S.hour-w.start>3*8760&&Math.abs(ws)<10&&S.rand()<0.01){
       makePeace(n,m); // guerra larga y equilibrada: paz blanca
     }
+  }
+  // paz de COALICIÓN: si n LIDERA una coalición atacante (n===leadA), negocia por todo el bando.
+  for(const [id,coal] of S.coalitions){
+    if(coal.leadA!==n)continue;
+    if(coal.leadD===S.player)continue; // ofrecer al jugador = Etapa 3 (UI); por ahora, solo IA vs IA
+    const sc=coalScore(coal);
+    if(sc>=25&&S.rand()<0.03)coalitionPeace(id,aiCoalitionTerms(coal,sc));
+    else if(S.hour-coal.start>3*8760&&Math.abs(sc)<10&&S.rand()<0.01)coalitionPeace(id,{}); // larga y equilibrada: blanca
   }
 }
 // Elige UN ducado a exigir (requisito: solo 1 por paz), priorizando contiguos por tierra, luego por
@@ -1017,5 +1083,6 @@ function checkVictory(){
 
 export {
   atWar, declareWar, makePeace, underTruce, spawnArmy, setupNations, tryRoad, nbrs, bfsPath, startLeg, orderMove, takeTile, updateDuchy, isKeyTile, hourTick, resolveBattles, applyDamage, mergeIdle, aiTurn, findTarget, tryBuild, tryRecruit, disbandUnit, raiseLevies, checkVictory, armiesIn,
-  getWar, warscore, duchyValue, occupiedDuchiesBy, bestDuchyToTake, syncDuchyOcc, fortGarrison, siegeNeed, report
+  getWar, warscore, duchyValue, occupiedDuchiesBy, bestDuchyToTake, syncDuchyOcc, fortGarrison, siegeNeed, report,
+  coalScore, coalMemberScore, coalitionPeace, coalitionOf, coalCededDuchies
 };
