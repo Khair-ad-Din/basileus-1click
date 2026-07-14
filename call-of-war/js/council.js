@@ -84,6 +84,7 @@ function resolveDefenders(coal){
   const defender=coal.leadD, joined=[];
   for(let n=0;n<NPLAY;n++){
     if(n===defender||!alive(n)||coal.atk.includes(n)||coal.def.includes(n))continue;
+    if(n===S.player)continue; // al JUGADOR no se le arrastra a defender sin consentir (llamada a las armas = UI futura)
     if(hasPact(defender,n)!=="alliance"&&!sameLeague(defender,n))continue; // ni aliado ni co-miembro de liga
     if(coal.atk.some(a=>hasPact(n,a)))continue;            // no lucha contra un aliado suyo
     if(aiVoteDefend(n,defender,coal.leadA)!=="join")continue;
@@ -94,4 +95,27 @@ function resolveDefenders(coal){
   return joined;
 }
 
-export { openCouncil, councilToggle, councilConvene, councilSupport, launchCouncil, cancelCouncil, aiVote, resolveDefenders };
+// ---- CONSEJO OFENSIVO DE LA IA (Fase 7a) ----
+// Versión HEADLESS de launchCouncil para la IA (sin S.council ni UI): el líder reúne a sus ALIADOS
+// dispuestos (mismo criterio aiVote), lanza la coalición (guerras pairwise tagueadas) y el defensor reúne
+// a los suyos (resolveDefenders → también sus co-miembros de liga). Requiere poder declarar (sin pacto/liga
+// y con tensión suficiente; el líder ya escaló hasta el umbral antes de llamar). Devuelve {ok, coal}.
+function aiOpenWar(leader,target){
+  if(!alive(leader)||!alive(target)||leader===target)return{ok:false,reason:"invalido"};
+  if(!canDeclareWar(leader,target).ok)return{ok:false,reason:"nogate"};
+  const attackers=[leader];
+  for(let n=0;n<NPLAY;n++)if(n!==leader&&n!==target&&alive(n)&&hasPact(leader,n)==="alliance"&&aiVote(n,leader,target)==="join")attackers.push(n);
+  const defenders=[target];
+  const id=(S.coalSeq=(S.coalSeq||0)+1);
+  let any=false;
+  for(const a of attackers)for(const d of defenders)if(declareWar(a,d,{force:true,coal:id,quiet:true}))any=true;
+  if(!any)return{ok:false,reason:"nowar"};
+  const coal={id,atk:attackers.slice(),def:defenders.slice(),leadA:leader,leadD:target,start:S.hour};
+  S.coalitions.set(id,coal);
+  const alliesJoined=attackers.length-1;
+  const defJoined=resolveDefenders(coal);
+  report("⚔","<b>"+NATIONS[leader].name+"</b> forma una coalición"+(alliesJoined>0?(" con "+alliesJoined+" aliado(s)"):"")+" y declara la guerra a <b>"+NATIONS[target].name+"</b>."+(defJoined.length?(" "+NATIONS[target].name+" reúne "+defJoined.length+" defensor(es)."):""),[...coal.atk,...coal.def]);
+  return{ok:true,coal};
+}
+
+export { openCouncil, councilToggle, councilConvene, councilSupport, launchCouncil, cancelCouncil, aiVote, resolveDefenders, aiOpenWar };

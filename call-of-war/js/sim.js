@@ -2,7 +2,8 @@
 import { BUILDINGS, GARR_CITADEL, GARR_FORT, GARR_MIN, GOLD_PER_WS, LEVY_RAISE_HOURS, NATIONS, NEUTRAL, NPLAY, RES_BUILDING, RES_KEYS, SIEGE_BASE_H, START_STOCK, TERRAINS, UNITS, WAR_LOCK_HOURS, WS_BATTLE, WS_DUCHY_BASE, WS_DUCHY_PER } from "./config.js";
 import { S } from "./state.js";
 import { armyAtk, armyCount, armyDef, armyHp, armySpd, bOwnerOf, buildBlock, buildJobs, buildMax, buildSlots, canAfford, canStaffIndustry, costFor, economyTick, ESTATES_BUILD, foodFill, storeCap, SUBS_BASICS, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor, usedSlots, seedStrataWealth, tsyTick, recFlow, specialistCap, jobsOf, prosperityTick, degradeBuildings, buildingProfit, buildingOutput, sourceableSet, inputsSourceable } from "./economy.js";
-import { relTick, getRel, THRESH, conquestFanout } from "./diplomacy.js";
+import { relTick, getRel, THRESH, conquestFanout, insult, fabricateClaim, hasClaim, duchyOwner, sameLeague } from "./diplomacy.js";
+import { aiOpenWar } from "./council.js";
 import { buildDuchies, hasRoad, roadLvl, isDuchyCap, kmBetween, roadKey } from "./mapgen.js";
 import { drawRoads, paintBorders, repaintProvince } from "./render.js";
 import { saveGame } from "./save.js";
@@ -725,6 +726,11 @@ function mergeIdle(){
 }
 // potencia de una nación para decisiones de agresión: fuerza militar + territorio (levas latentes)
 function mightOf(n){let s=0;for(const a of S.armies)if(a.nation===n)s+=armyAtk(a)+armyDef(a);return s+6*nationProvCount(n)}
+// Fase 7a — IA a la guerra: en vez de forzar la guerra en seco, la IA fija un objetivo (N.foe) y ESCALA la
+// tensión con acciones VISIBLES (insultos, reclamaciones) hasta el umbral (−50); entonces lanza una
+// COALICIÓN ofensiva (aiOpenWar) con sus aliados dispuestos. Constantes tunables (modificadores pequeños).
+const PICK_FOE_CHANCE=0.0025;  // prob/turno de FIJAR un nuevo objetivo (ritmo con que antes surgían las guerras)
+const ESCALATE_CHANCE=0.02;    // prob/turno de una acción de escalada (insulto o reclamación) hacia el objetivo
 function aiTurn(n){
   const N=S.nations[n];
   const owned=S.provs.filter(p=>p.owner===n&&!isOccupied(p)); // no desarrollar lo ocupado
@@ -797,30 +803,56 @@ function aiTurn(n){
     if(host&&hc<14)raiseLevies(host,6);
   }
   const day=S.hour/24;
-  if(!enemies.length&&day>90&&S.rand()<0.0025){ // las guerras surgen cada pocos años, no cada semana
-    const capP=S.provs[S.nations[n].capital];
-    const contact=new Map(); // nación -> {c: frontera compartida, d: distancia mínima a mi capital}
-    const register=(a,w)=>{
-      const o=S.provs[a].owner;
-      if(o>=NPLAY||o===n||!S.nations[o].alive)return;
-      const e=contact.get(o)||{c:0,d:1e9};
-      e.c+=w;
-      const dd=Math.hypot(S.provs[a].x-capP.x,S.provs[a].y-capP.y);
-      if(dd<e.d)e.d=dd;
-      contact.set(o,e);
-    };
-    for(const p of owned){
-      for(const a of S.adj[p.id])register(a,1);
-      for(const a of S.seaAdj[p.id])register(a,0.4); // el mar cuenta menos
+  if(!enemies.length&&day>90&&S.hour>=WAR_LOCK_HOURS){
+    // (1) validar el objetivo actual: se olvida si murió, ya hay guerra/tregua, o un pacto/liga lo blindan
+    if(N.foe!=null){const F=S.nations[N.foe];
+      if(!F||!F.alive||atWar(n,N.foe)||underTruce(n,N.foe)||S.pacts.has(warKey(n,N.foe))||sameLeague(n,N.foe))N.foe=null;
     }
-    let best=-1,bs=-1;
-    for(const[m,e]of contact){
-      if(underTruce(n,m))continue; // respetar la tregua tras una paz
-      const score=e.c/(nationStrength(m)+50)/(1+e.d/350); // vecino pegado a casa > lejano
-      if(score>bs){bs=score;best=m}
+    // (2) FIJAR objetivo (ocasional): el vecino pegado a casa y débil, si le saco ventaja de fuerza
+    if(N.foe==null&&S.rand()<PICK_FOE_CHANCE){
+      const capP=S.provs[S.nations[n].capital];
+      const contact=new Map(); // nación -> {c: frontera compartida, d: distancia mínima a mi capital}
+      const register=(a,w)=>{
+        const o=S.provs[a].owner;
+        if(o>=NPLAY||o===n||!S.nations[o].alive)return;
+        const e=contact.get(o)||{c:0,d:1e9};
+        e.c+=w;
+        const dd=Math.hypot(S.provs[a].x-capP.x,S.provs[a].y-capP.y);
+        if(dd<e.d)e.d=dd;
+        contact.set(o,e);
+      };
+      for(const p of owned){
+        for(const a of S.adj[p.id])register(a,1);
+        for(const a of S.seaAdj[p.id])register(a,0.4); // el mar cuenta menos
+      }
+      let best=-1,bs=-1;
+      for(const[m,e]of contact){
+        if(underTruce(n,m)||S.pacts.has(warKey(n,m))||sameLeague(n,m))continue; // no fijar un objetivo bloqueado
+        const score=e.c/(nationStrength(m)+50)/(1+e.d/350); // vecino pegado a casa > lejano
+        if(score>bs){bs=score;best=m}
+      }
+      // fuerza para decidir: ejércitos + territorio (potencial de levas). Ejércitos levy-heavy pesan menos.
+      if(best>=0&&mightOf(n)>mightOf(best)*1.05)N.foe=best;
     }
-    // fuerza para decidir: ejércitos + territorio (potencial de levas). Ejércitos levy-heavy pesan menos.
-    if(best>=0&&mightOf(n)>mightOf(best)*1.05)declareWar(n,best,{force:true}); // TODO Fase 7: la IA escala tensión y deja de forzar
+    // (3) ESCALAR hacia el objetivo con acciones VISIBLES, o DECLARAR (coalición) al alcanzar el umbral
+    if(N.foe!=null){
+      const foe=N.foe;
+      if(getRel(n,foe)<=THRESH.war){
+        aiOpenWar(n,foe); // consejo ofensivo headless: coalición con aliados dispuestos + rally del defensor
+        N.foe=null;
+      }else if(S.rand()<ESCALATE_CHANCE){
+        // reclamar un ducado del objetivo (casus belli) o, si no queda ninguno, insultar. El parte solo se
+        // emite si el objetivo es el JUGADOR (telegrafía la agresión sin inundar el periódico con IA vs IA).
+        const dus=[];for(const d of S.duchies)if(d&&d.provs&&duchyOwner(d.id)===foe&&!hasClaim(n,d.id))dus.push(d);
+        if(dus.length&&S.rand()<0.5){
+          const d=dus[(S.rand()*dus.length)|0], r=fabricateClaim(n,d.id);
+          if(r.ok&&foe===S.player)report("📜","<b>"+NATIONS[n].name+"</b> fabrica una reclamación sobre el <b>"+r.duchy+"</b>.",[n,foe]);
+        }else{
+          const r=insult(n,foe);
+          if(r.ok&&foe===S.player)report("⚡","<b>"+NATIONS[n].name+"</b> lanza un insulto a <b>"+NATIONS[foe].name+"</b>.",[n,foe]);
+        }
+      }
+    }
   }
   // mover ejércitos. La guarnición (def de ejércitos parados por tile) se precalcula una vez.
   const wantNeutral=day>1&&S.hour>=WAR_LOCK_HOURS; // sin expansión durante el bloqueo inicial
