@@ -5,7 +5,7 @@ import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyD
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
 import { canvas, clampPan } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
-import { armiesIn, atWar, duchyValue, fortGarrison, occupiedDuchiesBy, tryBuild, tryRecruit, tryRoad, warscore, coalitionOf } from "./sim.js";
+import { armiesIn, atWar, duchyValue, fortGarrison, occupiedDuchiesBy, tryBuild, tryRecruit, tryRoad, warscore, coalitionOf, coalScore, coalCededDuchies } from "./sim.js";
 import { getRel, relTier, THRESH, canDeclareWar, canInsult, isEmbargoed, hasClaim, relBreakdown, hasPact, canPact } from "./diplomacy.js";
 
 // Metadata de las CATEGORÍAS de bienes (orden, icono, etiqueta), reutilizada por el Mercado, la Tesorería y
@@ -949,9 +949,10 @@ function refreshDiplomacy(){
     const v=getRel(S.player,n), t=relTier(v);
     h+="<td title=\""+relTip(S.player,n)+"\">"+relBarHTML(v)+" <span style='color:"+t.color+";font-weight:600'>"+(v>0?"+":"")+Math.round(v)+"</span></td>";
     if(atWar(S.player,n)){
-      if(coalitionOf(S.player,n))
-        h+="<td style='color:#d08080'>EN GUERRA</td><td><button class='bbtn' disabled title='Guerra de coalición: la paz conjunta llega en la próxima etapa'>⚔ Coalición</button></td>";
-      else
+      if(coalitionOf(S.player,n)){
+        const cl=coalitionOf(S.player,n), lead=cl.leadA===S.player;
+        h+="<td style='color:#d08080'>EN GUERRA</td><td><button class='bbtn'"+(lead?" onclick='openCoalPeace("+n+")'":" disabled title='Espera a que el líder de la coalición proponga la paz'")+">⚔ Coalición</button></td>";
+      }else
         h+="<td style='color:#d08080'>EN GUERRA</td><td><button class='bbtn' onclick='openPeace("+n+")'>Gestionar paz</button></td>";
     }else{
       const cw=canDeclareWar(S.player,n);
@@ -996,6 +997,27 @@ function refreshCouncil(){
     h+="<div style='display:flex;gap:8px'><button class='uiBtn' style='border-color:#a85a5a' onclick='councilLaunch()'>⚔ Lanzar la guerra ("+(support+1)+" reinos)</button>"+
        "<button class='uiBtn' onclick='councilCancel()'>Cancelar</button></div>";
   }
+  el.innerHTML=h;
+}
+// Paz conjunta del jugador-líder (Etapa 3b): elige ducados ocupados a ceder + oro; firma por todo el bando.
+function refreshCoalPeace(){
+  const el=document.getElementById("coalPeaceBody"); if(!el)return;
+  const cp=S.coalPeace; if(!cp){el.innerHTML="";return;}
+  const coal=S.coalitions.get(cp.coalId);
+  if(!coal){el.innerHTML="<p style='text-align:center;color:#9aa3ad'>La coalición ya no existe.</p>";return;}
+  const sc=coalScore(coal), ceded=coalCededDuchies(coal), goldCap=Math.max(0,Math.round(Math.max(0,sc)*GOLD_PER_WS));
+  let h="<div style='margin-bottom:6px'>Contra <span class='chip' style='background:"+NATIONS[coal.leadD].color+"'></span> <b>"+NATIONS[coal.leadD].name+"</b> y su bando</div>";
+  h+="<div style='margin-bottom:10px'>Warscore conjunto: <b style='color:"+(sc>=0?"#8fb06a":"#d08080")+"'>"+Math.round(sc)+"</b></div>";
+  h+="<div class='sm' style='color:#9aa3ad;margin-bottom:4px'>Ducados ocupados a ceder (cada uno a su ocupante):</div>";
+  if(ceded.length){
+    h+="<div style='display:flex;flex-wrap:wrap;gap:6px'>";
+    for(const did of ceded){ const d=S.duchies[did], sel=cp.sel.has(did);
+      h+="<span class='cChip"+(sel?" on":"")+"' onclick='coalPeaceToggle("+did+")'>"+(sel?"✓ ":"")+d.name+" → "+NATIONS[d.occBy].name+"</span>";
+    }
+    h+="</div>";
+  }else h+="<div class='sm' style='color:#c9a86a'>Aún no ocupas ningún ducado enemigo.</div>";
+  h+="<div style='margin-top:12px'>💰 Oro exigido: <input id='coalGold' type='number' min='0' step='100' value='"+Math.round(cp.gold||0)+"' style='width:96px'> <span class='sm' style='color:#7a828b'>(sugerido ≤ "+goldCap+")</span></div>";
+  h+="<div style='display:flex;gap:8px;margin-top:16px'><button class='uiBtn' style='border-color:#8fb06a' onclick='coalPeaceSign()'>🕊 Firmar paz conjunta</button><button class='uiBtn' onclick='coalPeaceCancel()'>Cancelar</button></div>";
   el.innerHTML=h;
 }
 // Registro (ledger estilo EU4): tabla ordenable de todas las naciones vivas con provincias,
@@ -1335,5 +1357,5 @@ function refreshFiscal(){
   body.innerHTML=h;
 }
 export {
-  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, buildRealmMenu, refreshMetricsLog, refreshArmyPanel, refreshTreasury, refreshEstates, refreshMercado, refreshFiscal, refreshCouncil
+  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, buildRealmMenu, refreshMetricsLog, refreshArmyPanel, refreshTreasury, refreshEstates, refreshMercado, refreshFiscal, refreshCouncil, refreshCoalPeace
 };

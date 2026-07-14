@@ -60,10 +60,36 @@ function launchCouncil(){
   const coal={id,atk:attackers.slice(),def:defenders.slice(),leadA:c.leader,leadD:c.target,start:S.hour};
   S.coalitions.set(id,coal);
   const alliesJoined=attackers.length-1;
-  report("⚔","<b>"+NATIONS[c.leader].name+"</b> forma una coalición"+(alliesJoined>0?(" con "+alliesJoined+" aliado(s)"):"")+" y declara la guerra a <b>"+NATIONS[c.target].name+"</b>.",[...attackers,...defenders]);
+  const defJoined=resolveDefenders(coal); // el defensor reúne a sus aliados (Etapa 3c)
+  report("⚔","<b>"+NATIONS[c.leader].name+"</b> forma una coalición"+(alliesJoined>0?(" con "+alliesJoined+" aliado(s)"):"")+" y declara la guerra a <b>"+NATIONS[c.target].name+"</b>."+(defJoined.length?(" "+NATIONS[c.target].name+" reúne "+defJoined.length+" defensor(es)."):""),[...coal.atk,...coal.def]);
   S.council=null;
-  return{ok:true,coal};
+  return{ok:true,coal,defJoined};
 }
 function cancelCouncil(){S.council=null;return{ok:true};}
 
-export { openCouncil, councilToggle, councilConvene, councilSupport, launchCouncil, cancelCouncil, aiVote };
+// ---- CONSEJO DEL DEFENSOR (Etapa 3c) ----
+// Voto de un aliado del DEFENSOR: acude salvo que aprecie al agresor, tenga pacto con él o esté sobrecargado.
+function aiVoteDefend(ally,defender,attackerLeader){
+  if(hasPact(ally,attackerLeader))return "decline";
+  if(getRel(ally,attackerLeader)>=25)return "decline";
+  if(countWars(ally)>=2)return "decline";
+  return "join";
+}
+// Tras lanzar una coalición, el DEFENSOR (líder def) reúne a SUS aliados (su propio consejo defensivo):
+// los que acuden entran en el bando defensor y se crean sus guerras pairwise contra cada atacante. Solo
+// acuden si pueden luchar contra TODOS los atacantes (sin pacto con ninguno). Devuelve los que se unieron.
+function resolveDefenders(coal){
+  const defender=coal.leadD, joined=[];
+  for(let n=0;n<NPLAY;n++){
+    if(n===defender||!alive(n)||coal.atk.includes(n)||coal.def.includes(n))continue;
+    if(hasPact(defender,n)!=="alliance")continue;
+    if(coal.atk.some(a=>hasPact(n,a)))continue;            // no lucha contra un aliado suyo
+    if(aiVoteDefend(n,defender,coal.leadA)!=="join")continue;
+    coal.def.push(n);
+    for(const a of coal.atk)declareWar(a,n,{force:true,coal:coal.id,quiet:true});
+    joined.push(n);
+  }
+  return joined;
+}
+
+export { openCouncil, councilToggle, councilConvene, councilSupport, launchCouncil, cancelCouncil, aiVote, resolveDefenders };

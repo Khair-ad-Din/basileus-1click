@@ -5,11 +5,11 @@ import {
   enterEditor, exitEditor, pushUndo, restoreWorldFromSnap, toggleRoadEdit, setProvinceOwner, dpSimplify, simplifyRing, traceProvince, applyShape, mergeProvinces, rasterPoly, keepLargestFragment, splitProvince, refreshEditorPanel, vertexAt, nearestSegment
 } from "./editor.js";
 import {
-  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, refreshArmyPanel, buildRealmMenu, refreshTreasury, refreshEstates, refreshMercado, refreshFiscal, refreshCouncil
+  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, refreshArmyPanel, buildRealmMenu, refreshTreasury, refreshEstates, refreshMercado, refreshFiscal, refreshCouncil, refreshCoalPeace
 } from "./ui.js";
 import {
   atWar, declareWar, makePeace, underTruce, spawnArmy, setupNations, tryRoad, nbrs, bfsPath, startLeg, orderMove, takeTile, updateDuchy, isKeyTile, hourTick, resolveBattles, applyDamage, mergeIdle, aiTurn, findTarget, tryBuild, tryRecruit, disbandUnit, raiseLevies, checkVictory, armiesIn,
-  getWar, warscore, duchyValue, occupiedDuchiesBy, report
+  getWar, warscore, duchyValue, occupiedDuchiesBy, report, coalitionOf, coalitionPeace
 } from "./sim.js";
 import { insult, giftGold, isEmbargoed, setEmbargo, fabricateClaim, getRel, THRESH, formPact, breakPact, hasPact } from "./diplomacy.js";
 import { openCouncil, councilToggle, councilConvene, launchCouncil, cancelCouncil } from "./council.js";
@@ -309,6 +309,21 @@ window.councilDoConvene=function(){councilConvene();refreshCouncil()};
 window.councilLaunch=function(){const r=launchCouncil();if(r.ok){closeCouncilUI();refreshDiplomacy();refreshTop();}else log("No se pudo lanzar la guerra.")};
 window.councilCancel=function(){cancelCouncil();closeCouncilUI();refreshDiplomacy()};
 document.getElementById("councilBtn").addEventListener("click",openCouncilOverlay);
+// --- Paz conjunta del jugador-líder (Etapa 3b) ---
+function readCoalGold(){const el=document.getElementById("coalGold");if(el&&S.coalPeace)S.coalPeace.gold=Math.max(0,Math.floor(+el.value||0));}
+window.openCoalPeace=function(n){
+  const coal=coalitionOf(S.player,n); if(!coal||coal.leadA!==S.player)return;
+  S.coalPeace={coalId:coal.id,sel:new Set(),gold:0};
+  document.getElementById("coalPeaceOverlay").style.display="flex";refreshCoalPeace();
+};
+window.coalPeaceToggle=function(did){readCoalGold();const cp=S.coalPeace;if(!cp)return;if(cp.sel.has(did))cp.sel.delete(did);else cp.sel.add(did);refreshCoalPeace();};
+window.coalPeaceSign=function(){
+  readCoalGold();const cp=S.coalPeace;if(!cp)return;
+  coalitionPeace(cp.coalId,{duchies:[...cp.sel],gold:cp.gold});
+  S.coalPeace=null;document.getElementById("coalPeaceOverlay").style.display="none";
+  refreshDiplomacy();refreshTop();
+};
+window.coalPeaceCancel=function(){S.coalPeace=null;document.getElementById("coalPeaceOverlay").style.display="none";};
 // --- Diplomacia (Fase 4): seleccionar país y acciones. La función de acción toca estado; aquí van
 // el parte al periódico (report), el log y el refresco de UI. ---
 window.dipSelect=function(n){S.dipSel=(S.dipSel===n?-1:n);refreshDiplomacy()};
