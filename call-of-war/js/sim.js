@@ -2,7 +2,7 @@
 import { BUILDINGS, GARR_CITADEL, GARR_FORT, GARR_MIN, GOLD_PER_WS, LEVY_RAISE_HOURS, NATIONS, NEUTRAL, NPLAY, RES_BUILDING, RES_KEYS, SIEGE_BASE_H, START_STOCK, TERRAINS, UNITS, WAR_LOCK_HOURS, WS_BATTLE, WS_DUCHY_BASE, WS_DUCHY_PER } from "./config.js";
 import { S } from "./state.js";
 import { armyAtk, armyCount, armyDef, armyHp, armySpd, bOwnerOf, buildBlock, buildJobs, buildMax, buildSlots, canAfford, canStaffIndustry, costFor, economyTick, ESTATES_BUILD, foodFill, storeCap, SUBS_BASICS, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor, usedSlots, seedStrataWealth, tsyTick, recFlow, specialistCap, jobsOf, prosperityTick, degradeBuildings, buildingProfit, buildingOutput, sourceableSet, inputsSourceable } from "./economy.js";
-import { relTick, getRel, THRESH } from "./diplomacy.js";
+import { relTick, getRel, THRESH, conquestFanout } from "./diplomacy.js";
 import { buildDuchies, hasRoad, roadLvl, isDuchyCap, kmBetween, roadKey } from "./mapgen.js";
 import { drawRoads, paintBorders, repaintProvince } from "./render.js";
 import { saveGame } from "./save.js";
@@ -205,6 +205,9 @@ function makePeace(a,b,terms){
       const d=S.duchies[did];if(!d||d.occBy<0)continue;
       const to=d.occBy,from=S.provs[d.cap].owner;
       parts.push(NATIONS[from].name+" cede el "+d.name+" a "+NATIONS[to].name);
+      const fan=conquestFanout(to,from,did); // infamia: reparte tensión a los vecinos (salvo casus belli)
+      if(!fan.claim&&fan.hits.length&&(to===S.player||fan.hits.some(x=>x.n===S.player)))
+        report("📜","La conquista del <b>"+d.name+"</b> por <b>"+NATIONS[to].name+"</b> inquieta a la región.",[to,...fan.hits.map(x=>x.n)]);
       transferDuchy(d,d.occBy);transferred=true;
     }
     if(terms.gold>0&&terms.goldFrom!=null&&terms.goldTo!=null){
@@ -1013,5 +1016,5 @@ function checkVictory(){
 
 export {
   atWar, declareWar, makePeace, underTruce, spawnArmy, setupNations, tryRoad, nbrs, bfsPath, startLeg, orderMove, takeTile, updateDuchy, isKeyTile, hourTick, resolveBattles, applyDamage, mergeIdle, aiTurn, findTarget, tryBuild, tryRecruit, disbandUnit, raiseLevies, checkVictory, armiesIn,
-  getWar, warscore, duchyValue, occupiedDuchiesBy, bestDuchyToTake, syncDuchyOcc, fortGarrison, siegeNeed
+  getWar, warscore, duchyValue, occupiedDuchiesBy, bestDuchyToTake, syncDuchyOcc, fortGarrison, siegeNeed, report
 };

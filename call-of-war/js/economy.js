@@ -1072,6 +1072,9 @@ function economyTick(dt=1){
     let lo=0,hi=node.length-1;
     while(lo<hi){
       const A=node[lo],B=node[hi];                                             // A barato (vende su excedente), B caro (compra)
+      // TODO Diplomacia (Fase 4b/comercio localizado): cuando el comercio deje de ser un pool GLOBAL,
+      // saltar el par embargado aquí → `if(isEmbargoed(A.N.idx,B.N.idx)){...buscar otro comprador...}`.
+      // Hoy no muerde (el bien llega vía intermediarios y los precios convergen global). Ver diplomacy.js.
       if(B.p-A.p<TRADE_MIN_SPREAD*ref)break;                                   // diferencial ya cerrado → sin arbitraje rentable
       const q=(A.s||0)*TRADE_RATE*dt;                                          // A exporta una fracción de su stock (convergencia gradual)
       if(q>1e-9){

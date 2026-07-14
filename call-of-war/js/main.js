@@ -9,8 +9,9 @@ import {
 } from "./ui.js";
 import {
   atWar, declareWar, makePeace, underTruce, spawnArmy, setupNations, tryRoad, nbrs, bfsPath, startLeg, orderMove, takeTile, updateDuchy, isKeyTile, hourTick, resolveBattles, applyDamage, mergeIdle, aiTurn, findTarget, tryBuild, tryRecruit, disbandUnit, raiseLevies, checkVictory, armiesIn,
-  getWar, warscore, duchyValue, occupiedDuchiesBy
+  getWar, warscore, duchyValue, occupiedDuchiesBy, report
 } from "./sim.js";
+import { insult, giftGold, isEmbargoed, setEmbargo, fabricateClaim, getRel, THRESH } from "./diplomacy.js";
 import {
   hex2rgb, provColor, paintAll, paintBorders, repaintProvince, roadCurve, drawRoads, fitCanvas, clampPan, armyPos, draw, drawArrow, drawEditorOverlay, NCOL, TCOL, WASTECOL, baseC, baseCtx, roadsC, canvas, baseData, clearSelOutline
 } from "./render.js";
@@ -293,6 +294,38 @@ window.rejectIncomingPeace=function(){
   S.peaceMode="out";S.peaceWith=-1;
 };
 window.playerDeclare=function(n){declareWar(S.player,n);refreshDiplomacy()};
+// --- Diplomacia (Fase 4): seleccionar país y acciones. La función de acción toca estado; aquí van
+// el parte al periódico (report), el log y el refresco de UI. ---
+window.dipSelect=function(n){S.dipSel=(S.dipSel===n?-1:n);refreshDiplomacy()};
+window.dipInsult=function(n){
+  const r=insult(S.player,n);
+  if(r.ok){report("⚡","<b>"+NATIONS[S.player].name+"</b> lanza un insulto a <b>"+NATIONS[n].name+"</b>.",[S.player,n]);
+    log("Insultas a "+NATIONS[n].name+". La tensión sube.");}
+  refreshDiplomacy();
+};
+window.dipGift=function(n){
+  const el=document.getElementById("dipGiftAmt"), amt=el?Math.floor(+el.value||0):0;
+  const r=giftGold(S.player,n,amt);
+  if(r.ok){report("🎁","<b>"+NATIONS[S.player].name+"</b> obsequia "+Math.round(r.given)+" ducados a <b>"+NATIONS[n].name+"</b>.",[S.player,n]);
+    log("Regalas "+Math.round(r.given)+" ducados a "+NATIONS[n].name+" (+"+r.gain.toFixed(1)+" de concordia).");}
+  else if(r.reason==="sinfondos")log("No tienes ducados para ese regalo.");
+  refreshDiplomacy();refreshTop();
+};
+// Embargo: solo TOGGLE de estado (sin efecto económico aún; ver diplomacy.js). Gate a ≤ THRESH.embargo.
+window.dipEmbargo=function(n){
+  const on=!isEmbargoed(S.player,n);
+  if(on&&getRel(S.player,n)>THRESH.embargo){log("Necesitas ≤ "+THRESH.embargo+" de tensión para cerrar el mercado.");return;}
+  setEmbargo(S.player,n,on);
+  log(on?("Cierras el mercado a "+NATIONS[n].name+" (efecto económico pendiente del comercio localizado)."):("Levantas el embargo a "+NATIONS[n].name+"."));
+  refreshDiplomacy();
+};
+// Fabricar reclamación sobre un ducado del país seleccionado: guarda el casus belli y sube la tensión.
+window.dipClaim=function(duchyId){
+  const r=fabricateClaim(S.player,duchyId);
+  if(r.ok){report("📜","<b>"+NATIONS[S.player].name+"</b> fabrica una reclamación sobre el <b>"+r.duchy+"</b> ("+NATIONS[r.owner].name+").",[S.player,r.owner]);
+    log("Reclamas el "+r.duchy+". La tensión con "+NATIONS[r.owner].name+" sube.");}
+  refreshDiplomacy();
+};
 
 /* ============================= Observador / tomar-soltar el mando ============================= */
 // Modo espectador: la partida corre con TODAS las naciones bajo IA (S.player=-1). Desde el
@@ -402,7 +435,7 @@ function regenerateWorld(){
   document.getElementById("endOverlay").style.display="none";
   setTimeout(()=>{
     S.provs=[];S.armies=[];S.wars=new Map();S.truces=new Map();S.armyIdSeq=1;S.duchies=[];S.reports=[];
-    S.rel=new Map();S.relMonthKey=-1;
+    S.rel=new Map();S.relMonthKey=-1;S.dipCd=new Map();S.dipSel=-1;S.embargoes=new Set();S.claims=new Set();
     S.peaceWith=-1;S.peaceSel=new Set();S.peaceGold=0;S.incomingPeace=null;
     S.player=-1;S.hour=0;S.acc=0;S.started=false;S.gameOver=false;
     S.selProv=-1;S.selArmy=null;S.battleFlash={};clearSelOutline();

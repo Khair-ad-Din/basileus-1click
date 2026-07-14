@@ -6,7 +6,7 @@ import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
 import { canvas, clampPan } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
 import { armiesIn, atWar, duchyValue, fortGarrison, occupiedDuchiesBy, tryBuild, tryRecruit, tryRoad, warscore } from "./sim.js";
-import { getRel, relTier, THRESH, canDeclareWar } from "./diplomacy.js";
+import { getRel, relTier, THRESH, canDeclareWar, canInsult, isEmbargoed, hasClaim, relBreakdown } from "./diplomacy.js";
 
 // Metadata de las CATEGORÍAS de bienes (orden, icono, etiqueta), reutilizada por el Mercado, la Tesorería y
 // el panel del reino para agrupar los bienes por categoría. 'moneda' (Ducados) va aparte (su propia pestaña).
@@ -870,6 +870,12 @@ function refreshSide(){
   refreshArmyPanel();
   refreshArmyWin();
 }
+// Desglose de la relación como texto para el tooltip ("Frontera −10 · Insultos −8 · Conquista (rencor) −24").
+function relTip(a,b){
+  const bd=relBreakdown(a,b);
+  if(!bd.length)return "Sin tensión ni concordia (0)";
+  return bd.map(x=>x.label+" "+(x.v>0?"+":"−")+Math.abs(Math.round(x.v))).join(" · ");
+}
 // Barra visual del campo compartido Tensión↔Concordia (−100..+100). El 0 es el centro; la barra
 // se llena a la IZQUIERDA en rojo (tensión) o a la DERECHA en verde/azul (concordia).
 function relBarHTML(v){
@@ -880,19 +886,53 @@ function relBarHTML(v){
   return "<div class='relbar' title='"+t.label+" ("+(v>0?"+":"")+Math.round(v)+")'>"+
     "<div class='relfill' style='"+seg+"'></div><div class='relzero'></div></div>";
 }
+// Cabecera de DETALLE del país seleccionado: relación + acciones diplomáticas (Fase 4). Se acciona
+// haciendo clic en el nombre de un país de la tabla (S.dipSel).
+function dipDetailHTML(n){
+  const v=getRel(S.player,n), t=relTier(n===S.dipSel?v:v);
+  const ci=canInsult(S.player,n);
+  let h="<div class='dipDetail'>";
+  h+="<div class='dipDetHead'><span class='chip' style='background:"+NATIONS[n].color+"'></span> <b>"+NATIONS[n].name+"</b> "+
+     "<span style='color:"+t.color+";font-weight:600' title=\""+relTip(S.player,n)+"\">"+(v>0?"+":"")+Math.round(v)+" · "+t.label+"</span>"+
+     " <span class='sm' style='color:#7a828b'>"+relTip(S.player,n)+"</span></div>";
+  h+="<div class='dipActs'>";
+  h+="<button class='bbtn'"+(ci.ok?" onclick='dipInsult("+n+")'":" disabled title='En cooldown (≈1 mes entre insultos)'")+">⚡ Insultar</button>";
+  h+="<span class='dipGiftBox'>🎁 <input id='dipGiftAmt' type='number' min='0' step='50' value='500' style='width:74px'> duc. "+
+     "<button class='bbtn' onclick='dipGift("+n+")'>Regalar</button></span>";
+  // Embargo: solo toggle (sin efecto económico aún; ver diplomacy.js). Activarlo exige ≤ THRESH.embargo.
+  const emb=isEmbargoed(S.player,n), canEmb=v<=THRESH.embargo;
+  if(emb) h+="<button class='bbtn' onclick='dipEmbargo("+n+")' title='Sin efecto económico hasta localizar el comercio'>🚫 Levantar embargo</button>";
+  else h+="<button class='bbtn'"+(canEmb?" onclick='dipEmbargo("+n+")' title='Sin efecto económico hasta localizar el comercio'":" disabled title='Necesitas ≤ "+THRESH.embargo+" de tensión'")+">🚫 Embargo</button>";
+  h+="</div>";
+  // Reclamaciones: ducados del país seleccionado (dueño = dueño de la capital del ducado)
+  const duchies=S.duchies.filter(d=>S.provs[d.cap]&&S.provs[d.cap].owner===n);
+  if(duchies.length){
+    h+="<div class='dipClaims'><span class='sm' style='color:#9aa3ad'>Reclamar ducados <span class='statv' data-tip='Fabrica un derecho sobre el ducado: sube la tensión con el dueño y servirá de casus belli (anulará la reacción de los vecinos al conquistarlo).'>ⓘ</span></span> ";
+    for(const d of duchies){
+      if(hasClaim(S.player,d.id)) h+="<span class='dipClaimed' title='Ya reclamado'>📜 "+d.name+"</span>";
+      else h+="<button class='bbtn sm' onclick='dipClaim("+d.id+")'>"+d.name+"</button>";
+    }
+    h+="</div>";
+  }
+  h+="</div>";
+  return h;
+}
 function refreshDiplomacy(){
   const locked=S.hour<WAR_LOCK_HOURS;
   let h="";
   if(locked)h+="<div class='sm' style='color:#c9a86a;margin-bottom:8px'>⚔ Paz obligada: no se puede declarar la guerra hasta dentro de "+fmtDur(WAR_LOCK_HOURS-S.hour)+".</div>";
+  // detalle del país seleccionado (con sus acciones), si sigue vivo y no es el jugador
+  if(S.dipSel>=0&&S.dipSel<NPLAY&&S.dipSel!==S.player&&S.nations[S.dipSel]&&S.nations[S.dipSel].alive)
+    h+=dipDetailHTML(S.dipSel);
   h+="<table class='dip'><tr><th>Nación</th><th>Prov.</th><th>Fuerza</th><th>Relación</th><th>Estado</th><th></th></tr>";
   for(let n=0;n<NPLAY;n++){
     if(n===S.player)continue;
-    const alive=S.nations[n].alive;
-    h+="<tr><td><span class='chip' style='background:"+NATIONS[n].color+"'></span> "+NATIONS[n].name+"</td>";
+    const alive=S.nations[n].alive, sel=n===S.dipSel;
+    h+="<tr"+(sel?" class='dipRowSel'":"")+"><td class='dipName' onclick='dipSelect("+n+")' title='Ver acciones'><span class='chip' style='background:"+NATIONS[n].color+"'></span> "+NATIONS[n].name+"</td>";
     h+="<td>"+nationProvCount(n)+"</td><td>"+Math.round(nationStrength(n))+"</td>";
     if(!alive){h+="<td colspan='3'>Eliminada</td></tr>";continue}
     const v=getRel(S.player,n), t=relTier(v);
-    h+="<td>"+relBarHTML(v)+" <span style='color:"+t.color+";font-weight:600'>"+(v>0?"+":"")+Math.round(v)+"</span></td>";
+    h+="<td title=\""+relTip(S.player,n)+"\">"+relBarHTML(v)+" <span style='color:"+t.color+";font-weight:600'>"+(v>0?"+":"")+Math.round(v)+"</span></td>";
     if(atWar(S.player,n)){
       h+="<td style='color:#d08080'>EN GUERRA</td><td><button class='bbtn' onclick='openPeace("+n+")'>Gestionar paz</button></td>";
     }else{

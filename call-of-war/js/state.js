@@ -8,6 +8,8 @@ export const S = {
   nations: [], armies: [], wars: new Map(), truces: new Map(), armyIdSeq: 1,
   duchies: [], reports: [],
   rel: new Map(), relMonthKey: -1, // diplomacia: campo compartido Tensión↔Concordia por par "a|b" (−100..+100); mes del último tick de deriva
+  dipCd: new Map(), dipSel: -1, // diplomacia: cooldowns de acción ("accion|a|b"→hora) y nación seleccionada en el panel
+  embargoes: new Set(), claims: new Set(), // embargos por par "a|b" (sin efecto econ. aún) y reclamaciones "nacion|duchyId"
   roads: new Map(), roadQueue: [], customRoads: false, // clave "a|b" -> nivel (1..3)
   player: -1, hour: 0, acc: 0, speed: 1, started: false, gameOver: false,
   // capa de presentación mensual de la tesorería del jugador (ver economy.js: tsyTick/tsyAvail)
