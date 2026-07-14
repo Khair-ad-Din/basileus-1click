@@ -2,7 +2,9 @@
 import { BUILDINGS, GARR_CITADEL, GARR_FORT, GARR_MIN, GOLD_PER_WS, LEVY_RAISE_HOURS, NATIONS, NEUTRAL, NPLAY, RES_BUILDING, RES_KEYS, SIEGE_BASE_H, START_STOCK, TERRAINS, UNITS, WAR_LOCK_HOURS, WS_BATTLE, WS_DUCHY_BASE, WS_DUCHY_PER } from "./config.js";
 import { S } from "./state.js";
 import { armyAtk, armyCount, armyDef, armyHp, armySpd, bOwnerOf, buildBlock, buildJobs, buildMax, buildSlots, canAfford, canStaffIndustry, costFor, economyTick, ESTATES_BUILD, foodFill, storeCap, SUBS_BASICS, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor, usedSlots, seedStrataWealth, tsyTick, recFlow, specialistCap, jobsOf, prosperityTick, degradeBuildings, buildingProfit, buildingOutput, sourceableSet, inputsSourceable } from "./economy.js";
-import { relTick, getRel, THRESH, conquestFanout, insult, fabricateClaim, hasClaim, duchyOwner, sameLeague } from "./diplomacy.js";
+import { relTick, getRel, THRESH, conquestFanout, insult, fabricateClaim, hasClaim, duchyOwner, sameLeague,
+  hasPact, nationNeighbors, rivalsOf, isRival, sharedRivals, MAX_RIVALS, canPact, formPact,
+  leagueOf, canApplyLeague, applyToLeague, createLeague, leaveLeague, resolveApplication, MAX_LEAGUE } from "./diplomacy.js";
 import { aiOpenWar } from "./council.js";
 import { buildDuchies, hasRoad, roadLvl, isDuchyCap, kmBetween, roadKey } from "./mapgen.js";
 import { drawRoads, paintBorders, repaintProvince } from "./render.js";
@@ -763,6 +765,79 @@ function mightOf(n){let s=0;for(const a of S.armies)if(a.nation===n)s+=armyAtk(a
 // COALICIÓN ofensiva (aiOpenWar) con sus aliados dispuestos. Constantes tunables (modificadores pequeños).
 const PICK_FOE_CHANCE=0.0025;  // prob/turno de FIJAR un nuevo objetivo (ritmo con que antes surgían las guerras)
 const ESCALATE_CHANCE=0.02;    // prob/turno de una acción de escalada (insulto o reclamación) hacia el objetivo
+// Fase 7b — DIPLOMACIA AUTÓNOMA por RIVALIDADES. La IA rivaliza AMENAZAS cercanas de poder comparable/superior
+// (no presa débil), y de los rivales COMUNES emergen alianzas/ligas. Constantes tunables.
+const RIVAL_MIN_RATIO=0.7;     // solo es RIVAL quien tiene ≥ esto veces mi fuerza (comparable/superior; el resto es presa)
+const RIVAL_EVAL_CHANCE=0.004; // prob/turno de reevaluar mis rivales (amenazas vecinas)
+const DIPLO_CHANCE=0.006;      // prob/turno de dar un paso diplomático (alianza/liga) con un apto por rival común
+const RIVAL_FOE_APPETITE=1.6;  // apetito extra por fijar como objetivo a un RIVAL (frente a presa cualquiera)
+// Fuerza de una COALICIÓN de n contra `target`: la mía + la de mis ALIADOS que acudirían (mismo criterio que
+// aiVote: no atacan a quien tienen pacto o aprecian). Permite a la IA ir a por un rival fuerte ENTRE VARIOS.
+function coalitionMight(n,target){
+  let m=mightOf(n);
+  for(let a=0;a<NPLAY;a++){
+    if(a===n||a===target||!S.nations[a]||!S.nations[a].alive)continue;
+    if(hasPact(n,a)!=="alliance")continue;                 // solo aliados formales acuden al ataque
+    if(hasPact(a,target)||getRel(a,target)>=25)continue;   // no atacan a quien aprecian/tienen pacto
+    m+=mightOf(a);
+  }
+  return m;
+}
+// Reevalúa los RIVALES de la nación IA n: amenazas VECINAS de poder comparable/superior (no presa débil,
+// ni aliados/co-miembros de liga), ordenadas por fuerza, hasta MAX_RIVALS. Rivalizar es público y estructural.
+function aiPickRivals(n){
+  const N=S.nations[n]; if(!N||!N.alive||!N.ai)return;
+  const myMight=mightOf(n), scored=[];
+  for(const m of nationNeighbors(n)){
+    if(!S.nations[m]||!S.nations[m].alive)continue;
+    if(hasPact(n,m)||sameLeague(n,m))continue;         // no se rivaliza a un amigo (pacto o liga)
+    const mm=mightOf(m);
+    if(mm<RIVAL_MIN_RATIO*myMight)continue;            // presa débil → objetivo de conquista, no rival
+    scored.push([m,mm]);
+  }
+  scored.sort((a,b)=>b[1]-a[1]);                       // mayor amenaza primero
+  N.rivals=scored.slice(0,MAX_RIVALS).map(x=>x[0]);
+}
+// Paso de LIGA rival-driven: entra en la MEJOR liga ajena que comparte mi rival; si ya estoy en una, salto a
+// otra claramente mejor (consolidación); si no hay ninguna afín y tengo ≥2 aptos, FUNDO una. Al jugador no se
+// le mete: aplicar a la liga del jugador queda PENDIENTE de su voto (no se auto-resuelve).
+function aiLeagueStep(n,partners){
+  const myL=leagueOf(n);
+  const affic=L=>{let a=0;for(const m of L.members)if(m!==n&&sharedRivals(n,m)>=1)a++;return a;};
+  let target=null,ts=-1;
+  for(const L of S.leagues){
+    if(myL&&L.id===myL.id)continue;
+    const a=affic(L); if(a<=0)continue;                // solo ligas que comparten mi rival
+    if(!myL&&!canApplyLeague(n,L.id).ok)continue;      // desde fuera: debo poder entrar (hueco+gate)
+    if(myL&&L.members.length>=MAX_LEAGUE)continue;
+    const s=a*10+L.members.length;                     // más afines y más grande = mejor
+    if(s>ts){ts=s;target=L;}
+  }
+  const joinLeague=L=>{ if(applyToLeague(n,L.id).ok && !L.members.includes(S.player)) resolveApplication(L.id,n); };
+  if(myL){
+    if(target && ts > affic(myL)*10+myL.members.length){ leaveLeague(n); joinLeague(target); } // saltar a una mejor
+    return;
+  }
+  if(target){ joinLeague(target); return; }            // entrar en la mejor liga afín
+  if(partners.length>=2) createLeague(n);              // fundar con ≥2 aptos por rival común
+}
+// Paso DIPLOMÁTICO autónomo de la nación IA n (Fase 7b): con un APTO por rival común (comparte un rival
+// conmigo, sin guerra/pacto/rivalidad y sin tensión), entra/funda/cambia de liga y forma una alianza con el
+// más fuerte. El JUGADOR queda EXCLUIDO de la auto-alianza/auto-liga (necesita su consentimiento). El
+// ritmo (probabilidad por turno) lo gobierna el llamante (aiTurn), no esta función.
+function aiDiplomacy(n){
+  const N=S.nations[n]; if(!N||!N.alive||!N.ai)return;
+  const partners=[];
+  for(let m=0;m<NPLAY;m++){
+    if(m===n||m===S.player||!S.nations[m]||!S.nations[m].alive)continue; // al jugador no se le auto-alía
+    if(atWar(n,m)||hasPact(n,m)||isRival(n,m))continue;
+    if(sharedRivals(n,m)>=1&&getRel(n,m)>=0)partners.push(m);
+  }
+  if(!partners.length)return;
+  aiLeagueStep(n,partners);
+  let best=-1,bm=-1;for(const m of partners){if(hasPact(n,m))continue;const mm=mightOf(m);if(mm>bm){bm=mm;best=m;}}
+  if(best>=0&&canPact(n,best,"alliance").ok)formPact(n,best,"alliance");
+}
 function aiTurn(n){
   const N=S.nations[n];
   const owned=S.provs.filter(p=>p.owner===n&&!isOccupied(p)); // no desarrollar lo ocupado
@@ -819,6 +894,11 @@ function aiTurn(n){
       if(bu)disbandUnit(big,bu,1);
     }
   }
+  // diplomacia autónoma (Fase 7b): reevaluar rivales y, de los rivales comunes, formar alianzas/ligas
+  if(S.hour>=WAR_LOCK_HOURS){
+    if(S.rand()<RIVAL_EVAL_CHANCE)aiPickRivals(n);
+    if(S.rand()<DIPLO_CHANCE)aiDiplomacy(n);
+  }
   // guerra: declarar al vecino con el que más frontera se comparte, ponderado por debilidad
   const enemies=[];
   for(let m=0;m<NPLAY;m++)if(m!==n&&S.nations[m].alive&&atWar(n,m))enemies.push(m);
@@ -860,11 +940,15 @@ function aiTurn(n){
       let best=-1,bs=-1;
       for(const[m,e]of contact){
         if(underTruce(n,m)||S.pacts.has(warKey(n,m))||sameLeague(n,m))continue; // no fijar un objetivo bloqueado
-        const score=e.c/(nationStrength(m)+50)/(1+e.d/350); // vecino pegado a casa > lejano
+        // VIABILIDAD: presa que bato en SOLITARIO, o un RIVAL que supero con COALICIÓN (yo + aliados)
+        const solo=mightOf(n)>mightOf(m)*1.05;
+        const coal=isRival(n,m)&&coalitionMight(n,m)>mightOf(m)*1.05;
+        if(!(solo||coal))continue;                          // no fijo un objetivo que no puedo batir ni con aliados
+        let score=e.c/(nationStrength(m)+50)/(1+e.d/350);   // vecino pegado a casa > lejano
+        if(isRival(n,m))score*=RIVAL_FOE_APPETITE;          // prefiere ir a por su rival declarado
         if(score>bs){bs=score;best=m}
       }
-      // fuerza para decidir: ejércitos + territorio (potencial de levas). Ejércitos levy-heavy pesan menos.
-      if(best>=0&&mightOf(n)>mightOf(best)*1.05)N.foe=best;
+      if(best>=0)N.foe=best;
     }
     // (3) ESCALAR hacia el objetivo con acciones VISIBLES, o DECLARAR (coalición) al alcanzar el umbral
     if(N.foe!=null){
@@ -1149,5 +1233,6 @@ function checkVictory(){
 export {
   atWar, declareWar, makePeace, underTruce, spawnArmy, setupNations, tryRoad, nbrs, bfsPath, startLeg, orderMove, takeTile, updateDuchy, isKeyTile, hourTick, resolveBattles, applyDamage, mergeIdle, aiTurn, findTarget, tryBuild, tryRecruit, disbandUnit, raiseLevies, checkVictory, armiesIn,
   getWar, warscore, duchyValue, occupiedDuchiesBy, bestDuchyToTake, syncDuchyOcc, fortGarrison, siegeNeed, report,
-  coalScore, coalMemberScore, coalitionPeace, coalitionOf, coalCededDuchies
+  coalScore, coalMemberScore, coalitionPeace, coalitionOf, coalCededDuchies,
+  mightOf, coalitionMight, aiPickRivals, aiDiplomacy
 };

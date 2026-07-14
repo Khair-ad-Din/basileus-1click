@@ -33,6 +33,10 @@ const MAX_LEAGUE=5;        // tope de miembros por liga (evita el 'blob' que arr
 const LEAGUE_BONUS=5;      // concordia ESTRUCTURAL entre cada par de co-miembros (mientras compartan liga)
 const LEAGUE_ADMIT_MIN=0;  // un miembro vota SÍ a admitir a un aspirante si no está tenso con él (getRel≥esto)
 const LEAGUE_EXPEL_MAX=0;  // un miembro vota expulsar a otro si su relación con él cayó por debajo (getRel<esto)
+// RIVALIDADES (Fase 7b): declaración PÚBLICA (visible para todos) de rivalidad. Motor de alianzas/ligas.
+const MAX_RIVALS=3;         // rivales máximos por nación
+const RIVAL_TENSION=15;     // tensión ESTRUCTURAL entre rivales (en cualquier dirección) mientras dure
+const COMMON_RIVAL_BONUS=12;// concordia ESTRUCTURAL por cada RIVAL COMÚN (ambos rivalizan a un tercero), tope 2
 
 function clamp(x){return x<REL_MIN?REL_MIN:x>REL_MAX?REL_MAX:x}
 function monthKeyOf(hour){const d=new Date(START_DATE+hour*3600e3);return d.getUTCFullYear()*12+d.getUTCMonth()}
@@ -49,11 +53,27 @@ function leagueOf(n){for(const L of S.leagues)if(L.members.includes(n))return L;
 function sameLeague(a,b){if(a===b)return false;const L=leagueOf(a);return !!L&&L.members.includes(b);}
 // Bonus estructural entre co-miembros de una misma liga (mientras compartan liga).
 function leagueBonus(a,b){return sameLeague(a,b)?LEAGUE_BONUS:0;}
-// Aporte ESTRUCTURAL (permanente mientras dure la condición): guerra, frontera, PACTOS y LIGA (y futuros
-// embargo/mercado). Se COMPUTA de otro estado, no se guarda.
+// RIVALIDADES: lista de rivales de una nación (índices), o vacío. N.rivals se guarda en la nación.
+function rivalsOf(n){const N=S.nations[n];return (N&&N.rivals)||[];}
+// ¿Son rivales a y b? (declaración en CUALQUIER dirección → antagonismo público).
+function isRival(a,b){return rivalsOf(a).includes(b)||rivalsOf(b).includes(a);}
+// Nº de RIVALES COMUNES: terceros a los que AMBOS rivalizan (motor de concordia entre aptos a aliarse).
+function sharedRivals(a,b){
+  const ra=rivalsOf(a); if(!ra.length)return 0; const rb=rivalsOf(b); if(!rb.length)return 0;
+  let c=0; for(const t of ra)if(t!==a&&t!==b&&rb.includes(t))c++; return c;
+}
+// Aporte estructural de la rivalidad: −tensión si son rivales; +concordia por cada rival común (tope 2).
+function rivalStructural(a,b){
+  let s=0;
+  if(isRival(a,b))s-=RIVAL_TENSION;
+  const sh=sharedRivals(a,b); if(sh)s+=Math.min(sh,2)*COMMON_RIVAL_BONUS;
+  return s;
+}
+// Aporte ESTRUCTURAL (permanente mientras dure la condición): guerra, frontera, PACTOS, LIGA y RIVALIDADES
+// (y futuros embargo/mercado). Se COMPUTA de otro estado, no se guarda.
 function structural(a,b){
   if(atWarPair(a,b))return BASE_WAR;
-  return (nationAdjSet().has(relKey(a,b))?BASE_BORDER:0)+pactBonus(a,b)+leagueBonus(a,b);
+  return (nationAdjSet().has(relKey(a,b))?BASE_BORDER:0)+pactBonus(a,b)+leagueBonus(a,b)+rivalStructural(a,b);
 }
 // Suma de los IMPULSOS guardados del par (los que decaen).
 function impSum(a,b){const m=S.rel.get(relKey(a,b));if(!m)return 0;let s=0;for(const k in m)s+=m[k];return s;}
@@ -84,6 +104,8 @@ function relBreakdown(a,b){
     if(nationAdjSet().has(relKey(a,b)))out.push({label:"Frontera",v:BASE_BORDER});
     const t=hasPact(a,b); if(t)out.push({label:t==="alliance"?"Alianza":"No agresión", v:pactBonus(a,b)});
     if(sameLeague(a,b))out.push({label:"Liga",v:LEAGUE_BONUS});
+    if(isRival(a,b))out.push({label:"Rival",v:-RIVAL_TENSION});
+    const sh=sharedRivals(a,b); if(sh)out.push({label:"Rival común",v:Math.min(sh,2)*COMMON_RIVAL_BONUS});
   }
   const m=S.rel.get(relKey(a,b));
   if(m)for(const k in m)if(Math.abs(m[k])>=0.5)out.push({label:IMP_LABEL[k]||k,v:m[k]});
@@ -263,8 +285,33 @@ function conquestFanout(to,from,duchyId){
 function canPact(a,b,type){
   if(!validPair(a,b)||atWarPair(a,b))return{ok:false,reason:"guerra"};
   if(hasPact(a,b)===type)return{ok:false,reason:"yaexiste"};
-  const need=type==="alliance"?THRESH.alliance:THRESH.nap, cur=getRel(a,b);
+  const cur=getRel(a,b);
+  if(type==="alliance"){
+    // alianza: por CONCORDIA alta (≥+50) O por RIVAL COMÚN (aptos naturales) sin estar tensos (≥0)
+    const ok=cur>=THRESH.alliance || (sharedRivals(a,b)>=1&&cur>=0);
+    return{ok, need:ok?0:THRESH.alliance-cur};
+  }
+  const need=THRESH.nap;
   return{ok:cur>=need, need:cur>=need?0:need-cur};
+}
+// ---- RIVALIDADES (Fase 7b): gestión. Declarar/quitar rival (público). No se rivaliza a un aliado/co-liga.
+function canRival(a,b){
+  if(!validPair(a,b))return false;
+  if(hasPact(a,b)||sameLeague(a,b))return false;     // no se rivaliza a un amigo (pacto o liga)
+  return !rivalsOf(a).includes(b);
+}
+// a declara rival a b (hasta MAX_RIVALS). Devuelve true si se añadió; false si lleno/ inválido.
+function addRival(a,b){
+  if(!canRival(a,b))return false;
+  const N=S.nations[a]; if(!N)return false;
+  if(!N.rivals)N.rivals=[];
+  if(N.rivals.length>=MAX_RIVALS)return false;       // lleno: el llamante decide si reemplaza (removeRival)
+  N.rivals.push(b); return true;
+}
+function removeRival(a,b){
+  const N=S.nations[a]; if(!N||!N.rivals)return false;
+  const i=N.rivals.indexOf(b); if(i<0)return false;
+  N.rivals.splice(i,1); return true;
 }
 function formPact(a,b,type){
   const c=canPact(a,b,type); if(!c.ok)return{ok:false,reason:c.reason||"tension",need:c.need};
@@ -338,8 +385,10 @@ function canApplyLeague(n,id){
   if(leagueOf(n))return{ok:false,reason:"enotraliga"};
   if(L.members.length>=MAX_LEAGUE)return{ok:false,reason:"llena"};
   if(L.apps.includes(n))return{ok:false,reason:"yaaplico"};
+  // gate: concordia ≥ THRESH.league con el fundador, O RIVAL COMÚN con algún miembro y sin estar tenso (≥0)
   const cur=getRel(n,L.founder), need=THRESH.league-cur;
-  return{ok:cur>=THRESH.league, need:need>0?need:0, reason:cur>=THRESH.league?"":"tension"};
+  const byRival=L.members.some(m=>m!==n&&sharedRivals(n,m)>=1)&&cur>=0;
+  return{ok:cur>=THRESH.league||byRival, need:need>0?need:0, reason:(cur>=THRESH.league||byRival)?"":"tension"};
 }
 function applyToLeague(n,id){
   const c=canApplyLeague(n,id); if(!c.ok)return{ok:false,reason:c.reason,need:c.need};
@@ -387,22 +436,15 @@ function leaveLeague(n){
   if(L.founder===n)L.founder=L.members[0];
   return{ok:true,disbanded:false};
 }
-// Tick MENSUAL de ligas (llamado desde relTick). PODA miembros muertos y disuelve ligas vacías; las IA fuera
-// de liga con suficiente concordia con un fundador APLICAN; y se resuelven por voto las solicitudes de ligas
-// SIN el jugador (las de la liga del jugador esperan su decisión en la UI). IA MÍNIMA y PROVISIONAL (Fase 7).
+// Tick MENSUAL de ligas (llamado desde relTick). PODA miembros muertos y disuelve ligas vacías; y resuelve
+// por voto las solicitudes de ligas SIN el jugador (las de la liga del jugador esperan su decisión en la UI).
+// La DECISIÓN de aplicar/fundar/cambiar de liga la toma la IA rival-driven (sim.js aiDiplomacy, Fase 7b).
 function leagueTick(){
   for(const L of S.leagues.slice()){
     L.members=L.members.filter(m=>S.nations[m]&&S.nations[m].alive);
     L.apps=L.apps.filter(a=>S.nations[a]&&S.nations[a].alive&&!L.members.includes(a));
     if(!L.members.length){S.leagues=S.leagues.filter(x=>x!==L);continue;}
     if(!L.members.includes(L.founder))L.founder=L.members[0];
-  }
-  for(let n=0;n<NPLAY;n++){
-    if(n===S.player||!S.nations[n]||!S.nations[n].alive||leagueOf(n))continue;
-    for(const L of S.leagues){
-      if(L.members.length>=MAX_LEAGUE||L.apps.includes(n)||L.members.includes(n))continue;
-      if(getRel(n,L.founder)>=THRESH.league){L.apps.push(n);break;}
-    }
   }
   for(const L of S.leagues)if(!L.members.includes(S.player))for(const applicant of L.apps.slice())resolveApplication(L.id,applicant);
 }
@@ -411,4 +453,5 @@ export { relKey, getRel, setRel, addImpulse, relBreakdown, relTier, relTick, nat
   insult, giftGold, canInsult, isEmbargoed, setEmbargo, fabricateClaim, hasClaim, duchyOwner,
   conquestFanout, nationNeighbors, hasPact, canPact, formPact, breakPact,
   MAX_LEAGUE, leagueOf, sameLeague, leagueById, createLeague, canApplyLeague, applyToLeague,
-  resolveApplication, proposeExpel, leaveLeague, refuseDefense };
+  resolveApplication, proposeExpel, leaveLeague, refuseDefense,
+  MAX_RIVALS, rivalsOf, isRival, sharedRivals, canRival, addRival, removeRival };
