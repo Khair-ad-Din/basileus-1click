@@ -11,7 +11,7 @@ import {
   atWar, declareWar, makePeace, underTruce, spawnArmy, setupNations, tryRoad, nbrs, bfsPath, startLeg, orderMove, takeTile, updateDuchy, isKeyTile, hourTick, resolveBattles, applyDamage, mergeIdle, aiTurn, findTarget, tryBuild, tryRecruit, disbandUnit, raiseLevies, checkVictory, armiesIn,
   getWar, warscore, duchyValue, occupiedDuchiesBy, report
 } from "./sim.js";
-import { insult, giftGold, isEmbargoed, setEmbargo, fabricateClaim, getRel, THRESH } from "./diplomacy.js";
+import { insult, giftGold, isEmbargoed, setEmbargo, fabricateClaim, getRel, THRESH, formPact, breakPact, hasPact } from "./diplomacy.js";
 import {
   hex2rgb, provColor, paintAll, paintBorders, repaintProvince, roadCurve, drawRoads, fitCanvas, clampPan, armyPos, draw, drawArrow, drawEditorOverlay, NCOL, TCOL, WASTECOL, baseC, baseCtx, roadsC, canvas, baseData, clearSelOutline
 } from "./render.js";
@@ -319,6 +319,21 @@ window.dipEmbargo=function(n){
   log(on?("Cierras el mercado a "+NATIONS[n].name+" (efecto económico pendiente del comercio localizado)."):("Levantas el embargo a "+NATIONS[n].name+"."));
   refreshDiplomacy();
 };
+// Pactos: proponer no agresión / alianza (con gate de concordia) y romper pacto (traición).
+window.dipPact=function(n,type){
+  const r=formPact(S.player,n,type);
+  if(r.ok){const nm=type==="alliance"?"una alianza":"un pacto de no agresión";
+    report("🤝","<b>"+NATIONS[S.player].name+"</b> y <b>"+NATIONS[n].name+"</b> firman "+nm+".",[S.player,n]);
+    log("Firmas "+nm+" con "+NATIONS[n].name+".");}
+  else if(r.reason==="tension")log("Necesitas "+Math.ceil(r.need)+" de concordia más para eso.");
+  refreshDiplomacy();
+};
+window.dipBreakPact=function(n){
+  const r=breakPact(S.player,n);
+  if(r.ok){report("💔","<b>"+NATIONS[S.player].name+"</b> rompe su pacto con <b>"+NATIONS[n].name+"</b>.",[S.player,n]);
+    log("Rompes el pacto con "+NATIONS[n].name+". La traición dispara la tensión.");}
+  refreshDiplomacy();
+};
 // Fabricar reclamación sobre un ducado del país seleccionado: guarda el casus belli y sube la tensión.
 window.dipClaim=function(duchyId){
   const r=fabricateClaim(S.player,duchyId);
@@ -435,7 +450,7 @@ function regenerateWorld(){
   document.getElementById("endOverlay").style.display="none";
   setTimeout(()=>{
     S.provs=[];S.armies=[];S.wars=new Map();S.truces=new Map();S.armyIdSeq=1;S.duchies=[];S.reports=[];
-    S.rel=new Map();S.relMonthKey=-1;S.dipCd=new Map();S.dipSel=-1;S.embargoes=new Set();S.claims=new Set();
+    S.rel=new Map();S.relMonthKey=-1;S.dipCd=new Map();S.dipSel=-1;S.embargoes=new Set();S.claims=new Set();S.pacts=new Map();
     S.peaceWith=-1;S.peaceSel=new Set();S.peaceGold=0;S.incomingPeace=null;
     S.player=-1;S.hour=0;S.acc=0;S.started=false;S.gameOver=false;
     S.selProv=-1;S.selArmy=null;S.battleFlash={};clearSelOutline();

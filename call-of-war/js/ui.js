@@ -6,7 +6,7 @@ import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
 import { canvas, clampPan } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
 import { armiesIn, atWar, duchyValue, fortGarrison, occupiedDuchiesBy, tryBuild, tryRecruit, tryRoad, warscore } from "./sim.js";
-import { getRel, relTier, THRESH, canDeclareWar, canInsult, isEmbargoed, hasClaim, relBreakdown } from "./diplomacy.js";
+import { getRel, relTier, THRESH, canDeclareWar, canInsult, isEmbargoed, hasClaim, relBreakdown, hasPact, canPact } from "./diplomacy.js";
 
 // Metadata de las CATEGORÍAS de bienes (orden, icono, etiqueta), reutilizada por el Mercado, la Tesorería y
 // el panel del reino para agrupar los bienes por categoría. 'moneda' (Ducados) va aparte (su propia pestaña).
@@ -904,6 +904,21 @@ function dipDetailHTML(n){
   if(emb) h+="<button class='bbtn' onclick='dipEmbargo("+n+")' title='Sin efecto económico hasta localizar el comercio'>🚫 Levantar embargo</button>";
   else h+="<button class='bbtn'"+(canEmb?" onclick='dipEmbargo("+n+")' title='Sin efecto económico hasta localizar el comercio'":" disabled title='Necesitas ≤ "+THRESH.embargo+" de tensión'")+">🚫 Embargo</button>";
   h+="</div>";
+  // Pactos: no agresión / alianza (bonus estructural + bloquean la guerra). Formar exige concordia.
+  const pact=hasPact(S.player,n);
+  const pTip=c=>c.reason==="guerra"?"Haz la paz primero":("Necesitas "+Math.ceil(c.need||0)+" de concordia más");
+  h+="<div class='dipActs' style='margin-top:6px'>";
+  if(pact==="alliance"){
+    h+="<span class='dipPactTag ally'>🤝 Aliados</span><button class='bbtn' onclick='dipBreakPact("+n+")' title='Romper = traición: gran tensión'>💔 Romper alianza</button>";
+  }else if(pact==="nap"){
+    h+="<span class='dipPactTag'>🕊 No agresión</span><button class='bbtn' onclick='dipBreakPact("+n+")' title='Romper = traición: gran tensión'>💔 Romper</button>";
+    const ca=canPact(S.player,n,"alliance"); if(ca.ok)h+="<button class='bbtn' onclick='dipPact("+n+",&quot;alliance&quot;)'>🤝 Alianza</button>";
+  }else{
+    const cn=canPact(S.player,n,"nap"), ca=canPact(S.player,n,"alliance");
+    h+="<button class='bbtn'"+(cn.ok?" onclick='dipPact("+n+",&quot;nap&quot;)'":" disabled title=\""+pTip(cn)+"\"")+">🕊 No agresión</button>";
+    h+="<button class='bbtn'"+(ca.ok?" onclick='dipPact("+n+",&quot;alliance&quot;)'":" disabled title=\""+pTip(ca)+"\"")+">🤝 Alianza</button>";
+  }
+  h+="</div>";
   // Reclamaciones: ducados del país seleccionado (dueño = dueño de la capital del ducado)
   const duchies=S.duchies.filter(d=>S.provs[d.cap]&&S.provs[d.cap].owner===n);
   if(duchies.length){
@@ -938,7 +953,7 @@ function refreshDiplomacy(){
     }else{
       const cw=canDeclareWar(S.player,n);
       const dis=locked||!cw.ok;
-      const tip=locked?"Bloqueo de guerra inicial":(!cw.ok?"Necesitas "+Math.ceil(cw.need)+" de tensión más (≤ "+THRESH.war+")":"");
+      const tip=locked?"Bloqueo de guerra inicial":(cw.pact?"Rompe el pacto primero":(!cw.ok?"Necesitas "+Math.ceil(cw.need)+" de tensión más (≤ "+THRESH.war+")":""));
       h+="<td style='color:"+t.color+"'>"+t.label+"</td>";
       h+="<td><button class='bbtn red'"+(dis?" disabled title=\""+tip+"\"":" onclick='playerDeclare("+n+")'")+">Declarar guerra</button></td>";
     }

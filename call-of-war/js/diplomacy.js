@@ -21,19 +21,28 @@ const THRESH={war:-50, embargo:-35, nap:10, league:25, alliance:50};
 const BASE_WAR=-80;     // estructural: EN GUERRA (mientras dure)
 const BASE_BORDER=-10;  // estructural: FRONTERA compartida (mientras sean vecinos)
 // RETENCIÓN mensual por tipo de impulso (1=nunca se olvida; <1 decae). Comentario = ~años hasta caer a ~10%.
-const DECAY={insult:0.88, gift:0.88, claim:0.93, conqNbr:0.953, conqVic:0.984}; // ~1,5 · 1,5 · 2,5 · 4 · 12 años
-const IMP_LABEL={insult:"Insultos",gift:"Regalos",claim:"Reclamación",conqNbr:"Conquista (vecino)",conqVic:"Conquista (rencor)",debug:"(fijado)"};
+const DECAY={insult:0.88, gift:0.88, claim:0.93, conqNbr:0.953, conqVic:0.984, betray:0.976}; // ~1,5·1,5·2,5·4·12·8 años
+const IMP_LABEL={insult:"Insultos",gift:"Regalos",claim:"Reclamación",conqNbr:"Conquista (vecino)",conqVic:"Conquista (rencor)",betray:"Traición",debug:"(fijado)"};
+// PACTOS (Fase 6): aportes ESTRUCTURALES (+ mientras el pacto esté activo). Romperlos = impulso "betray".
+const NAP_BONUS=5;        // no agresión: leve concordia estructural mientras dure
+const ALLY_BONUS=15;      // alianza: concordia estructural mayor
+const BETRAY_TENSION=30;  // golpe de tensión (impulso "betray", decae ~8 años) al traicionado al ROMPER un pacto
+const BETRAY_FANOUT=8;    // reputación: tensión a TERCEROS (vecinos de ambos) — quedas como poco fiable
 
 function clamp(x){return x<REL_MIN?REL_MIN:x>REL_MAX?REL_MAX:x}
 function monthKeyOf(hour){const d=new Date(START_DATE+hour*3600e3);return d.getUTCFullYear()*12+d.getUTCMonth()}
 // Clave simétrica por par (idéntico patrón a warKey en sim.js): el campo es UNO solo para a↔b.
 function relKey(a,b){return a<b?a+"|"+b:b+"|"+a}
 
-// Aporte ESTRUCTURAL (permanente mientras dure la condición): guerra o frontera (y futuros alianza/
+// Bonus estructural del PACTO activo entre a y b (mientras dure).
+function pactBonus(a,b){const t=S.pacts.get(relKey(a,b));return t==="alliance"?ALLY_BONUS:t==="nap"?NAP_BONUS:0;}
+// Tipo de pacto activo entre a y b, o null.
+function hasPact(a,b){return S.pacts.get(relKey(a,b))||null;}
+// Aporte ESTRUCTURAL (permanente mientras dure la condición): guerra, frontera y PACTOS (y futuros
 // embargo/mercado). Se COMPUTA de otro estado, no se guarda.
 function structural(a,b){
   if(atWarPair(a,b))return BASE_WAR;
-  return nationAdjSet().has(relKey(a,b))?BASE_BORDER:0;
+  return (nationAdjSet().has(relKey(a,b))?BASE_BORDER:0)+pactBonus(a,b);
 }
 // Suma de los IMPULSOS guardados del par (los que decaen).
 function impSum(a,b){const m=S.rel.get(relKey(a,b));if(!m)return 0;let s=0;for(const k in m)s+=m[k];return s;}
@@ -60,7 +69,10 @@ function setRel(a,b,val){
 function relBreakdown(a,b){
   const out=[];
   if(atWarPair(a,b))out.push({label:"Guerra",v:BASE_WAR});
-  else if(nationAdjSet().has(relKey(a,b)))out.push({label:"Frontera",v:BASE_BORDER});
+  else{
+    if(nationAdjSet().has(relKey(a,b)))out.push({label:"Frontera",v:BASE_BORDER});
+    const t=hasPact(a,b); if(t)out.push({label:t==="alliance"?"Alianza":"No agresión", v:pactBonus(a,b)});
+  }
   const m=S.rel.get(relKey(a,b));
   if(m)for(const k in m)if(Math.abs(m[k])>=0.5)out.push({label:IMP_LABEL[k]||k,v:m[k]});
   return out;
@@ -232,13 +244,42 @@ function conquestFanout(to,from,duchyId){
   return{claim:false,base,vic,hits};
 }
 
-// ¿Puede A declararle la guerra a B según la tensión? (la línea dura del gate; el jugador la usa en la UI)
-// Devuelve {ok, need} donde need = tensión que aún falta (0 si ya se cumple).
+// ---- PACTOS (Fase 6): no agresión / alianza. Aportan bonus estructural (arriba) y BLOQUEAN la guerra
+// entre las partes. Formar exige CONCORDIA (nap ≥ +10, alianza ≥ +50). Romper = traición (impulso).
+// ¿Puede A proponer un pacto `type` a B? {ok, need}.
+function canPact(a,b,type){
+  if(!validPair(a,b)||atWarPair(a,b))return{ok:false,reason:"guerra"};
+  if(hasPact(a,b)===type)return{ok:false,reason:"yaexiste"};
+  const need=type==="alliance"?THRESH.alliance:THRESH.nap, cur=getRel(a,b);
+  return{ok:cur>=need, need:cur>=need?0:need-cur};
+}
+function formPact(a,b,type){
+  const c=canPact(a,b,type); if(!c.ok)return{ok:false,reason:c.reason||"tension",need:c.need};
+  S.pacts.set(relKey(a,b),type);
+  return{ok:true,type};
+}
+// Rompe el pacto entre a y b (traición): quita el pacto, golpea al traicionado (impulso "betray" grande)
+// y REPARTE reputación a terceros (vecinos de ambos) → `a` queda como poco fiable. Devuelve {..,hits}.
+function breakPact(a,b){
+  const key=relKey(a,b), t=S.pacts.get(key);
+  if(!t)return{ok:false,reason:"nopact"};
+  S.pacts.delete(key);
+  const rel=addImpulse(a,b,"betray",-BETRAY_TENSION);
+  const cand=new Set([...nationNeighbors(a),...nationNeighbors(b)]);
+  cand.delete(a);cand.delete(b);
+  const hits=[];
+  for(const c of cand){if(!S.nations[c]||!S.nations[c].alive)continue;addImpulse(a,c,"betray",-BETRAY_FANOUT);hits.push(c);}
+  return{ok:true,type:t,rel,hits};
+}
+
+// ¿Puede A declararle la guerra a B? Bloqueado si hay PACTO (rómpelo antes) o si falta tensión.
+// Devuelve {ok, need, pact} donde need = tensión que aún falta.
 function canDeclareWar(a,b){
+  if(hasPact(a,b))return{ok:false,pact:true};
   const cur=getRel(a,b), ok=cur<=THRESH.war;
   return{ok, need:ok?0:cur-THRESH.war}; // p.ej. cur=-20 → faltan 30 puntos de tensión
 }
 
 export { relKey, getRel, setRel, addImpulse, relBreakdown, relTier, relTick, nationAdjSet, THRESH, canDeclareWar,
   insult, giftGold, canInsult, isEmbargoed, setEmbargo, fabricateClaim, hasClaim, duchyOwner,
-  conquestFanout, nationNeighbors };
+  conquestFanout, nationNeighbors, hasPact, canPact, formPact, breakPact };

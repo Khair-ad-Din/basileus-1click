@@ -135,6 +135,7 @@ function atWar(a,b){
 function declareWar(a,b,opts){
   if(a===NEUTRAL||b===NEUTRAL||a===b||atWar(a,b))return false;
   if(S.hour<WAR_LOCK_HOURS)return false; // los primeros años no hay guerras
+  if(S.pacts.has(warKey(a,b)))return false; // hay pacto (no agresión/alianza): rómpelo antes de la guerra
   if(!(opts&&opts.force)&&getRel(a,b)>THRESH.war)return false; // sin suficiente tensión no se puede declarar
   const lo=Math.min(a,b),hi=Math.max(a,b);
   S.wars.set(warKey(a,b),{a:lo,b:hi,start:S.hour,tA:0,tB:0});
