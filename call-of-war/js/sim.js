@@ -95,6 +95,38 @@ function setupNations(){
   // ducados: subdivisión de iure del mapa (unidad de conquista). Determinista, tras fijar capitales.
   buildDuchies();
   seedStrataWealth(); // Fase B: riqueza inicial por estrato (nobleza/clero nacen ricos)
+  seedHistoricalDiplomacy(); // Fase 7: pactos y ligas históricos de ~1450 al inicio de partida
+}
+// Fase 7 — SEED HISTÓRICO ~1450: siembra al inicio los pactos (S.pacts) y ligas (S.leagues) reales de la
+// época. Se resuelve por NOMBRE de nación (robusto a reordenaciones del mapa) y solo entre naciones VIVAS.
+// Hasta que la IA gestione pactos de forma autónoma (7b), esto da un tablero diplomático histórico de partida.
+// Los seeds de LIGA pueden EXCEDER el tope de miembros (el tope solo limita nuevas solicitudes, canApplyLeague).
+function seedHistoricalDiplomacy(){
+  const idx={};for(let i=0;i<NATIONS.length;i++)idx[NATIONS[i].name]=i;
+  const A=nm=>{const i=idx[nm];return (i!=null&&S.nations[i]&&S.nations[i].alive)?i:-1;};
+  const pact=(x,y,type)=>{const a=A(x),b=A(y);if(a<0||b<0||a===b)return;S.pacts.set(warKey(a,b),type);};
+  const inLeague=m=>S.leagues.some(L=>L.members.includes(m));
+  const league=(name,founderNm,memberNms)=>{
+    const members=[];
+    for(const nm of memberNms){const m=A(nm);if(m>=0&&!members.includes(m)&&!inLeague(m))members.push(m);}
+    if(members.length<2)return;
+    const f=A(founderNm), founder=members.includes(f)?f:members[0];
+    S.leagues.push({id:(S.leagueSeq=(S.leagueSeq||0)+1),name,founder,members,apps:[]});
+  };
+  // --- ALIANZAS históricas (S.pacts "alliance") ---
+  pact("Francia","Escocia","alliance");            // Auld Alliance (anti-inglesa)
+  pact("Portugal","Inglaterra","alliance");        // Tratado de Windsor (1386), la alianza más longeva
+  pact("Aragón","Nápoles","alliance");             // Alfonso V el Magnánimo: unión personal (1442)
+  pact("Polonia","Lituania","alliance");           // unión jagellónica (Krewo, 1385)
+  pact("Orden Teutónica","Orden Livona","alliance");// dos ramas de la Orden Teutónica
+  pact("Imperio Bizantino","Trebisonda","alliance");// remanentes griegos ortodoxos (Comnenos)
+  // --- NO AGRESIÓN (S.pacts "nap") ---
+  pact("Castilla","Francia","nap");                // eje anti-inglés
+  pact("Castilla","Aragón","nap");                 // dinástico Trastámara (pre-unión de 1469)
+  // --- LIGAS defensivas (S.leagues) ---
+  league("Liga Itálica","Estados Pontificios",["Estados Pontificios","Venecia","Milán","Florencia","Nápoles"]); // Paz de Lodi (1454)
+  league("Sacro Imperio","Austria",["Austria","Bohemia","Brandeburgo","Sajonia","Baviera","Renania","Pomerania"]); // HRE defensivo (excede el tope)
+  league("Liga contra el Turco","Hungría",["Hungría","Serbia","Bosnia","Valaquia","Albania"]); // bloque cristiano anti-otomano (era de Hunyadi)
 }
 function spawnArmy(nation,prov,units){
   // a.src = mapa provincia->pops que la componen (para que las bajas resten pop a su origen)
