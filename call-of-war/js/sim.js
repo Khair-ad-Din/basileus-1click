@@ -200,6 +200,7 @@ function syncDuchyOcc(){
 // la ocupación). El owner de iure de una provincia SOLO cambia aquí.
 function makePeace(a,b,terms){
   const key=warKey(a,b);
+  const wCur=S.wars.get(key); if(wCur&&wCur.coal!=null)return; // guerra de COALICIÓN: se cierra con coalitionPeace, no pairwise
   S.wars.delete(key);
   S.truces.set(key,S.hour+17520); // tregua de 2 años
   let transferred=false;const parts=[];

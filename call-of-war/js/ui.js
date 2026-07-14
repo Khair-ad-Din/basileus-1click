@@ -5,7 +5,7 @@ import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyD
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
 import { canvas, clampPan } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
-import { armiesIn, atWar, duchyValue, fortGarrison, occupiedDuchiesBy, tryBuild, tryRecruit, tryRoad, warscore } from "./sim.js";
+import { armiesIn, atWar, duchyValue, fortGarrison, occupiedDuchiesBy, tryBuild, tryRecruit, tryRoad, warscore, coalitionOf } from "./sim.js";
 import { getRel, relTier, THRESH, canDeclareWar, canInsult, isEmbargoed, hasClaim, relBreakdown, hasPact, canPact } from "./diplomacy.js";
 
 // Metadata de las CATEGORÍAS de bienes (orden, icono, etiqueta), reutilizada por el Mercado, la Tesorería y
@@ -949,7 +949,10 @@ function refreshDiplomacy(){
     const v=getRel(S.player,n), t=relTier(v);
     h+="<td title=\""+relTip(S.player,n)+"\">"+relBarHTML(v)+" <span style='color:"+t.color+";font-weight:600'>"+(v>0?"+":"")+Math.round(v)+"</span></td>";
     if(atWar(S.player,n)){
-      h+="<td style='color:#d08080'>EN GUERRA</td><td><button class='bbtn' onclick='openPeace("+n+")'>Gestionar paz</button></td>";
+      if(coalitionOf(S.player,n))
+        h+="<td style='color:#d08080'>EN GUERRA</td><td><button class='bbtn' disabled title='Guerra de coalición: la paz conjunta llega en la próxima etapa'>⚔ Coalición</button></td>";
+      else
+        h+="<td style='color:#d08080'>EN GUERRA</td><td><button class='bbtn' onclick='openPeace("+n+")'>Gestionar paz</button></td>";
     }else{
       const cw=canDeclareWar(S.player,n);
       const dis=locked||!cw.ok;
@@ -961,6 +964,39 @@ function refreshDiplomacy(){
   }
   h+="</table>";
   document.getElementById("dipBody").innerHTML=h;
+}
+// Consejo de deliberación (Fase 6b, Etapa 3a): ventana del líder para llamar a sus aliados a la guerra,
+// ver sus votos y lanzar/cancelar. El estado vive en S.council.
+function refreshCouncil(){
+  const el=document.getElementById("councilBody"); if(!el)return;
+  const c=S.council;
+  if(!c){el.innerHTML="<p style='text-align:center;color:#9aa3ad'>No hay consejo activo.</p>";return;}
+  let h="<div style='margin-bottom:12px'>Objetivo: <span class='chip' style='background:"+NATIONS[c.target].color+"'></span> <b>"+NATIONS[c.target].name+"</b></div>";
+  if(c.phase==="invite"){
+    if(c.candidates.length){
+      h+="<div class='sm' style='color:#9aa3ad;margin-bottom:6px'>¿A qué aliados llamas?</div><div style='display:flex;flex-wrap:wrap;gap:6px'>";
+      for(const n of c.candidates){
+        const inv=c.invited.has(n);
+        h+="<span class='cChip"+(inv?" on":"")+"' onclick='councilInvite("+n+")'>"+(inv?"✓ ":"")+NATIONS[n].name+"</span>";
+      }
+      h+="</div>";
+    } else h+="<div class='sm' style='color:#c9a86a'>No tienes aliados a quien llamar; declararás la guerra en solitario.</div>";
+    h+="<div style='display:flex;gap:8px;margin-top:16px'>";
+    if(c.invited.size>0) h+="<button class='uiBtn' onclick='councilDoConvene()'>Convocar consejo ("+c.invited.size+")</button>";
+    else h+="<button class='uiBtn' style='border-color:#a85a5a' onclick='councilLaunch()'>Declarar guerra en solitario</button>";
+    h+="<button class='uiBtn' onclick='councilCancel()'>Cancelar</button></div>";
+  }else{ // vote
+    let support=0;
+    h+="<div class='sm' style='color:#9aa3ad;margin-bottom:4px'>Deliberación:</div><table class='dip'>";
+    for(const [n,v] of c.invited){ const join=v==="join"; if(join)support++;
+      h+="<tr><td><span class='chip' style='background:"+NATIONS[n].color+"'></span> "+NATIONS[n].name+"</td>"+
+         "<td style='color:"+(join?"#8fb06a":"#d08080")+";font-weight:600'>"+(join?"Se une ✓":"Declina ✗")+"</td></tr>";
+    }
+    h+="</table><div style='margin:12px 0'>Apoyos: <b>"+support+"</b> de "+c.invited.size+"</div>";
+    h+="<div style='display:flex;gap:8px'><button class='uiBtn' style='border-color:#a85a5a' onclick='councilLaunch()'>⚔ Lanzar la guerra ("+(support+1)+" reinos)</button>"+
+       "<button class='uiBtn' onclick='councilCancel()'>Cancelar</button></div>";
+  }
+  el.innerHTML=h;
 }
 // Registro (ledger estilo EU4): tabla ordenable de todas las naciones vivas con provincias,
 // población, tropas, fuerza militar e ingreso neto de ducados/mes. Referencia para balancear.
@@ -1299,5 +1335,5 @@ function refreshFiscal(){
   body.innerHTML=h;
 }
 export {
-  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, buildRealmMenu, refreshMetricsLog, refreshArmyPanel, refreshTreasury, refreshEstates, refreshMercado, refreshFiscal
+  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, buildRealmMenu, refreshMetricsLog, refreshArmyPanel, refreshTreasury, refreshEstates, refreshMercado, refreshFiscal, refreshCouncil
 };

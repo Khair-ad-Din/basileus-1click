@@ -92,6 +92,12 @@
   .dipClaimed{font-size:11px;color:#c9a86a;padding:2px 6px;border:1px dashed #6b5a3a;border-radius:4px}
   .dipPactTag{font-size:12px;font-weight:600;color:#8fb06a;padding:2px 8px;border:1px solid #4a5b3a;border-radius:4px;background:#2c3524}
   .dipPactTag.ally{color:#6ba7d0;border-color:#3a5060;background:#232f36}
+  /* consejo de deliberación: botón flotante abajo-derecha (visible mientras el consejo esté abierto) */
+  .councilFab{position:fixed;right:16px;bottom:52px;z-index:40;background:#7a2f2f;color:#f0d9b5;border:2px solid #a85a5a;border-radius:8px;padding:10px 16px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 3px 12px #0009}
+  .councilFab:hover{background:#8f3a3a;border-color:#c06a6a}
+  .cChip{cursor:pointer;border:1px solid #4a525b;border-radius:5px;padding:4px 9px;font-size:12px;background:#31373e;color:var(--txt)}
+  .cChip:hover{border-color:#9fb878}
+  .cChip.on{border-color:#8fb06a;color:#cfe0a8;background:#2c3524}
   table.led th{position:sticky;top:0;background:#212832;user-select:none}
   table.led th:hover{color:#fff}
   table.led th.on{color:#cfe0a8}
@@ -451,6 +457,16 @@
     <h1>Diplomacia</h1>
     <div id="dipBody"></div>
     <p style="text-align:center;margin-top:16px"><button class="uiBtn" onclick="document.getElementById('dipOverlay').style.display='none'">Cerrar</button></p>
+  </div>
+</div>
+
+<button id="councilBtn" class="councilFab" style="display:none" title="Consejo de guerra en curso">⚔ Consejo de guerra</button>
+<div class="overlay" id="councilOverlay" style="display:none">
+  <div class="panel" style="min-width:480px;max-width:600px;max-height:86vh;overflow:auto">
+    <button class="panelX" title="Cerrar (el consejo sigue abierto)" onclick="document.getElementById('councilOverlay').style.display='none'">✕</button>
+    <h1 style="text-align:center;margin-bottom:2px">⚔ Consejo de deliberación</h1>
+    <p style="text-align:center;color:#9aa3ad;font-size:12px;margin:0 0 12px">Llama a tus aliados a la guerra; cuando voten, lanza la campaña o cancélala.</p>
+    <div id="councilBody"></div>
   </div>
 </div>
 

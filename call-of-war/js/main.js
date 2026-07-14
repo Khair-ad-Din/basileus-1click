@@ -5,13 +5,14 @@ import {
   enterEditor, exitEditor, pushUndo, restoreWorldFromSnap, toggleRoadEdit, setProvinceOwner, dpSimplify, simplifyRing, traceProvince, applyShape, mergeProvinces, rasterPoly, keepLargestFragment, splitProvince, refreshEditorPanel, vertexAt, nearestSegment
 } from "./editor.js";
 import {
-  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, refreshArmyPanel, buildRealmMenu, refreshTreasury, refreshEstates, refreshMercado, refreshFiscal
+  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, refreshArmyPanel, buildRealmMenu, refreshTreasury, refreshEstates, refreshMercado, refreshFiscal, refreshCouncil
 } from "./ui.js";
 import {
   atWar, declareWar, makePeace, underTruce, spawnArmy, setupNations, tryRoad, nbrs, bfsPath, startLeg, orderMove, takeTile, updateDuchy, isKeyTile, hourTick, resolveBattles, applyDamage, mergeIdle, aiTurn, findTarget, tryBuild, tryRecruit, disbandUnit, raiseLevies, checkVictory, armiesIn,
   getWar, warscore, duchyValue, occupiedDuchiesBy, report
 } from "./sim.js";
 import { insult, giftGold, isEmbargoed, setEmbargo, fabricateClaim, getRel, THRESH, formPact, breakPact, hasPact } from "./diplomacy.js";
+import { openCouncil, councilToggle, councilConvene, launchCouncil, cancelCouncil } from "./council.js";
 import {
   hex2rgb, provColor, paintAll, paintBorders, repaintProvince, roadCurve, drawRoads, fitCanvas, clampPan, armyPos, draw, drawArrow, drawEditorOverlay, NCOL, TCOL, WASTECOL, baseC, baseCtx, roadsC, canvas, baseData, clearSelOutline
 } from "./render.js";
@@ -293,7 +294,21 @@ window.rejectIncomingPeace=function(){
   document.getElementById("peaceOverlay").style.display="none";
   S.peaceMode="out";S.peaceWith=-1;
 };
-window.playerDeclare=function(n){declareWar(S.player,n);refreshDiplomacy()};
+// Declarar guerra ya no es instantáneo: abre el CONSEJO de deliberación (Fase 6b). Si ya hay uno abierto,
+// lo reabre. El consejo llama aliados, vota y lanza la coalición (o la cancela).
+function openCouncilOverlay(){document.getElementById("councilOverlay").style.display="flex";document.getElementById("councilBtn").style.display="block";refreshCouncil();}
+function closeCouncilUI(){document.getElementById("councilOverlay").style.display="none";document.getElementById("councilBtn").style.display="none";}
+window.playerDeclare=function(n){
+  if(S.council){openCouncilOverlay();return;} // ya hay un consejo en curso → reabrir
+  const r=openCouncil(S.player,n);
+  if(!r.ok){log("No puedes convocar el consejo contra "+NATIONS[n].name+" ahora (tensión o pacto).");return;}
+  openCouncilOverlay();
+};
+window.councilInvite=function(n){councilToggle(n);refreshCouncil()};
+window.councilDoConvene=function(){councilConvene();refreshCouncil()};
+window.councilLaunch=function(){const r=launchCouncil();if(r.ok){closeCouncilUI();refreshDiplomacy();refreshTop();}else log("No se pudo lanzar la guerra.")};
+window.councilCancel=function(){cancelCouncil();closeCouncilUI();refreshDiplomacy()};
+document.getElementById("councilBtn").addEventListener("click",openCouncilOverlay);
 // --- Diplomacia (Fase 4): seleccionar país y acciones. La función de acción toca estado; aquí van
 // el parte al periódico (report), el log y el refresco de UI. ---
 window.dipSelect=function(n){S.dipSel=(S.dipSel===n?-1:n);refreshDiplomacy()};

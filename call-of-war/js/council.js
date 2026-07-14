@@ -48,7 +48,8 @@ function councilSupport(){const c=S.council;if(!c)return 0;let s=0;for(const v o
 // LANZAR: crea la coalición {atacantes=líder+los que se unieron; defensores=objetivo} y sus guerras
 // pairwise (silenciosas), con UN parte de coalición. El defensor y su consejo entran en la Etapa 3.
 function launchCouncil(){
-  const c=S.council;if(!c||c.phase!=="vote")return{ok:false,reason:"fase"};
+  const c=S.council;
+  if(!c||!(c.phase==="vote"||(c.phase==="invite"&&c.invited.size===0)))return{ok:false,reason:"fase"}; // vote, o solitario
   const attackers=[c.leader];
   for(const [n,v] of c.invited)if(v==="join"&&alive(n))attackers.push(n);
   const defenders=[c.target];
