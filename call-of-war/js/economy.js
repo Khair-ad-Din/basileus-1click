@@ -496,20 +496,74 @@ function resetTsyLedger(){ // (re)inicia el ledger al empezar/retomar partida o 
 // Cada mes cerrado guarda una foto del JUGADOR: riqueza y flujos COMPLETOS por estamento + mercado por bien
 // [prod,sold,discard,inv,price,dem]. Un botón lo descarga como JSON (ver main.js downloadEconLog). Barato (1/mes).
 const ESTATE_ABBR={campesino:"c",burgues:"b",clero:"cl",nobleza:"n"};
+// Foto MENSUAL de la economía del jugador → S.econLog (una línea JSON por mes). La activa el jugador con
+// startEconLog() y un enviador la POSTea al recolector local (main.js). Es la herramienta de diagnóstico
+// REAL del juego: mucho más fiel que cualquier arnés sintético, porque corre el tick de verdad, con IA,
+// guerras y construcción, y a la velocidad que el jugador quiera.
+//
+// ⚠ CÓMO LEER ESTE LOG SIN ENGAÑARTE — la trampa que ya nos costó una conclusión falsa:
+// el grano llena PRIMERO la despensa local de cada provincia y SOLO el excedente sale al mercado. Los
+// primeros meses no se comercia en ningún sitio: eso es CALENTAMIENTO, no un diagnóstico. Mira `desp`
+// (llenado de despensas) ANTES de concluir nada sobre el mercado: con desp<1 el mercado aún no existe.
+// Por lo mismo, `M.comida[6]/[7]` (export/import) solo significa algo con las despensas llenas.
+const ECONLOG_V=2;               // versión del esquema (v2: +exp/imp por bien, +despensa, +cosecha, +fiscalidad, +pops)
 function logEconMonth(monthIdx){
   const n=S.player; if(n<0)return; const N=S.nations[n]; if(!N||!N.sWealth)return;
   const yr=Math.floor(monthIdx/12), mo=(monthIdx%12)+1, d=yr+"-"+String(mo).padStart(2,"0");
-  let pop=0,camp=0; for(const p of S.provs)if(p.owner===n&&!p.wasteland){pop+=p.pop||0;if(p.pops)camp+=p.pops.campesino||0}
+  // ---- Agregados de PROVINCIA ----
+  let pop=0,fam=0,nprov=0,st=0,stc=0,cos=0,mor=0,mob=0,dot=0,ndot=0,slots=0,used=0,pr0=0,npr=0;
+  const P={}; for(const k of STRATA)P[ESTATE_ABBR[k]]=0;
+  for(const p of S.provs)if(p.owner===n&&!p.wasteland){
+    nprov++; pop+=p.pop||0; if(p.famine)fam++;
+    if(p.pops)for(const k of STRATA)P[ESTATE_ABBR[k]]+=p.pops[k]||0;   // se redondea al final
+    st+=storeOf(p,"comida"); stc+=storeCap(p,"comida");           // ⚠ storeCap toma (p,k): sin la k usaría otro tope
+    cos+=harvestMul(p); mor+=(p.morale||0)*(p.pop||0); mob+=p.mob||0;
+    const j=buildJobs(p); if(j>0){dot+=staffing(p);ndot++}
+    slots+=buildSlots(p); used+=usedSlots(p);
+    if(p.prosp)for(const g in p.prosp){pr0+=p.prosp[g];npr++}
+  }
+  // ---- Estamentos: riqueza y flujos por categoría ----
   const W={},F={}; for(const k of STRATA){
     W[ESTATE_ABBR[k]]=Math.round(N.sWealth[k]||0);
     const src=(S.sFlow&&S.sFlow[k])||{},o={}; for(const c in src)o[c]=Math.round(src[c]); F[ESTATE_ABBR[k]]=o;
   }
-  const M={},vol=S.mktVol||{},info=N.mktInfo||{},mkt=N.mkt||{},pr=N.mktPrice||{};
-  for(const g of MKT_TRADE){const v=vol[g]||{},mi=info[g]||{};
+  // ---- Mercado por bien ----
+  const M={},vol=S.mktVol||{},info=N.mktInfo||{},mkt=N.mkt||{},pr=N.mktPrice||{},tel=N.mktTel||{};
+  for(const g of MKT_TRADE){const v=vol[g]||{},mi=info[g]||{},t=tel[g]||{};
     const prod=Math.round(v.prod||0),sold=Math.round(v.sold||0),disc=Math.round(v.discard||0),inv=Math.round(mkt[g]||0);
-    if(prod||sold||disc||inv||mi.dem)M[g]=[prod,sold,disc,inv,+((pr[g]||0).toFixed(2)),Math.round(mi.dem||0)]; // [prod,sold,discard,inv,price,dem] — incluye los bienes con SOLO demanda (los que no se producen)
+    // exp/imp salen de mktTel (SUAVIZADO): mktInfo se RECONSTRUYE cada tick y perdería el arbitraje.
+    const exp=Math.round(t.exp||0), imp=Math.round(t.imp||0);
+    if(prod||sold||disc||inv||mi.dem||exp||imp)
+      M[g]=[prod,sold,disc,inv,+((pr[g]||0).toFixed(2)),Math.round(mi.dem||0),exp,imp,+((MKT_PRICE[g]||1).toFixed(2))];
+      //   [0]prod [1]vendido [2]tirado [3]inventario [4]precio [5]demanda [6]EXPORTA [7]IMPORTA [8]precio de REFERENCIA
   }
-  S.econLog.push({d, pop:Math.round(pop), camp:Math.round(camp), duc:+(nationEconomy(n).res.dinero).toFixed(1), alc:Math.round(S.tsyAlc||0), W, F, M});
+  // ---- Diplomacia: ahora MUERDE en el comercio (guerra ×3, embargo corta) ----
+  let wars=0,embs=0;
+  for(let m=0;m<NPLAY;m++){if(m===n)continue;const O=S.nations[m];if(!O||!O.alive)continue;
+    if(atWarPair(n,m))wars++; if(isEmbargoed(n,m))embs++}
+  const eco=nationEconomy(n);
+  S.econLog.push({
+    v:ECONLOG_V, d,
+    pop:Math.round(pop), prov:nprov,
+    P:Object.fromEntries(Object.entries(P).map(([k,v])=>[k,Math.round(v)])), // pops por estamento (movilidad social: Fase C)
+    // ⚠ `duc` NO incluye la alcábala ni el almojarifazgo (nationEconomy los excluye a propósito: son
+    // variables por naturaleza). El ingreso real del mes es duc + alc + almoj. No los sumes dos veces.
+    duc:+(eco.res.dinero).toFixed(1),                         // ingreso NETO/mes tras mantenimiento fijo → MUY apalancado por la cosecha
+    tes:Math.round(N.res.dinero||0),                          // tesoro ACUMULADO (el stock, no el flujo)
+    alc:+((N.alcabalaRate||0)*730).toFixed(1),                // ALCÁBALA/mes (comercio INTERNO)
+    almoj:+((N.almojRate||0)*730).toFixed(1),                 // ALMOJARIFAZGO/mes (aduana del comercio EXTERIOR) → con geografía, esto ya se mueve
+    tsyv:Math.round(S.tsyAlc||0),                             // acumulado del mes de AMBOS (es lo que ve la tesorería; S.tsyAlc suma los dos)
+    fisc:[+taxRateOf(n).toFixed(3),+alcabalaOf(n).toFixed(3),+almojOf(n).toFixed(3)], // las 3 palancas del jugador: sin esto el log no se puede interpretar
+    cos:+(nprov?cos/nprov:1).toFixed(3),                      // cosecha MEDIA del año (1.0 normal): desde ec22e0a es COMÚN a todo el mapa
+    desp:+(stc?st/stc:0).toFixed(3),                          // llenado de despensas 0..1 → CALENTAMIENTO vs diagnóstico
+    fam:+(nprov?fam/nprov:0).toFixed(3),                      // fracción de provincias en hambruna
+    mor:+(pop?mor/pop:0).toFixed(1),                          // moral media ponderada por población (multiplica flujoBase)
+    mob:Math.round(mob), trp:eco.troops||0,                   // movilizados (retiran mano de obra) y tropas
+    dot:+(ndot?dot/ndot:0).toFixed(3),                        // dotación media (staffing): diagnostica escasez de mano de obra
+    hue:[used,slots],                                         // huecos de construcción usados/totales
+    prsp:+(npr?pr0/npr:0).toFixed(2),                         // puntos de prosperidad medios por bien y provincia (0..60)
+    war:[wars,embs],                                          // guerras y embargos activos: ambos cambian el coste del comercio
+    W, F, M});
   if(S.econLog.length>3600)S.econLog.shift(); // cap ~300 años de juego
 }
 // Lo llama hourTick con la foto de res ANTES de economyTick. El delta (después−antes) ES la economía

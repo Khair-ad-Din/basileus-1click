@@ -6,3 +6,7 @@
 # Nunca deben llegar al repo (ni a GitHub Pages). Ver basileus-dev-workflow.
 call-of-war/_test_*
 call-of-war/_preview*
+
+# Logs economicos de partida: son DATOS de una partida concreta, no codigo.
+# Los genera tools/econlog-server.mjs (ese si se versiona).
+tools/*.jsonl
