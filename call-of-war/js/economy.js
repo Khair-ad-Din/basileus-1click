@@ -53,7 +53,8 @@ function soldAvail(p){return p.sold!=null?p.sold:soldCap(p)} // stock actual (o 
  * Los campesinos (pops de serie) NO trabajan en fábricas: trabajan la tierra y producen/consumen su
  * propio GRANO ≈ autosuficiente. El grano se guarda en una DESPENSA local por provincia (p.store.comida),
  * cuyo tope amplía el Almacén, como colchón anti-hambruna. Un modificador de COSECHA (harvestMul,
- * ±HARVEST_AMP/año, determinista por provincia+año) afecta al grano (bien ORGÁNICO). En un mal año se
+ * determinista = año agrícola COMÚN a todo el mapa + suerte local de la provincia) afecta al grano
+ * (bien ORGÁNICO) y al flujo económico campesino (flujoBase). En un mal año se
  * consume más de lo que se produce → se drena la despensa; si se agota y sigue negativa → HAMBRUNA
  * (muertes) [+ migración, futura]. El grano ES la misma unidad que el recurso nacional (para socorro/
  * requisa). Capa SEPARADA del Tesoro: los edificios rinden a la nación, los campesinos comen su grano.
@@ -62,7 +63,20 @@ function soldAvail(p){return p.sold!=null?p.sold:soldCap(p)} // stock actual (o 
  * compran para comer (trigo) y construir (materiales). Ver E1/E2 en [[basileus-pop-economy-vision]]. */
 const YR_TICKS=8760;             // ticks (horas de juego) por año
 const MONTH_TICKS=YR_TICKS/12;   // ≈730 ticks/mes (la campaña avanza en meses de calendario)
-const HARVEST_AMP=0.33;          // variación anual de cosecha (±33%)
+// ---- COSECHA: shock COMÚN del año + shock IDIOSINCRÁTICO de la provincia ----
+// El sorteo NO puede ser solo por provincia: si cada una tira su dado por su cuenta, un reino de 20
+// provincias promedia su CV a 0.19/√20 ≈ 0.04 y la cosecha deja de existir a escala de reino (era el
+// caso hasta 2026-07-15). Los años de hambre de verdad —1315-16, 1349-51, 1437-38— fueron PANEUROPEOS,
+// no sorteos por parroquia: sin componente común, una cola de desastre tampoco se notaría.
+// La AMPLITUD TOTAL por provincia no cambia (CV = AMP/√3 ≈ 0.19, contra 0.205 del trigo bruto histórico,
+// Campbell & Ó Gráda 1268-1480): lo que cambia es cómo se reparte y su forma. NO subir HARVEST_AMP.
+const HARVEST_AMP=0.33;          // variación anual TOTAL por provincia (±33% → CV≈0.19)
+const HARVEST_COMMON=0.70;       // fracción de la VARIANZA que es común a todo el mapa (calibración, no historia)
+const HARVEST_TAIL_P=0.014;      // prob/año de un desastre general: 3 episodios encadenados >25% en 212 años
+const HARVEST_TAIL=0.30;         // caída EXTRA (máx.) del año de desastre: la cola que una uniforme no tiene
+const HARVEST_FLOOR=0.25;        // suelo: ni el peor año anula la cosecha del todo
+const HARVEST_AC=HARVEST_AMP*Math.sqrt(HARVEST_COMMON);     // amplitud del shock común
+const HARVEST_AL=HARVEST_AMP*Math.sqrt(1-HARVEST_COMMON);   // amplitud del shock local (AC²+AL²=AMP²)
 // ---- BLOQUE 1: vocación productiva del TERRENO por bien básico ----
 // El campesino produce los 4 BÁSICOS (grano/madera/piedra/hierro) según su TERRENO, y NECESITA la misma
 // cesta que todos. Ningún terreno es bueno en todo → cada provincia VENDE sus superávits y COMPRA sus
@@ -113,10 +127,20 @@ const RESTYPE_RATE=0.50;                                  // producción de la E
 const BASIC_SET=new Set(["comida","materiales","piedra","metal"]); // los 4 básicos universales (los produce toda provincia)
 // ¿el bien g es una MATERIA PRIMA de especialidad? (categoría de campo, y no uno de los 4 básicos universales)
 function isRawSpecialty(g){return !!g&&!BASIC_SET.has(g)&&RES_RAW_CATS.indexOf(RES_CAT[g])>=0}
-function harvestMul(p){ // calidad de la cosecha de este año (determinista por provincia+año)
+function hash01(a,b){ // hash determinista → [0,1)
+  let n=(a*73856093^b*19349663)|0;n=Math.imul(n^(n>>>13),1274126177);n^=n>>>16;
+  return (n>>>0)/4294967296;
+}
+function harvestYear(year){ // el AÑO AGRÍCOLA que comparte todo el mapa (esto es lo que se nota en el tesoro)
+  let m=HARVEST_AC*(hash01(year,0x5f3a)*2-1);
+  const t=hash01(year,0x1b7d);
+  if(t<HARVEST_TAIL_P)m-=HARVEST_TAIL*(1-t/HARVEST_TAIL_P); // cola izquierda: el desastre general y raro
+  return m;
+}
+function harvestMul(p){ // calidad de la cosecha de esta provincia este año (año común + suerte local)
   const year=Math.floor(S.hour/YR_TICKS);
-  let n=(p.id*73856093^year*19349663)|0;n=Math.imul(n^(n>>>13),1274126177);n^=n>>>16;
-  return 1+HARVEST_AMP*((n>>>0)/4294967296*2-1);
+  const local=HARVEST_AL*(hash01(p.id,year)*2-1);
+  return Math.max(HARVEST_FLOOR,1+harvestYear(year)+local);
 }
 function subsCons(p,k){return (p.pop||0)*(NEED_BASIC[k]||0)/YR_TICKS}    // consumo del básico k por tick (cesta universal)
 function subsProd(p,k){                                                  // producción del básico k por tick (según terreno)
@@ -299,8 +323,10 @@ function seedStrataWealth(){
 // El dinero de la capa 3 ya no lo genera cada estrato de la nada. Hay UN grifo: la producción
 // campesina (abstracción de vender su excedente), del que CLERO, NOBLEZA y CORONA extraen un %;
 // el resto queda al campesino. El burgués es la excepción (vive del margen del mercado). Como el
-// flujo cuelga de los mismos multiplicadores que la subsistencia (terreno·granja·moral), una
-// hambruna (menos campesinos) o una provincia desmoralizada golpea el ingreso de TODOS a la vez.
+// flujo cuelga de los mismos multiplicadores que la subsistencia (terreno·granja·moral·COSECHA), una
+// hambruna (menos campesinos), una provincia desmoralizada o un mal año agrícola golpean el ingreso
+// de TODOS a la vez. (La cosecha se enganchó el 2026-07-15: hasta entonces este comentario era falso
+// — el reparto era sordo al año agrícola, que solo tocaba la despensa.)
 // Sustituye a la vez los ingresos planos por rol (salvo burgués) y el impuesto plano taxOf.
 // BASE_INCOME calibrado para PARIDAD del ingreso de la corona con el antiguo taxOf: el viejo
 // impuesto de Castilla (~Σ taxOf) equivale a ~corona·ΣflujoBase; con corona≈0.08+realengo eso da
@@ -316,9 +342,9 @@ function manorOf(p){return p.capital?"realengo":(p.urban?"abadengo":"solariego")
 function taxRateOf(n){const N=S.nations[n];return N&&N.taxRate!=null?Math.max(0.02,Math.min(0.20,N.taxRate)):0.08} // impuesto FEUDAL (parte de la corona del reparto), ajustable por nación
 function alcabalaOf(n){const N=S.nations[n];return N&&N.alcabala!=null?Math.max(0,Math.min(0.30,N.alcabala)):ALCABALA}      // ALCÁBALA (comercio interno), ajustable
 function almojOf(n){const N=S.nations[n];return N&&N.almojarifazgo!=null?Math.max(0,Math.min(0.60,N.almojarifazgo)):ALMOJ_DEFAULT} // ALMOJARIFAZGO (aduana comercio exterior), ajustable
-function flujoBase(p){ // flujo campesino por tick (mismos multiplicadores que la subsistencia)
+function flujoBase(p){ // flujo campesino por tick (los MISMOS multiplicadores que la subsistencia, cosecha incluida)
   if(!p||p.owner>=NPLAY||p.wasteland||!p.pops)return 0;
-  return p.pops.campesino*BASE_INCOME*structPPF(p)*(p.morale/100);
+  return p.pops.campesino*BASE_INCOME*structPPF(p)*(p.morale/100)*harvestMul(p);
 }
 // Reparto del flujo en fracciones {clero,nobleza,corona,campesino}. Clamp defensivo: si la
 // extracción supera 0.9, se escala para que al campesino le quede siempre ≥10%.

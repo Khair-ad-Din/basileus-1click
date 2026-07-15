@@ -70,6 +70,24 @@ de golpe:
 
 ---
 
+## Añadidos de la pasada de verificación del 2026-07-15 (Oficio 1)
+
+Fuentes **nuevas**, abiertas en esa sesión, que no estaban en ninguna de las cinco listas. Van aquí porque
+resuelven choques **entre** fichas (no pertenecen a una sola). Si se tocan `clerigo.md` o `noble.md`, incorpóralas.
+
+| Autor / obra | Año | Enlace | Qué cubre | Fiab. |
+|---|---|---|---|---|
+| **Christian D. Liddy**, *The Making of Towns, the Making of Polities: Towns and Lords in Late Medieval Europe*, **Past & Present 264** | 2024 | [Oxford Academic](https://academic.oup.com/past/article/264/1/3/7637471) | **LA fuente que arbitra el choque `manorOf`.** *"perhaps three-quarters of England's six hundred or so towns around 1300 were seigneurial, that is, their immediate lord was not the king"*; **61% de las villas de señorío inglesas fundadas por señores SEGLARES y 39% por señores ECLESIÁSTICOS**. Tesis: *"urban development necessitated lordship"* | **A** (revista arbitrada de primer nivel; leído vía extracción con cita literal, **corroborado por búsqueda independiente que reproduce el 61/39**) |
+| **NCMH vol. VII**, cap. "The European Nobility" | — | [erenow (espejo)](https://erenow.org/postclassical/MedivalHistory7/20.php) | Reabierto: confirma la tabla de `noble.md` y **añade Navarra ~15% y Aragón ~1,5-2%** | **A** (contenido CUP; espejo no oficial) |
+| **Campbell & Ó Gráda**, *Harvest Shortfalls…* (borrador 2009) | 2011 | [PDF](https://www.pseweb.eu/ydepot/semin/texte0910/OGR2010HAR.pdf) vía `r.jina.ai` | **Cierra la deuda de la correlación serial.** Tabla 5: *"the predicted frequency is set at the once-off probability of such a shortfall squared or cubed"* → "esperado" = **independencia**. *"back-to-back shortfalls … were somewhat more common than might be expected on the basis of squaring once-off probabilities … but such shortfalls occurred **14 per cent more often than 'expected'**"*. Veredicto de los autores: *"Evidence on their randomness is mixed"*. **CV netos (nuevos): trigo 0,268 · cebada 0,244 · avena 0,240** | **A** (los CV brutos coinciden **exactamente** con la extracción previa por `pdftotext`, lo que valida ambas) |
+| *Realengo, señorío nobiliario y abadengo en el reino de Murcia*, **Murgetana 69** | — | [PDF](https://www.regmurcia.com/docs/murgetana/N069/N069_005.pdf) vía `r.jina.ai` | **Identifica la fuente [20] de `_fuentes-clerigo.md`**, que estaba marcada *"fecha incierta, NO USAR"*: **es de 1752**. Murcia 1752: realengo 52,7% / nobiliario 24,4% / abadengo 22,4% (de él, Órdenes Militares 22,08%). El Partido de Albacete 61,1/25,8 coincide → confirmada la sospecha. **Sigue sin valer para 1444** | **B** — y **descartada para la época** |
+
+> **Aviso de método nuevo y útil:** en esta sesión **no había Bash** (ni `curl` ni `pdftotext` ni `pdftoppm`), así que
+> el método canónico de la bibliografía no era ejecutable. **`https://r.jina.ai/<url-del-pdf>` con WebFetch sí extrae
+> texto de PDFs** y resolvió Campbell & Ó Gráda y Murgetana. **WebFetch a pelo sobre un PDF alucina**: devolvió unos CV
+> inventados ("trigo 0,20-0,25, cebada 0,22-0,27") que contradecían la extracción buena — se descartó. Si un PDF
+> devuelve "binary content", **no te fíes de la respuesta que lo acompaña**.
+
 ## Avisos de método que valen para futuras fichas
 
 - **En 1444 la evidencia serial de rendimientos casi se ha agotado**: 1432 es el último año con >50
