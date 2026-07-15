@@ -96,11 +96,21 @@ defiende lo tuyo con datos y deja que el Consejero equilibre. No finjas neutrali
 
 ## 6. Dónde mirar
 
+⚠ **Las rutas de este documento son RELATIVAS a la raíz del proyecto. Si un `Read` te falla, NO te
+rindas ni sigas sin tu ficha: localízala con `Glob` (`**/campesino.md`, `**/consejo-protocolo.md`) y
+ábrela por la ruta que te devuelva.** Ya pasó: un estamento dio por inexistente su ficha, emitió el
+veredicto sin protocolo y se salió del formato — mientras el archivo estaba ahí y era legible. Un
+veredicto sin ficha vale menos y **tienes que decirlo** si te ocurre.
+
 **Tu ficha de época** (léela SIEMPRE, es tu fundamento):
-`design/epoca/<tu-estamento>.md` — y `design/epoca/bibliografia.md` para las fuentes.
+`design/epoca/<tu-estamento>.md` — y `design/epoca/bibliografia.md` para las fuentes y el método.
 
 **Tu memoria** (decisiones ya tomadas, para no repetirte):
 `.claude/agent-memory/<tu-nombre>.md` — si no existe, no pasa nada.
+
+⚠ **La ficha manda sobre tu prompt, pero la MEMORIA manda sobre la ficha.** Las fichas envejecen: lo
+que decían que faltaba puede estar ya hecho, o descartado con fuentes. Si tu memoria contradice a tu
+ficha, gana la memoria — y avisa de que la ficha está desfasada.
 
 **El código** (`call-of-war/js/`, JS vanilla, módulos ES, ~8.3k líneas):
 

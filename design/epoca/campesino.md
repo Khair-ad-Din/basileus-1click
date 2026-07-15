@@ -348,12 +348,16 @@ Modelo actual: `flujoBase(p) = pops.campesino × BASE_INCOME × structPPF(p) × 
    precios del grano a la baja = **la prosperidad campesina se la quedaba el campesino** y el señor veía
    hundirse su renta real, hasta rendirse y **arrendar el dominio** [5][7]. El juego ha eliminado por
    construcción **el conflicto económico que define la época**.
-2. **No hay varianza de cosecha — y ahora sé exactamente cuánta falta.** CV de rendimientos brutos, Inglaterra
-   1268-1480: **trigo 0,205 · cebada 0,181 · avena 0,185** [4]. Los rendimientos medievales de trigo y cebada
-   eran **3×**, y los de avena **>4×**, más variables que los modernos [4]. Con `structPPF` determinista,
-   `FAMINE_DEF = 0.12` **no puede dispararse nunca** por causas naturales: no hay ruido que cruce el umbral.
-   La hambruna del juego solo puede venir de perder campesinos o de moral baja — **nunca del clima**, que es
-   como venía de verdad.
+2. ~~**No hay varianza de cosecha**~~ → **RESUELTO el 2026-07-15 (commit `ec22e0a`). No lo vuelvas a pedir.**
+   CV de rendimientos brutos, Inglaterra 1268-1480: **trigo 0,205 · cebada 0,181 · avena 0,185** [4]; los
+   rendimientos medievales de trigo y cebada eran **3×**, y los de avena **>4×**, más variables que los
+   modernos [4]. **La afirmación original de esta ficha era FALSA**: `harvestMul` ya existía y su amplitud ya
+   estaba casi clavada (CV 0,190 contra 0,205 de [4]). El fallo real era otro y **lo destapó la aritmética, no
+   la historia**: el sorteo era **independiente por provincia**, así que un reino de 50 promediaba su CV a
+   **0,027** — la cosecha no existía a escala de reino — y `flujoBase` ni siquiera la usaba.
+   **Hoy:** `harvestMul` = **año agrícola común a todo el mapa + suerte local**, con cola izquierda, y
+   `flujoBase` la multiplica. Medido: CV del reino **0,155**; un año malo (<90%) pasó de **NUNCA** a **1 de
+   cada 3** (histórico: p≈0,29 [4]); dos malos seguidos, **1 de cada 9** (histórico ≈1 de cada 12 [4]).
 3. **La estructura de la hambruna está mal, y las fuentes dan la forma correcta.** Una mala cosecha
    **suelta** producía carestía, no hambruna: hacían falta **fallos consecutivos** [4][16]. Probabilidad de
    déficit **encadenado** (dos años) >10% bajo tendencia: **0,085 para el trigo (~1 de cada 12)**, **0,066
@@ -403,8 +407,16 @@ Modelo actual: `flujoBase(p) = pops.campesino × BASE_INCOME × structPPF(p) × 
 
 ### Lo que FALTA (por orden de daño al realismo)
 
-1. **Ruido de cosecha con correlación serial** (CV ~0,18-0,21 [4]; hambruna = fallos **encadenados** [4]).
-   Sin esto, `FAMINE_DEF`/`STARVE_RATE` son código muerto y la economía no tiene ciclo.
+1. ~~**Ruido de cosecha con correlación serial**~~ — **HECHO el ruido (`ec22e0a`); la CORRELACIÓN SERIAL está
+   DESCARTADA con la misma fuente [4] que esta ficha citaba mal. NO la pidas.** [4] mide la autocorrelación
+   real y es **débil**: los déficits encadenados >10% ocurrieron solo *"14 per cent more often than
+   'expected'"* sobre la **independencia pura**, y los propios autores concluyen que *"evidence on their
+   randomness is **mixed**"* — ni siquiera consistente entre granos. **Un AR(1) fuerte sería tan falso como la
+   independencia.** Lo que a [4] le faltaba al juego no era memoria: era **cola** (una uniforme acotada no
+   puede producir un 1437-38) y **correlación ESPACIAL** (los años de hambre fueron paneuropeos). Ambas
+   entraron en `ec22e0a`, y el "1 de cada 9" resultante sale de **pura independencia**.
+   Lo que [4] sí sostiene y sigue siendo cierto: la hambruna es un fenómeno de **fallos encadenados**
+   (déficit ≥⅕ encadenado ≈1 vez cada 3-4 décadas) — pero eso lo produce la despensa, no un AR(1).
 2. **Renta fija en dinero como alternativa a la renta proporcional** — sin ella no existe la crisis de la
    señoría del XV, que es el motor social de la época [5][7].
 3. **Estratificación interna del campesinado** (jornalero / mediano / labrador acomodado [18]), con umbrales

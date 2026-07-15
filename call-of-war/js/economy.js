@@ -74,6 +74,12 @@ const HARVEST_AMP=0.33;          // variación anual TOTAL por provincia (±33% 
 const HARVEST_COMMON=0.70;       // fracción de la VARIANZA que es común a todo el mapa (calibración, no historia)
 const HARVEST_TAIL_P=0.014;      // prob/año de un desastre general: 3 episodios encadenados >25% en 212 años
 const HARVEST_TAIL=0.30;         // caída EXTRA (máx.) del año de desastre: la cola que una uniforme no tiene
+// NO se añadió correlación serial (AR(1)) A PROPÓSITO: la autocorrelación real es de solo +14% sobre la
+// independencia y "mixed" entre granos (Campbell & Ó Gráda) → un AR(1) fuerte sería tan falso como la
+// independencia. Lo que faltaba era COLA y correlación ESPACIAL, no memoria.
+// CONSECUENCIA ACEPTADA, NO ES UN BUG: el mantenimiento es fijo, así que un shock del 15% en el bruto
+// apalanca el NETO a un CV≈0.8 y la corona cierra en déficit ~27 de cada 200 años. Es el siglo XV: por eso
+// los reyes convocaban Cortes y pedían prestado. Si eso es demasiado, la perilla es HARVEST_COMMON, no AMP.
 const HARVEST_FLOOR=0.25;        // suelo: ni el peor año anula la cosecha del todo
 const HARVEST_AC=HARVEST_AMP*Math.sqrt(HARVEST_COMMON);     // amplitud del shock común
 const HARVEST_AL=HARVEST_AMP*Math.sqrt(1-HARVEST_COMMON);   // amplitud del shock local (AC²+AL²=AMP²)

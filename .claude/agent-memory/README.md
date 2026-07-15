@@ -24,8 +24,21 @@ Una línea por decisión, la más reciente arriba:
 2026-07-15 — [ESPERA] Coste de transporte por distancia (haversine) → despues del embargo.
 ```
 
-Estados: `ENTRA` · `ESPERA` · `DESCARTADO`. **Siempre con el porqué de Sergio**, no solo el veredicto:
-un "no" sin motivo no enseña nada y el agente lo reabrirá con otra forma.
+Estados y **quién puede cerrar cada uno**:
+
+| Estado | Lo cierra | Regla |
+|---|---|---|
+| `ENTRA` · `ESPERA` · `DESCARTADO` | **Sergio** | Siempre con **su** porqué |
+| `CERRADO POR EVIDENCIA` | **El cronista con fuentes**, o el consejero arbitrando | Cita la **fuente y su fiabilidad**. No necesita la firma de Sergio |
+| `SIGUE VIVO` | — | Lo que el consejo propuso y **nadie ha decidido**. Anótalo o parecerá descartado |
+
+**Nunca le pongas palabras en la boca a Sergio.** Atribuye cada cierre a quien lo cerró de verdad.
+Un cierre por evidencia es **más duradero** que un "no": para reabrirlo hace falta **una fuente mejor**,
+no cambiar de opinión.
+
+**Y lo más importante: si el hecho de fondo sobrevive al descarte, DILO en la misma línea.** Casi
+siempre pasa — se tumba la *propuesta*, no el *hallazgo*. Una memoria que entierra el hallazgo bueno
+junto con la propuesta mala hace más daño que no escribir nada.
 
 ## Qué NO va aquí
 
