@@ -105,7 +105,7 @@ function continueGame(){
   S.leagues=s.leagues||[];S.leagueSeq=s.leagueSeq||0;
   S.roads=parseRoads(s.roads);S.roadQueue=s.roadQueue||[];
   S.reports=s.reports||[];
-  S.peaceWith=-1;S.peaceSel=new Set();S.peaceGold=0;S.incomingPeace=null;S.callToArms=null;S.diploView={mode:"own",target:-1};
+  S.peaceWith=-1;S.peaceSel=new Set();S.peaceGold=0;S.incomingPeace=null;S.callToArms=null;S.diploView={mode:"own",target:-1};S.diploPick=false;S.leagueView=null;
   s.nations.forEach((x,i)=>Object.assign(S.nations[i],x));
   s.provs.forEach((d,i)=>{
     const p=S.provs[i];

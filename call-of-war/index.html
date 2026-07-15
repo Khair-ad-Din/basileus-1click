@@ -93,6 +93,13 @@
   .dipPactTag{font-size:12px;font-weight:600;color:#8fb06a;padding:2px 8px;border:1px solid #4a5b3a;border-radius:4px;background:#2c3524}
   .dipPactTag.ally{color:#6ba7d0;border-color:#3a5060;background:#232f36}
   /* --- vista de diplomacia (componente único): entidades del tablero --- */
+  /* escudo simplificado del reino (misma forma que el del parte militar): color = nación */
+  .esc{display:inline-block;width:11px;height:13px;vertical-align:-2px;flex:0 0 auto;
+       clip-path:polygon(0 0,100% 0,100% 62%,50% 100%,0 62%)}
+  .escL{width:15px;height:18px;vertical-align:-4px}
+  .dPick{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;padding:6px;background:#1e242b;border:1px solid #3a4047;border-radius:5px;max-height:104px;overflow:auto}
+  .dPickI{cursor:pointer;padding:2px;border-radius:3px;line-height:0}
+  .dPickI:hover{background:#3a4047}
   .dGrid{display:grid;grid-template-columns:1fr 1fr;gap:4px 14px}
   .dGrid>div{font-size:12px;display:flex;flex-wrap:wrap;gap:4px;align-items:center}
   .dLbl{color:#7a828b;min-width:88px;display:inline-block}
@@ -471,8 +478,7 @@
 <div class="overlay" id="dipOverlay" style="display:none">
   <div class="panel" style="min-width:820px;max-width:960px;max-height:88vh;overflow:auto">
     <button class="panelX" title="Cerrar" onclick="document.getElementById('dipOverlay').style.display='none'">✕</button>
-    <h1 style="text-align:center;margin-bottom:2px">🕊 Diplomacia</h1>
-    <p style="text-align:center;color:#9aa3ad;font-size:12px;margin:0 0 12px">Ligas, alianzas y rivalidades del tablero. Clic en un país para su diplomacia.</p>
+    <h1 style="text-align:center;margin-bottom:12px">🕊 Diplomacia</h1>
     <div id="dipBody"></div>
   </div>
 </div>

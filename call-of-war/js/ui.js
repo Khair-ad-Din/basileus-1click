@@ -7,7 +7,7 @@ import { canvas, clampPan } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
 import { armiesIn, atWar, duchyValue, fortGarrison, occupiedDuchiesBy, tryBuild, tryRecruit, tryRoad, warscore, coalitionOf, coalScore, coalCededDuchies } from "./sim.js";
 import { getRel, relTier, THRESH, canDeclareWar, canInsult, isEmbargoed, hasClaim, relBreakdown, hasPact, canPact,
-  MAX_LEAGUE, leagueOf, sameLeague, canApplyLeague, MAX_RIVALS, rivalsOf, isRival, canRival } from "./diplomacy.js";
+  MAX_LEAGUE, leagueOf, leagueById, sameLeague, canApplyLeague, MAX_RIVALS, rivalsOf, isRival, canRival } from "./diplomacy.js";
 
 // Metadata de las CATEGORÍAS de bienes (orden, icono, etiqueta), reutilizada por el Mercado, la Tesorería y
 // el panel del reino para agrupar los bienes por categoría. 'moneda' (Ducados) va aparte (su propia pestaña).
@@ -896,9 +896,10 @@ function relBarHTML(v){
 //  · "nation" → diplomacia BILATERAL con un país: su perfil y todas las acciones.
 // Se abre con el botón del reino (arriba-izq), con clic DERECHO sobre un país (sin ejército seleccionado)
 // o desde la ficha de provincia. refreshDiplomacy() se sigue llamando desde todos los handlers.
-const chipOf=n=>"<span class='chip' style='background:"+NATIONS[n].color+"'></span>";
-const chipT=n=>"<span class='chip' title='"+NATIONS[n].name+"' style='background:"+NATIONS[n].color+"'></span>";
-const nameChip=n=>"<span class='dChip' onclick='openDiplo("+n+")' title='Diplomacia con "+NATIONS[n].name+"'>"+chipOf(n)+" "+NATIONS[n].name+"</span>";
+// Escudo simplificado del reino (forma de escudo, color de la nación). Sustituye al chip cuadrado.
+const escOf=(n,big)=>"<span class='esc"+(big?" escL":"")+"' title='"+NATIONS[n].name+"' style='background:"+NATIONS[n].color+"'></span>";
+const chipOf=escOf, chipT=escOf;
+const nameChip=n=>"<span class='dChip' onclick='openDiplo("+n+")' title='Diplomacia con "+NATIONS[n].name+"'>"+escOf(n)+" "+NATIONS[n].name+"</span>";
 const dDash="<span class='dim'>—</span>";
 // aliados (pacto de alianza) de n
 function alliesOf(n){const o=[];for(let m=0;m<NPLAY;m++)if(m!==n&&S.nations[m]&&S.nations[m].alive&&hasPact(n,m)==="alliance")o.push(m);return o;}
@@ -911,19 +912,30 @@ function diploOwnHTML(){
   const myL=leagueOf(me), myA=alliesOf(me), myR=rivalsOf(me)||[], byR=rivaledBy(me);
   let h="";
   if(S.hour<WAR_LOCK_HOURS)h+="<div class='sm' style='color:#c9a86a;margin-bottom:8px'>⚔ Paz obligada: no se puede declarar la guerra hasta dentro de "+fmtDur(WAR_LOCK_HOURS-S.hour)+".</div>";
-  h+="<div class='dipDetail'><div style='margin-bottom:6px'>"+chipOf(me)+" <b style='font-size:15px'>"+NATIONS[me].name+"</b></div><div class='dGrid'>"+
-     "<div><span class='dLbl'>🛡 Mi liga</span>"+(myL?("<b>"+myL.name+"</b> <span class='sm' style='color:#7a828b'>("+myL.members.length+"/"+MAX_LEAGUE+")</span> <button class='bbtn sm' onclick='openLeagues()'>Gestionar</button>"):("<span class='dim'>Sin liga</span> <button class='bbtn sm' onclick='openLeagues()'>Ligas</button>"))+"</div>"+
+  // selector de rivales: escudos de los países a los que PUEDO rivalizar (más tensos primero)
+  let pick="";
+  if(S.diploPick){
+    const cand=[];
+    for(let m=0;m<NPLAY;m++)if(m!==me&&S.nations[m]&&S.nations[m].alive&&canRival(me,m))cand.push(m);
+    cand.sort((a,b)=>getRel(me,a)-getRel(me,b));
+    pick="<div class='dPick'>"+cand.map(m=>"<span class='dPickI' onclick='dipRival("+m+")' title='"+NATIONS[m].name+"'>"+escOf(m,1)+"</span>").join("")+"</div>";
+  }
+  const rivFull=myR.length>=MAX_RIVALS;
+  h+="<div class='dipDetail'><div style='margin-bottom:6px'>"+escOf(me,1)+" <b style='font-size:15px'>"+NATIONS[me].name+"</b></div><div class='dGrid'>"+
+     "<div><span class='dLbl'>🛡 Liga</span>"+(myL?("<span class='dChip' onclick='openLeagues("+myL.id+")'>🛡 <b>"+myL.name+"</b></span> <span class='sm' style='color:#7a828b'>("+myL.members.length+")</span>"):("<span class='dim'>—</span> <button class='bbtn sm' onclick='openLeagues()' title='Ligas'>+</button>"))+"</div>"+
      "<div><span class='dLbl'>🤝 Aliados</span>"+(myA.length?myA.map(nameChip).join(" "):dDash)+"</div>"+
-     "<div><span class='dLbl'>⚔ Mis rivales</span>"+(myR.length?myR.map(nameChip).join(" "):dDash)+" <span class='sm' style='color:#7a828b'>("+myR.length+"/"+MAX_RIVALS+")</span></div>"+
-     "<div><span class='dLbl'>☠ Me rivalizan</span>"+(byR.length?byR.map(nameChip).join(" "):dDash)+"</div>"+
-     "</div></div>";
+     "<div><span class='dLbl'>⚔ Rivales</span>"+(myR.length?myR.map(nameChip).join(" "):"")+
+       "<button class='bbtn sm'"+(rivFull?" disabled title='Ya tienes "+MAX_RIVALS+" rivales'":" onclick='dipRivalPick()' title='Declarar rival'")+">"+(S.diploPick?"×":"+")+"</button>"+
+       "<span class='sm' style='color:#7a828b'>"+myR.length+"/"+MAX_RIVALS+"</span></div>"+
+     "<div><span class='dLbl'>☠ Enemigos</span>"+(byR.length?byR.map(nameChip).join(" "):dDash)+"</div>"+
+     "</div>"+pick+"</div>";
   // ENTIDADES: ligas
   h+="<div class='dSecT'>🛡 Ligas <span class='statv' data-tip='Organización defensiva multi-miembro: atacar a un miembro convoca a los demás a defenderlo. ♛ = fundador.'>ⓘ</span></div>";
   if(S.leagues.length){
     h+="<div class='dCards'>";
     for(const L of S.leagues){
       const mine=L.members.includes(me);
-      h+="<div class='dCard"+(mine?" mine":"")+"'><div class='dCardT'>🛡 "+L.name+" <span class='sm' style='color:#7a828b'>("+L.members.length+"/"+MAX_LEAGUE+")</span></div>"+
+      h+="<div class='dCard"+(mine?" mine":"")+"'><div class='dCardT'><span class='dChip' onclick='openLeagues("+L.id+")'>🛡 "+L.name+"</span> <span class='sm' style='color:#7a828b'>("+L.members.length+"/"+MAX_LEAGUE+")</span></div>"+
          "<div>"+L.members.map(m=>nameChip(m)+(m===L.founder?"<span class='sm' style='color:#c9a86a'> ♛</span>":"")).join(" ")+"</div></div>";
     }
     h+="</div>";
@@ -938,26 +950,19 @@ function diploOwnHTML(){
   }
   h+="<div class='dSecT'>🤝 Alianzas</div>";
   h+=pairs.length?("<div class='dPairs'>"+pairs.map(x=>"<span class='dPair"+((x[0]===me||x[1]===me)?" mine":"")+"'>"+nameChip(x[0])+" ↔ "+nameChip(x[1])+"</span>").join("")+"</div>"):"<div class='dim sm'>Ninguna.</div>";
-  // ENTIDADES: rivalidades
-  const rp=[];
-  for(let n=0;n<NPLAY;n++){
-    if(!S.nations[n]||!S.nations[n].alive)continue;
-    for(const t of (rivalsOf(n)||[]))if(S.nations[t]&&S.nations[t].alive)rp.push([n,t]);
-  }
-  h+="<div class='dSecT'>⚔ Rivalidades <span class='statv' data-tip='Declaración pública, visible para todos: da tensión con el rival y CONCORDIA con quien comparta ese mismo rival (aptos a aliarse).'>ⓘ</span></div>";
-  h+=rp.length?("<div class='dPairs'>"+rp.map(x=>"<span class='dPair"+((x[0]===me||x[1]===me)?" mine":"")+"'>"+nameChip(x[0])+" → "+nameChip(x[1])+"</span>").join("")+"</div>"):"<div class='dim sm'>Ninguna.</div>";
   // TABLA por nación
-  h+="<div class='dSecT'>Por nación <span class='sm' style='color:#7a828b'>(clic en una fila para su diplomacia)</span></div>";
-  h+="<table class='dip'><tr><th>Nación</th><th>Liga</th><th>Aliados</th><th>Rivales</th><th>Relación</th><th>Estado</th></tr>";
+  h+="<div class='dSecT'>Por nación</div>";
+  h+="<table class='dip'><tr><th>Nación</th><th>Liga</th><th>Aliados</th><th>Rivales</th><th>Enemigos</th><th>Relación</th><th>Estado</th></tr>";
   for(let n=0;n<NPLAY;n++){
     if(n===me||!S.nations[n])continue;
     if(!S.nations[n].alive)continue;
-    const L=leagueOf(n), A=alliesOf(n), R=rivalsOf(n)||[], v=getRel(me,n), t=relTier(v);
+    const L=leagueOf(n), A=alliesOf(n), R=rivalsOf(n)||[], E=rivaledBy(n), v=getRel(me,n), t=relTier(v);
     h+="<tr class='dipRow' onclick='openDiplo("+n+")'>";
-    h+="<td class='dipName'>"+chipOf(n)+" "+NATIONS[n].name+"</td>";
+    h+="<td class='dipName'>"+escOf(n)+" "+NATIONS[n].name+"</td>";
     h+="<td class='sm'>"+(L?("🛡 "+L.name):dDash)+"</td>";
-    h+="<td class='sm'>"+(A.length?A.map(chipT).join(" "):dDash)+"</td>";
-    h+="<td class='sm'>"+(R.length?R.map(chipT).join(" "):dDash)+"</td>";
+    h+="<td class='sm'>"+(A.length?A.map(m=>escOf(m)).join(" "):dDash)+"</td>";
+    h+="<td class='sm'>"+(R.length?R.map(m=>escOf(m)).join(" "):dDash)+"</td>";
+    h+="<td class='sm'>"+(E.length?E.map(m=>escOf(m)).join(" "):dDash)+"</td>";
     h+="<td title=\""+relTip(me,n)+"\">"+relBarHTML(v)+" <span style='color:"+t.color+";font-weight:600'>"+(v>0?"+":"")+Math.round(v)+"</span></td>";
     h+="<td class='sm' style='color:"+(atWar(me,n)?"#d08080":t.color)+"'>"+(atWar(me,n)?"EN GUERRA":t.label)+"</td>";
     h+="</tr>";
@@ -969,19 +974,20 @@ function diploOwnHTML(){
 // --- MODO "nation": diplomacia bilateral con n (su perfil + TODAS las acciones) ---
 function diploNationHTML(n){
   const me=S.player, v=getRel(me,n), t=relTier(v);
-  const L=leagueOf(n), A=alliesOf(n), R=rivalsOf(n)||[];
+  const L=leagueOf(n), A=alliesOf(n), R=rivalsOf(n)||[], E=rivaledBy(n);
   const locked=S.hour<WAR_LOCK_HOURS;
-  let h="<div style='margin-bottom:8px'><button class='bbtn' onclick='diploBack()'>← Vista general</button></div>";
+  let h="<div style='margin-bottom:8px'><button class='bbtn' onclick='diploBack()'>←</button></div>";
   h+="<div class='dipDetail'>";
-  h+="<div style='margin-bottom:4px'>"+chipOf(n)+" <b style='font-size:15px'>"+NATIONS[n].name+"</b> "+
+  h+="<div style='margin-bottom:4px'>"+escOf(n,1)+" <b style='font-size:15px'>"+NATIONS[n].name+"</b> "+
      "<span style='color:"+t.color+";font-weight:600'>"+(v>0?"+":"")+Math.round(v)+" · "+t.label+"</span>"+
      (isRival(me,n)?" <span class='dPair mine' style='padding:1px 6px'>⚔ Rivalidad</span>":"")+"</div>";
   h+="<div style='margin:4px 0'>"+relBarHTML(v)+"</div>";
   h+="<div class='sm' style='color:#7a828b;margin-bottom:6px'>"+relTip(me,n)+"</div>";
   h+="<div class='dGrid'>"+
-     "<div><span class='dLbl'>🛡 Su liga</span>"+(L?("<b>"+L.name+"</b> <span class='sm' style='color:#7a828b'>("+L.members.length+")</span>"):dDash)+"</div>"+
-     "<div><span class='dLbl'>🤝 Sus aliados</span>"+(A.length?A.map(nameChip).join(" "):dDash)+"</div>"+
-     "<div><span class='dLbl'>⚔ Sus rivales</span>"+(R.length?R.map(nameChip).join(" "):dDash)+"</div>"+
+     "<div><span class='dLbl'>🛡 Liga</span>"+(L?("<span class='dChip' onclick='openLeagues("+L.id+")'>🛡 <b>"+L.name+"</b></span> <span class='sm' style='color:#7a828b'>("+L.members.length+")</span>"):dDash)+"</div>"+
+     "<div><span class='dLbl'>🤝 Aliados</span>"+(A.length?A.map(nameChip).join(" "):dDash)+"</div>"+
+     "<div><span class='dLbl'>⚔ Rivales</span>"+(R.length?R.map(nameChip).join(" "):dDash)+"</div>"+
+     "<div><span class='dLbl'>☠ Enemigos</span>"+(E.length?E.map(nameChip).join(" "):dDash)+"</div>"+
      "</div></div>";
   // --- gestos / economía ---
   const ci=canInsult(me,n);
@@ -1106,53 +1112,66 @@ function refreshCoalPeace(){
   h+="<div style='display:flex;gap:8px;margin-top:16px'><button class='uiBtn' style='border-color:#8fb06a' onclick='coalPeaceSign()'>🕊 Firmar paz conjunta</button><button class='uiBtn' onclick='coalPeaceCancel()'>Cancelar</button></div>";
   el.innerHTML=h;
 }
-// Ligas defensivas (Fase 6c): ventana de GESTIÓN. Si el jugador está en una liga → miembros, solicitudes
-// pendientes (admitir/rechazar por VOTO), expulsar (por voto) y salir. Si no → fundar una, o APLICAR a las
-// existentes (gate de concordia ≥ THRESH.league con el fundador). El estado vive en S.leagues.
-function refreshLeagues(){
-  const el=document.getElementById("leagueBody"); if(!el)return;
-  const me=S.player;
-  if(me<0){el.innerHTML="<p style='text-align:center;color:#9aa3ad'>Toma el mando de un reino para gestionar ligas.</p>";return;}
-  const myL=leagueOf(me);
-  let h="";
-  if(myL){
-    const founder=myL.founder;
-    h+="<div style='margin-bottom:8px'><b style='font-size:15px'>🛡 "+myL.name+"</b> <span class='sm' style='color:#7a828b'>("+myL.members.length+"/"+MAX_LEAGUE+" miembros)</span></div>";
-    h+="<div class='sm' style='color:#9aa3ad;margin-bottom:4px'>Miembros:</div><table class='dip'>";
-    for(const m of myL.members){
-      h+="<tr><td><span class='chip' style='background:"+NATIONS[m].color+"'></span> "+NATIONS[m].name+
-         (m===founder?" <span class='sm' style='color:#c9a86a'>fundador</span>":"")+(m===me?" <span class='sm' style='color:#7a828b'>(tú)</span>":"")+"</td>";
-      h+=(m!==me&&m!==founder)?"<td><button class='bbtn sm' onclick='leagueExpel("+m+")' title='Propón expulsarlo: los miembros votan por mayoría'>Expulsar</button></td>":"<td></td>";
-      h+="</tr>";
-    }
-    h+="</table>";
-    if(myL.apps.length){
-      h+="<div class='sm' style='color:#9aa3ad;margin:14px 0 4px'>Solicitudes de ingreso <span class='statv' data-tip='Deciden los miembros por mayoría: tu voto cuenta junto al de los demás.'>ⓘ</span></div><table class='dip'>";
-      for(const ap of myL.apps){ const rv=getRel(me,ap);
-        h+="<tr><td><span class='chip' style='background:"+NATIONS[ap].color+"'></span> "+NATIONS[ap].name+" <span class='sm' style='color:#7a828b'>(rel "+(rv>0?"+":"")+Math.round(rv)+")</span></td>"+
+// Ligas defensivas: ventana con dos modos. Si S.leagueView apunta a una liga → su FICHA (miembros,
+// solicitudes, aplicar/salir/expulsar). Si no → general: fundar (si no tienes liga) + lista de ligas.
+// Se llega aquí desde la vista de diplomacia (clic en el nombre de una liga) o el botón de Ligas.
+function leagueDetailHTML(L){
+  const me=S.player, mine=L.members.includes(me);
+  let h="<div style='margin-bottom:8px'><button class='bbtn' onclick='leagueBack()'>←</button></div>";
+  h+="<div style='margin-bottom:10px'><b style='font-size:16px'>🛡 "+L.name+"</b> <span class='sm' style='color:#7a828b'>("+L.members.length+"/"+MAX_LEAGUE+")</span></div>";
+  h+="<table class='dip'>";
+  for(const m of L.members){
+    h+="<tr><td>"+escOf(m)+" "+NATIONS[m].name+
+       (m===L.founder?" <span class='sm' style='color:#c9a86a'>♛</span>":"")+
+       (m===me?" <span class='sm' style='color:#7a828b'>(tú)</span>":"")+"</td>";
+    h+=(mine&&m!==me&&m!==L.founder)
+      ?"<td><button class='bbtn sm' onclick='leagueExpel("+m+")' title='Proponer expulsión: votan los miembros'>Expulsar</button></td>"
+      :"<td></td>";
+    h+="</tr>";
+  }
+  h+="</table>";
+  if(mine){
+    if(L.apps.length){
+      h+="<div class='dSecT'>Solicitudes <span class='statv' data-tip='Deciden los miembros por mayoría: tu voto cuenta junto al de los demás.'>ⓘ</span></div><table class='dip'>";
+      for(const ap of L.apps){ const rv=getRel(me,ap);
+        h+="<tr><td>"+escOf(ap)+" "+NATIONS[ap].name+" <span class='sm' style='color:#7a828b'>("+(rv>0?"+":"")+Math.round(rv)+")</span></td>"+
            "<td><button class='bbtn sm' onclick='leagueVote("+ap+",true)'>Admitir</button> <button class='bbtn sm' onclick='leagueVote("+ap+",false)'>Rechazar</button></td></tr>";
       }
       h+="</table>";
-    } else h+="<div class='sm' style='color:#7a828b;margin-top:14px'>Sin solicitudes pendientes.</div>";
-    h+="<div style='margin-top:18px'><button class='uiBtn' onclick='leagueLeave()' title='Abandonas la liga (si eres el fundador, la hereda otro miembro)'>Salir de la liga</button></div>";
+    }
+    h+="<div style='margin-top:16px'><button class='uiBtn' onclick='leagueLeave()' title='Si eres el fundador, la liga la hereda otro miembro'>Salir de la liga</button></div>";
   }else{
-    h+="<div style='margin-bottom:16px;display:flex;gap:8px;align-items:center'><input id='leagueName' type='text' maxlength='28' placeholder='Nombre de la liga' style='width:200px'> "+
-       "<button class='uiBtn' style='border-color:#8fb06a' onclick='leagueFound()'>Fundar liga</button></div>";
-    if(S.leagues.length){
-      h+="<div class='sm' style='color:#9aa3ad;margin-bottom:4px'>Ligas existentes (aplica para entrar):</div><table class='dip'>";
-      for(const L of S.leagues){
-        const names=L.members.map(m=>NATIONS[m].name).join(", ");
-        h+="<tr><td><b>🛡 "+L.name+"</b> <span class='sm' style='color:#7a828b'>("+L.members.length+"/"+MAX_LEAGUE+")</span><br><span class='sm' style='color:#9aa3ad'>"+names+"</span></td>";
-        const ca=canApplyLeague(me,L.id);
-        if(ca.ok) h+="<td><button class='bbtn sm' onclick='leagueApply("+L.id+")'>Aplicar</button></td>";
-        else{ const tip=ca.reason==="llena"?"Liga completa":ca.reason==="tension"?("Necesitas "+Math.ceil(ca.need||0)+" de concordia más con "+NATIONS[L.founder].name):"No disponible";
-          h+="<td><button class='bbtn sm' disabled title=\""+tip+"\">Aplicar</button></td>"; }
-        h+="</tr>";
-      }
-      h+="</table>";
-    } else h+="<div class='sm' style='color:#7a828b'>No hay ligas todavía. Funda la primera.</div>";
+    const ca=canApplyLeague(me,L.id);
+    const tip=ca.ok?"":(ca.reason==="llena"?"Liga completa"
+      :ca.reason==="enotraliga"?"Ya estás en otra liga"
+      :ca.reason==="yaaplico"?"Ya has solicitado entrar"
+      :ca.reason==="tension"?("Necesitas "+Math.ceil(ca.need||0)+" de concordia más con "+NATIONS[L.founder].name+", o un rival común con un miembro")
+      :"No disponible");
+    h+="<div style='margin-top:16px'><button class='uiBtn'"+(ca.ok?" style='border-color:#8fb06a' onclick='leagueApply("+L.id+")'":" disabled title=\""+tip+"\"")+">Aplicar</button></div>";
   }
-  el.innerHTML=h;
+  return h;
+}
+function leagueGeneralHTML(){
+  const me=S.player, myL=leagueOf(me);
+  let h="";
+  if(!myL)h+="<div style='margin-bottom:14px;display:flex;gap:8px;align-items:center'><input id='leagueName' type='text' maxlength='28' placeholder='Nombre de la liga' style='width:200px'> "+
+    "<button class='uiBtn' style='border-color:#8fb06a' onclick='leagueFound()'>Fundar liga</button></div>";
+  if(S.leagues.length){
+    h+="<div class='dCards'>";
+    for(const L of S.leagues){
+      const mine=L.members.includes(me);
+      h+="<div class='dCard"+(mine?" mine":"")+"'><div class='dCardT'><span class='dChip' onclick='openLeagues("+L.id+")'>🛡 "+L.name+"</span> <span class='sm' style='color:#7a828b'>("+L.members.length+"/"+MAX_LEAGUE+")</span></div>"+
+         "<div>"+L.members.map(m=>escOf(m)+(m===L.founder?"<span class='sm' style='color:#c9a86a'>♛</span>":"")).join(" ")+"</div></div>";
+    }
+    h+="</div>";
+  } else h+="<div class='dim sm'>No hay ligas.</div>";
+  return h;
+}
+function refreshLeagues(){
+  const el=document.getElementById("leagueBody"); if(!el)return;
+  if(S.player<0){el.innerHTML="<p style='text-align:center;color:#9aa3ad'>Toma el mando de un reino para gestionar ligas.</p>";return;}
+  const L=(S.leagueView!=null)?leagueById(S.leagueView):null;
+  el.innerHTML = L ? leagueDetailHTML(L) : leagueGeneralHTML();
 }
 // Llamada a las armas (Fase 7): atacan a un aliado/co-miembro de liga del jugador → decidir si acude a
 // defenderlo (entra en el bando defensor de la coalición) o rehúsa (rompe el vínculo + reputación).

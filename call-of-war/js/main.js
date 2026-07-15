@@ -337,7 +337,9 @@ window.openDiplo=function(n){
   refreshDiplomacy();
   document.getElementById("dipOverlay").style.display="flex";
 };
-window.diploBack=function(){S.diploView={mode:"own",target:-1};refreshDiplomacy();};
+window.diploBack=function(){S.diploView={mode:"own",target:-1};S.diploPick=false;refreshDiplomacy();};
+// Abre/cierra el selector de rivales (escudos de los países a los que puedes rivalizar).
+window.dipRivalPick=function(){S.diploPick=!S.diploPick;refreshDiplomacy();};
 // Declarar/quitar RIVALIDAD (pública): tensión con él y concordia con quien comparta ese rival.
 window.dipRival=function(n){
   const mine=(rivalsOf(S.player)||[]).includes(n);
@@ -352,6 +354,7 @@ window.dipRival=function(n){
     report("⚔","<b>"+NATIONS[S.player].name+"</b> declara públicamente su rivalidad con <b>"+NATIONS[n].name+"</b>.",[S.player,n]);
     log("Declaras rival a "+NATIONS[n].name+". Quien comparta este rival te verá con mejores ojos.");
   }
+  S.diploPick=false; // el selector se cierra al elegir
   refreshDiplomacy();
 };
 window.dipSelect=function(n){window.openDiplo(n)};
@@ -400,7 +403,12 @@ window.dipClaim=function(duchyId){
   refreshDiplomacy();
 };
 // --- LIGAS DEFENSIVAS (Fase 6c): fundar, aplicar (voto IA al momento), votar solicitudes, expulsar, salir ---
-window.openLeagues=function(){document.getElementById("leagueOverlay").style.display="flex";refreshLeagues();};
+// openLeagues() = vista general de ligas; openLeagues(id) = ficha de esa liga (miembros, aplicar, gestionar).
+window.openLeagues=function(id){
+  S.leagueView=(id!=null&&id>=0)?id:null;
+  document.getElementById("leagueOverlay").style.display="flex";refreshLeagues();
+};
+window.leagueBack=function(){S.leagueView=null;refreshLeagues();};
 window.leagueFound=function(){
   const el=document.getElementById("leagueName"), r=createLeague(S.player,el?el.value:"");
   if(r.ok){report("🛡","<b>"+NATIONS[S.player].name+"</b> funda <b>"+r.league.name+"</b>, una liga defensiva.",[S.player]);log("Fundas "+r.league.name+".");}
@@ -563,7 +571,7 @@ function regenerateWorld(){
   setTimeout(()=>{
     S.provs=[];S.armies=[];S.wars=new Map();S.truces=new Map();S.armyIdSeq=1;S.duchies=[];S.reports=[];
     S.rel=new Map();S.relMonthKey=-1;S.dipCd=new Map();S.dipSel=-1;S.embargoes=new Set();S.claims=new Set();S.pacts=new Map();
-    S.council=null;S.coalitions=new Map();S.coalSeq=0;S.leagues=[];S.leagueSeq=0;S.callToArms=null;S.diploView={mode:"own",target:-1};
+    S.council=null;S.coalitions=new Map();S.coalSeq=0;S.leagues=[];S.leagueSeq=0;S.callToArms=null;S.diploView={mode:"own",target:-1};S.diploPick=false;S.leagueView=null;
     S.peaceWith=-1;S.peaceSel=new Set();S.peaceGold=0;S.incomingPeace=null;
     S.player=-1;S.hour=0;S.acc=0;S.started=false;S.gameOver=false;
     S.selProv=-1;S.selArmy=null;S.battleFlash={};clearSelOutline();
