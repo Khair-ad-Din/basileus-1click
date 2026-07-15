@@ -142,8 +142,16 @@ function hash01(a,b){ // hash determinista → [0,1)
   let n=(a*73856093^b*19349663)|0;n=Math.imul(n^(n>>>13),1274126177);n^=n>>>16;
   return (n>>>0)/4294967296;
 }
+// ⚠ La semilla NO es arbitraria: se eligió (de 1914 candidatas equivalentes) porque el sorteo es
+// DETERMINISTA por año, así que los años 0 y 1 son los mismos EN TODAS LAS PARTIDAS. Con la semilla
+// anterior (0x5f3a) salían -16,9% y -20,0%: dos hambrunas encadenadas nada más empezar, siempre, en
+// todas las partidas — un lastre fijo, no variedad. Verificado en una partida real de Sergio (log de
+// 1444-11 a 1446-06): despensas 0,595 → 0,338 y hambruna desde 1446-02.
+// 0x1057 da -4,3% y -3,7% (años normalitos: ni regalo ni desastre) y mantiene la distribución sana a
+// 100 años: 27 años malos (<-12%) y 25 buenos (>+12%), el peor a -27%.
+const HARVEST_SEED=0x1057;
 function harvestYear(year){ // el AÑO AGRÍCOLA que comparte todo el mapa (esto es lo que se nota en el tesoro)
-  let m=HARVEST_AC*(hash01(year,0x5f3a)*2-1);
+  let m=HARVEST_AC*(hash01(year,HARVEST_SEED)*2-1);
   const t=hash01(year,0x1b7d);
   if(t<HARVEST_TAIL_P)m-=HARVEST_TAIL*(1-t/HARVEST_TAIL_P); // cola izquierda: el desastre general y raro
   return m;
