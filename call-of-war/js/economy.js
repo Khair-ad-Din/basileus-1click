@@ -1,6 +1,11 @@
 // economy.js
 import { NPLAY, BUILDINGS, BUILD_JOBS, TERRAINS, UNITS, RES_KEYS, RES_LABEL, LOOT_FRAC, STRATA, EXTRA_GOODS, RES_CAT, RES_RAW_CATS, START_DATE } from "./config.js";
 import { S } from "./state.js";
+// El comercio deja de ser un pool GLOBAL: cada par de reinos tiene su geografía y su política.
+// kmBetween es la MISMA haversine que ya usan las marchas de ejércitos (sim.js) — no hay geometría nueva.
+// Sin ciclo de imports: mapgen.js y diplomacy.js solo importan de config.js y state.js.
+import { kmBetween } from "./mapgen.js";
+import { isEmbargoed, atWarPair } from "./diplomacy.js";
 
 // ---- Ocupación (estilo EU4): la provincia sigue siendo de iure de su dueño (p.owner) pero
 // está controlada militarmente por p.occupier. Su renta se le niega al dueño y el ocupante
@@ -304,7 +309,32 @@ const CHANNEL_GOODS={}; for(const _g in BONUS_BIEN)for(const _ch in BONUS_BIEN[_
 // diferencial (comprar barato/vender caro). Global sin distancia en v1 (futuro: coste por distancia/ruta).
 const TRADE_RATE=0.05;        // fracción del stock exportable que se mueve por tick (convergencia gradual)
 const TRADE_MIN_SPREAD=0.06;  // diferencial mínimo (sobre el precio ref) para que el arbitraje sea rentable
-const TRADE_COST=0.0;         // coste de transporte (0 = frictionless; futuro: por distancia entre reinos)
+// ---- COSTE DE TRANSPORTE POR PAR: aquí es donde el pool global se convierte en mercados locales ----
+// Calibrado contra dos rutas MARÍTIMAS reales: grano báltico Danzig→Brujas (~1100 km) ≈ 50% del precio de
+// desembarco, y sal Portugal→Brujas (~1800 km) ≈ 85%. Las dos dan ~4.6e-4 por km: dentro de los bienes a
+// granel manda la DISTANCIA, no el precio → aquí NO hay divisor de precio, a propósito.
+// ⚠ NO es el 8:4:1 tierra:río:mar: eso es por TONELADA-MILLA. En rutas comparables reales el mar solo le
+// ganaba a la tierra ~1,5× (Brujas→Barcelona 1398: mar 15% vs tierra 22%). Tampoco se modela el tipo de
+// barco, aunque pesaba tanto como el mar (misma saca de lana: 25% en galera veneciana, 5,16% en coca
+// genovesa): es demasiado ruido para lo que aporta.
+const TRADE_KM=6.8e-4;        // fracción del valor por km, ruta TERRESTRE y bien a granel
+const TRADE_SEA=0.68;         // ambas capitales costeras → 6.8e-4*0.68 ≈ 4.6e-4, que es el ancla histórica
+// Lo que de verdad decide QUÉ viaja es la DENSIDAD DE VALOR: solo lo caro por unidad de peso soportaba el
+// flete. Por eso la piedra no cruzaba Europa y la seda sí. Peso por ducado, por categoría de bien.
+const TRADE_BULK={cereal:1.0, mar:1.0, cultivo:1.0, ganado:0.8, bosque:1.6, extractivo:2.2,
+  manufactura:0.3, comercio:0.15, moneda:0.05};
+// El riesgo era POLÍTICO, no meteorológico: ≥50% del coste del seguro marítimo venía de corso e
+// incautaciones por guerra (el recargo de invierno nunca pasó del 13%).
+const TRADE_WAR=3.0;          // la guerra ENCARECE el par; no lo corta (había contrabando y neutrales)
+function tradeCost(g,a,b){    // fracción del valor de referencia; Infinity = par cortado
+  if(isEmbargoed(a,b))return Infinity;                    // el embargo del jugador CORTA el par (ya no es un placebo)
+  const pa=S.provs[S.nations[a].capital], pb=S.provs[S.nations[b].capital];
+  if(!pa||!pb)return Infinity;
+  let c=TRADE_KM*kmBetween(pa,pb)*(TRADE_BULK[RES_CAT[g]]||1);
+  if(pa.coastal&&pb.coastal)c*=TRADE_SEA;
+  if(atWarPair(a,b))c*=TRADE_WAR;
+  return c;
+}
 // El comercio de cada tick es "a golpes" (el arbitraje empareja rotando: un reino comercia mucho un tick y
 // nada el siguiente). Para el PANEL se suaviza con una media móvil (EMA) → un RITMO mensual estable que no
 // parpadea. TEL_SMOOTH ≈ media de ~35 ticks (1-2 días de juego): estable pero sigue los cambios reales.
@@ -1104,14 +1134,18 @@ function economyTick(dt=1){
     let lo=0,hi=node.length-1;
     while(lo<hi){
       const A=node[lo],B=node[hi];                                             // A barato (vende su excedente), B caro (compra)
-      // TODO Diplomacia (Fase 4b/comercio localizado): cuando el comercio deje de ser un pool GLOBAL,
-      // saltar el par embargado aquí → `if(isEmbargoed(A.N.idx,B.N.idx)){...buscar otro comprador...}`.
-      // Hoy no muerde (el bien llega vía intermediarios y los precios convergen global). Ver diplomacy.js.
-      if(B.p-A.p<TRADE_MIN_SPREAD*ref)break;                                   // diferencial ya cerrado → sin arbitraje rentable
+      // El COSTE del par (geografía + política) es lo que convierte este pool en mercados locales
+      // conectados: el flete entra en el TEST DE RENTABILIDAD, no solo en el margen. Ponerlo solo en el
+      // margen sería inútil — recortaría al mercader mientras el stock sigue viajando y los precios
+      // convergiendo global. Y por eso el corte ya no puede ser `break`: con coste POR PAR, que el par de
+      // mayor diferencial no sea rentable ya no implica que ningún otro lo sea (los extremos suelen estar
+      // lejos; dos vecinos con menos spread sí comercian). Embargo → Infinity; guerra → ×TRADE_WAR.
+      const cost=tradeCost(g,A.N.idx,B.N.idx)*ref;                             // ducados/unidad (Infinity = par cortado)
+      if(!(B.p-A.p>=TRADE_MIN_SPREAD*ref+cost)){lo++;hi--;continue}            // este par no; puede que otro sí
       const q=(A.s||0)*TRADE_RATE*dt;                                          // A exporta una fracción de su stock (convergencia gradual)
       if(q>1e-9){
         A.N.mkt[g]=Math.max(0,(A.N.mkt[g]||0)-q); B.N.mkt[g]=(B.N.mkt[g]||0)+q; // el stock viaja del mercado barato al caro
-        const half=q*(B.p-A.p)*(1-TRADE_COST)*0.5;                            // el mercader de cada punta se lleva medio diferencial
+        const half=q*(B.p-A.p-cost)*0.5;                                       // el mercader paga el flete y se queda medio diferencial NETO
         const taxA=half*almojOf(A.N.idx), taxB=half*almojOf(B.N.idx);         // ALMOJARIFAZGO: la corona de cada reino grava la aduana del comercio EXTERIOR
         A.N.res.dinero+=taxA; A.N.almojRate=(A.N.almojRate||0)+taxA/dt; A.N.sWealth.burgues+=half-taxA;
         B.N.res.dinero+=taxB; B.N.almojRate=(B.N.almojRate||0)+taxB/dt; B.N.sWealth.burgues+=half-taxB;
@@ -1136,7 +1170,7 @@ function economyTick(dt=1){
 
 export {
   canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, nationLedger, isOccupied, occupierOf, provLoot, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, recruitable, taxOf, moraleGrowth, MORALE_MIN, MORALE_HOSTILE, SOLD_FRAC, foodCons, foodBalance, foodCap, foodFill, harvestMul, subsProd, subsCons, subsBalance, storeCap, storeOf, SUBS_BASICS, specialistCap, buildJobs, freeLabor, staffing, employedIn, jobsOf, buildingYield, buildSlots, usedSlots, structPPF, JOBS_PER_LEVEL, NEED_PC, NEED_PRICE, FOOD_PRICE, economyTick,
-  MKT_GOODS, MKT_TRADE, MKT_PRICE, ensureMarket, seedStrataWealth, flujoBase, repartoRates, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, manorOf, canStaffIndustry, bOwnerOf, provEconomyByOwner, ESTATES_BUILD,
+  MKT_GOODS, MKT_TRADE, MKT_PRICE, ensureMarket, seedStrataWealth, flujoBase, repartoRates, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, manorOf, canStaffIndustry, bOwnerOf, provEconomyByOwner, ESTATES_BUILD, tradeCost, TRADE_BULK,
   BASICS, TERRAIN_CAT, terrMul, terrCatMul, RES_RAW_CATS,
   MONTH_TICKS, resetTsyLedger, tsyTick, tsyAvail, tsyMonthBal, recFlow, BONUS_BIEN, PROSP_CHANNELS,
   bOff, bCond, effLvl, buildingProfit, buildingOutput, degradeBuildings, sourceableSet, inputsSourceable,

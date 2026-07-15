@@ -200,10 +200,9 @@ function giftGold(a,b,amount){
   return{ok:true,given:amt,gain,rel};
 }
 
-// ---- EMBARGO (Fase 4b): estado + helpers, SIN efecto económico todavía. El comercio es GLOBAL (pool de
-// arbitraje en economy.js), así que un embargo por par no puede morder hasta que LOCALICEMOS el comercio.
-// Se deja la maquinaria y el helper isEmbargoed listos; el enganche en el bucle de arbitraje será un
-// one-liner (`if(isEmbargoed(A.idx,B.idx))…`) cuando exista comercio bilateral/regional. Mutuo por par.
+// ---- EMBARGO: estado + helpers. MUERDE desde 2026-07-15. El comercio dejó de ser un pool global: el
+// arbitraje de economy.js tiene coste POR PAR (geografía + política), así que `tradeCost` devuelve
+// Infinity para un par embargado y sus mercaderes dejan de arbitrar entre ambos mercados. Mutuo por par.
 function isEmbargoed(a,b){return validPair(a,b)&&S.embargoes.has(relKey(a,b))}
 function setEmbargo(a,b,on){
   if(!validPair(a,b))return false;
@@ -450,7 +449,7 @@ function leagueTick(){
 }
 
 export { relKey, getRel, setRel, addImpulse, relBreakdown, relTier, relTick, nationAdjSet, THRESH, canDeclareWar,
-  insult, giftGold, canInsult, isEmbargoed, setEmbargo, fabricateClaim, hasClaim, duchyOwner,
+  insult, giftGold, canInsult, isEmbargoed, setEmbargo, atWarPair, fabricateClaim, hasClaim, duchyOwner,
   conquestFanout, nationNeighbors, hasPact, canPact, formPact, breakPact,
   MAX_LEAGUE, leagueOf, sameLeague, leagueById, createLeague, canApplyLeague, applyToLeague,
   resolveApplication, proposeExpel, leaveLeague, refuseDefense,

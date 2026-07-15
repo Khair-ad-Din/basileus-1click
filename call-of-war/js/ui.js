@@ -1002,8 +1002,8 @@ function diploNationHTML(n){
   h+="<button class='bbtn' onclick='openDipModal(&quot;gift&quot;,"+n+")'>🎁 Regalar</button>";
   h+="<button class='bbtn' onclick='openDipModal(&quot;claim&quot;,"+n+")'>📜 Reclamaciones</button>";
   const emb=isEmbargoed(me,n), canEmb=v<=THRESH.embargo;
-  if(emb) h+="<button class='bbtn' onclick='dipEmbargo("+n+")' title='Sin efecto económico hasta localizar el comercio'>🚫 Levantar embargo</button>";
-  else h+="<button class='bbtn'"+(canEmb?" onclick='dipEmbargo("+n+")' title='Sin efecto económico hasta localizar el comercio'":" disabled title='Necesitas ≤ "+THRESH.embargo+" de tensión'")+">🚫 Embargo</button>";
+  if(emb) h+="<button class='bbtn' onclick='dipEmbargo("+n+")' title='Corta el comercio con este reino: vuestros mercaderes dejan de arbitrar entre los dos mercados'>🚫 Levantar embargo</button>";
+  else h+="<button class='bbtn'"+(canEmb?" onclick='dipEmbargo("+n+")' title='Corta el comercio con este reino: vuestros mercaderes dejan de arbitrar entre los dos mercados'":" disabled title='Necesitas ≤ "+THRESH.embargo+" de tensión'")+">🚫 Embargo</button>";
   h+="</div>";
   // --- rivalidad (pública) ---
   const myR=rivalsOf(me)||[], isR=myR.includes(n);
