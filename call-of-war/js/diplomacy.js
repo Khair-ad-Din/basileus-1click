@@ -454,4 +454,5 @@ export { relKey, getRel, setRel, addImpulse, relBreakdown, relTier, relTick, nat
   conquestFanout, nationNeighbors, hasPact, canPact, formPact, breakPact,
   MAX_LEAGUE, leagueOf, sameLeague, leagueById, createLeague, canApplyLeague, applyToLeague,
   resolveApplication, proposeExpel, leaveLeague, refuseDefense,
-  MAX_RIVALS, rivalsOf, isRival, sharedRivals, canRival, addRival, removeRival };
+  MAX_RIVALS, rivalsOf, isRival, sharedRivals, canRival, addRival, removeRival,
+  NAP_BONUS, ALLY_BONUS, BETRAY_TENSION };

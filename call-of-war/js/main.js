@@ -339,9 +339,9 @@ window.openDiplo=function(n){
 };
 window.diploBack=function(){S.diploView={mode:"own",target:-1};refreshDiplomacy();};
 // --- popups de ACCIÓN diplomática: cada acción con ajustes abre su propia ventana ---
-window.openDipModal=function(kind,target){
+window.openDipModal=function(kind,target,extra){
   if(S.player<0)return;
-  S.dipModal={kind,target:(target!=null?target:-1),gold:0};
+  S.dipModal={kind,target:(target!=null?target:-1),gold:0,ptype:extra};
   refreshDipModal();
   document.getElementById("dipModalOverlay").style.display="flex";
 };
@@ -352,6 +352,13 @@ window.giftStep=function(d){
   const have=Math.floor(S.nations[S.player].res.dinero||0);
   M.gold=Math.max(0,Math.min(have,(M.gold||0)+d));
   refreshDipModal();
+};
+// pacto (no agresión / alianza): se propone desde su ventana, no en seco
+window.pactSend=function(){
+  const M=S.dipModal; if(!M||M.kind!=="pact")return;
+  const n=M.target, type=M.ptype;
+  window.closeDipModal();
+  window.dipPact(n,type);
 };
 window.giftSend=function(){
   const M=S.dipModal; if(!M||M.kind!=="gift"||!(M.gold>0))return;

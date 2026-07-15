@@ -7,7 +7,8 @@ import { canvas, clampPan } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
 import { armiesIn, atWar, duchyValue, fortGarrison, occupiedDuchiesBy, tryBuild, tryRecruit, tryRoad, warscore, coalitionOf, coalScore, coalCededDuchies } from "./sim.js";
 import { getRel, relTier, THRESH, canDeclareWar, canInsult, isEmbargoed, hasClaim, relBreakdown, hasPact, canPact,
-  MAX_LEAGUE, leagueOf, leagueById, sameLeague, canApplyLeague, MAX_RIVALS, rivalsOf, isRival, canRival } from "./diplomacy.js";
+  MAX_LEAGUE, leagueOf, leagueById, sameLeague, canApplyLeague, MAX_RIVALS, rivalsOf, isRival, canRival,
+  NAP_BONUS, ALLY_BONUS } from "./diplomacy.js";
 
 // Metadata de las CATEGORÍAS de bienes (orden, icono, etiqueta), reutilizada por el Mercado, la Tesorería y
 // el panel del reino para agrupar los bienes por categoría. 'moneda' (Ducados) va aparte (su propia pestaña).
@@ -1022,11 +1023,11 @@ function diploNationHTML(n){
     h+="<span class='dipPactTag ally'>🤝 Aliados</span><button class='bbtn' onclick='dipBreakPact("+n+")' title='Romper = traición: gran tensión'>💔 Romper alianza</button>";
   }else if(pact==="nap"){
     h+="<span class='dipPactTag'>🕊 No agresión</span><button class='bbtn' onclick='dipBreakPact("+n+")' title='Romper = traición: gran tensión'>💔 Romper</button>";
-    const ca=canPact(me,n,"alliance"); if(ca.ok)h+="<button class='bbtn' onclick='dipPact("+n+",&quot;alliance&quot;)'>🤝 Alianza</button>";
+    const ca=canPact(me,n,"alliance"); if(ca.ok)h+="<button class='bbtn' onclick='openDipModal(&quot;pact&quot;,"+n+",&quot;alliance&quot;)'>🤝 Alianza</button>";
   }else{
     const cn=canPact(me,n,"nap"), ca=canPact(me,n,"alliance");
-    h+="<button class='bbtn'"+(cn.ok?" onclick='dipPact("+n+",&quot;nap&quot;)'":" disabled title=\""+pTip(cn)+"\"")+">🕊 No agresión</button>";
-    h+="<button class='bbtn'"+(ca.ok?" onclick='dipPact("+n+",&quot;alliance&quot;)'":" disabled title=\""+pTip(ca)+"\"")+">🤝 Alianza</button>";
+    h+="<button class='bbtn'"+(cn.ok?" onclick='openDipModal(&quot;pact&quot;,"+n+",&quot;nap&quot;)'":" disabled title=\""+pTip(cn)+"\"")+">🕊 No agresión</button>";
+    h+="<button class='bbtn'"+(ca.ok?" onclick='openDipModal(&quot;pact&quot;,"+n+",&quot;alliance&quot;)'":" disabled title=\""+pTip(ca)+"\"")+">🤝 Alianza</button>";
   }
   h+="</div>";
   // --- guerra / paz ---
@@ -1076,6 +1077,19 @@ function refreshDipModal(){
     h+="<div class='sm' style='text-align:center;color:#7a828b;margin-bottom:14px'>Tesoro: "+fmt(have)+" ducados</div>";
     h+="<div style='display:flex;gap:8px;justify-content:center'>"+
        "<button class='uiBtn' style='border-color:#8fb06a'"+(amt>0?" onclick='giftSend()'":" disabled")+">Enviar</button>"+
+       "<button class='uiBtn' onclick='closeDipModal()'>Cancelar</button></div>";
+  }else if(M.kind==="pact"){
+    const n=M.target, ally=M.ptype==="alliance";
+    tl.textContent=ally?"🤝 Alianza":"🕊 No agresión";
+    h+="<div style='text-align:center;margin-bottom:12px'>"+escOf(n,1)+" <b>"+NATIONS[n].name+"</b></div>";
+    h+="<div class='dEff'>";
+    h+="<div class='tipR'><span>Concordia</span><span style='color:#8fb06a'>+"+(ally?ALLY_BONUS:NAP_BONUS)+"</span></div>";
+    h+="<div class='tipR'><span>Guerra entre ambos</span><span style='color:#8fb06a'>bloqueada</span></div>";
+    if(ally)h+="<div class='tipR'><span>Llamada a las armas</span><span style='color:#c9a86a'>mutua</span></div>";
+    h+="<div class='tipR'><span>Romperlo</span><span style='color:#d08080'>traición</span></div>";
+    h+="</div>";
+    h+="<div style='display:flex;gap:8px;justify-content:center;margin-top:14px'>"+
+       "<button class='uiBtn' style='border-color:#8fb06a' onclick='pactSend()'>Proponer</button>"+
        "<button class='uiBtn' onclick='closeDipModal()'>Cancelar</button></div>";
   }else if(M.kind==="claim"){
     const n=M.target;
