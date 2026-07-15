@@ -97,9 +97,20 @@
   .esc{display:inline-block;width:11px;height:13px;vertical-align:-2px;flex:0 0 auto;
        clip-path:polygon(0 0,100% 0,100% 62%,50% 100%,0 62%)}
   .escL{width:15px;height:18px;vertical-align:-4px}
-  .dPick{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;padding:6px;background:#1e242b;border:1px solid #3a4047;border-radius:5px;max-height:104px;overflow:auto}
-  .dPickI{cursor:pointer;padding:2px;border-radius:3px;line-height:0}
-  .dPickI:hover{background:#3a4047}
+  /* líder de la liga: borde dorado siguiendo la silueta del escudo */
+  .esc.lead{filter:drop-shadow(0 0 1px #e8c24a) drop-shadow(0 0 1px #e8c24a) drop-shadow(0 0 1px #e8c24a)}
+  /* tooltip ESTRUCTURADO (data-tiph): desgloses en filas */
+  #tip.rich{white-space:normal;min-width:180px}
+  #tip .tipT{font-weight:600;color:#e8dcc0;margin-bottom:4px;border-bottom:1px solid #3a4047;padding-bottom:3px}
+  #tip .tipR{display:flex;justify-content:space-between;gap:14px}
+  #tip .tipR span:last-child{font-weight:600}
+  #tip .tipTot{border-top:1px solid #3a4047;margin-top:4px;padding-top:3px}
+  /* filas de selección (lista con escudo + nombre) en los popups de acción */
+  .dList{display:flex;flex-direction:column;gap:2px;max-height:300px;overflow:auto}
+  .dRow{display:flex;align-items:center;gap:7px;padding:4px 7px;border:1px solid #3a4047;border-radius:4px;background:#262b31;cursor:pointer;font-size:12px}
+  .dRow:hover{background:#333a42;border-color:#6b8a3a}
+  .dRow .dRowN{flex:1}
+  .giftBig{font-size:20px;font-weight:600;color:#e8c24a;min-width:120px;text-align:center}
   .dGrid{display:grid;grid-template-columns:1fr 1fr;gap:4px 14px}
   .dGrid>div{font-size:12px;display:flex;flex-wrap:wrap;gap:4px;align-items:center}
   .dLbl{color:#7a828b;min-width:88px;display:inline-block}
@@ -499,6 +510,14 @@
     <h1 style="text-align:center;margin-bottom:2px">🕊 Paz de coalición</h1>
     <p style="text-align:center;color:#9aa3ad;font-size:12px;margin:0 0 12px">Firmas por todo tu bando. El oro se reparte entre los aliados por su warscore.</p>
     <div id="coalPeaceBody"></div>
+  </div>
+</div>
+
+<div class="overlay" id="dipModalOverlay" style="display:none">
+  <div class="panel" style="min-width:380px;max-width:520px;max-height:82vh;overflow:auto">
+    <button class="panelX" title="Cerrar" onclick="closeDipModal()">✕</button>
+    <h1 id="dipModalTitle" style="text-align:center;margin-bottom:12px"></h1>
+    <div id="dipModalBody"></div>
   </div>
 </div>
 

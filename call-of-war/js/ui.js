@@ -897,9 +897,23 @@ function relBarHTML(v){
 // Se abre con el botón del reino (arriba-izq), con clic DERECHO sobre un país (sin ejército seleccionado)
 // o desde la ficha de provincia. refreshDiplomacy() se sigue llamando desde todos los handlers.
 // Escudo simplificado del reino (forma de escudo, color de la nación). Sustituye al chip cuadrado.
-const escOf=(n,big)=>"<span class='esc"+(big?" escL":"")+"' title='"+NATIONS[n].name+"' style='background:"+NATIONS[n].color+"'></span>";
+// `lead` = líder/fundador: borde dorado siguiendo la silueta.
+const escOf=(n,big,lead)=>"<span class='esc"+(big?" escL":"")+(lead?" lead":"")+"' title='"+NATIONS[n].name+"' style='background:"+NATIONS[n].color+"'></span>";
+// Desglose de la relación como tooltip ESTRUCTURADO (data-tiph): una fila por aporte + total.
+function relTipHTML(a,b){
+  const br=relBreakdown(a,b), v=getRel(a,b), t=relTier(v);
+  let h="<div class='tipT'>"+NATIONS[a].name+" · "+NATIONS[b].name+"</div>";
+  if(br.length)for(const x of br)h+="<div class='tipR'><span>"+x.label+"</span><span style='color:"+(x.v>=0?"#8fb06a":"#d08080")+"'>"+(x.v>0?"+":"")+Math.round(x.v)+"</span></div>";
+  else h+="<div class='tipR'><span style='color:#7a828b'>Sin modificadores</span><span>0</span></div>";
+  h+="<div class='tipR tipTot'><span>"+t.label+"</span><span style='color:"+t.color+"'>"+(v>0?"+":"")+Math.round(v)+"</span></div>";
+  return h;
+}
+// Barra de relación con el desglose en el hover (no ocupa sitio en pantalla).
+const relBarTip=(a,b)=>"<span data-tiph=\""+ta(relTipHTML(a,b))+"\" style='cursor:help'>"+relBarHTML(getRel(a,b))+"</span>";
 const chipOf=escOf, chipT=escOf;
 const nameChip=n=>"<span class='dChip' onclick='openDiplo("+n+")' title='Diplomacia con "+NATIONS[n].name+"'>"+escOf(n)+" "+NATIONS[n].name+"</span>";
+// igual, marcando al LÍDER de la liga con el borde dorado
+const nameChipL=(n,lead)=>"<span class='dChip' onclick='openDiplo("+n+")' title='"+(lead?"Fundador · ":"")+NATIONS[n].name+"'>"+escOf(n,0,lead)+" "+NATIONS[n].name+"</span>";
 const dDash="<span class='dim'>—</span>";
 // aliados (pacto de alianza) de n
 function alliesOf(n){const o=[];for(let m=0;m<NPLAY;m++)if(m!==n&&S.nations[m]&&S.nations[m].alive&&hasPact(n,m)==="alliance")o.push(m);return o;}
@@ -912,31 +926,23 @@ function diploOwnHTML(){
   const myL=leagueOf(me), myA=alliesOf(me), myR=rivalsOf(me)||[], byR=rivaledBy(me);
   let h="";
   if(S.hour<WAR_LOCK_HOURS)h+="<div class='sm' style='color:#c9a86a;margin-bottom:8px'>⚔ Paz obligada: no se puede declarar la guerra hasta dentro de "+fmtDur(WAR_LOCK_HOURS-S.hour)+".</div>";
-  // selector de rivales: escudos de los países a los que PUEDO rivalizar (más tensos primero)
-  let pick="";
-  if(S.diploPick){
-    const cand=[];
-    for(let m=0;m<NPLAY;m++)if(m!==me&&S.nations[m]&&S.nations[m].alive&&canRival(me,m))cand.push(m);
-    cand.sort((a,b)=>getRel(me,a)-getRel(me,b));
-    pick="<div class='dPick'>"+cand.map(m=>"<span class='dPickI' onclick='dipRival("+m+")' title='"+NATIONS[m].name+"'>"+escOf(m,1)+"</span>").join("")+"</div>";
-  }
   const rivFull=myR.length>=MAX_RIVALS;
   h+="<div class='dipDetail'><div style='margin-bottom:6px'>"+escOf(me,1)+" <b style='font-size:15px'>"+NATIONS[me].name+"</b></div><div class='dGrid'>"+
      "<div><span class='dLbl'>🛡 Liga</span>"+(myL?("<span class='dChip' onclick='openLeagues("+myL.id+")'>🛡 <b>"+myL.name+"</b></span> <span class='sm' style='color:#7a828b'>("+myL.members.length+")</span>"):("<span class='dim'>—</span> <button class='bbtn sm' onclick='openLeagues()' title='Ligas'>+</button>"))+"</div>"+
      "<div><span class='dLbl'>🤝 Aliados</span>"+(myA.length?myA.map(nameChip).join(" "):dDash)+"</div>"+
      "<div><span class='dLbl'>⚔ Rivales</span>"+(myR.length?myR.map(nameChip).join(" "):"")+
-       "<button class='bbtn sm'"+(rivFull?" disabled title='Ya tienes "+MAX_RIVALS+" rivales'":" onclick='dipRivalPick()' title='Declarar rival'")+">"+(S.diploPick?"×":"+")+"</button>"+
+       "<button class='bbtn sm'"+(rivFull?" disabled title='Ya tienes "+MAX_RIVALS+" rivales'":" onclick='openDipModal(&quot;rival&quot;)' title='Declarar rival'")+">+</button>"+
        "<span class='sm' style='color:#7a828b'>"+myR.length+"/"+MAX_RIVALS+"</span></div>"+
      "<div><span class='dLbl'>☠ Enemigos</span>"+(byR.length?byR.map(nameChip).join(" "):dDash)+"</div>"+
-     "</div>"+pick+"</div>";
+     "</div></div>";
   // ENTIDADES: ligas
-  h+="<div class='dSecT'>🛡 Ligas <span class='statv' data-tip='Organización defensiva multi-miembro: atacar a un miembro convoca a los demás a defenderlo. ♛ = fundador.'>ⓘ</span></div>";
+  h+="<div class='dSecT'>🛡 Ligas <span class='statv' data-tip='Organización defensiva multi-miembro: atacar a un miembro convoca a los demás a defenderlo. El escudo con borde dorado es el fundador.'>ⓘ</span></div>";
   if(S.leagues.length){
     h+="<div class='dCards'>";
     for(const L of S.leagues){
       const mine=L.members.includes(me);
       h+="<div class='dCard"+(mine?" mine":"")+"'><div class='dCardT'><span class='dChip' onclick='openLeagues("+L.id+")'>🛡 "+L.name+"</span> <span class='sm' style='color:#7a828b'>("+L.members.length+"/"+MAX_LEAGUE+")</span></div>"+
-         "<div>"+L.members.map(m=>nameChip(m)+(m===L.founder?"<span class='sm' style='color:#c9a86a'> ♛</span>":"")).join(" ")+"</div></div>";
+         "<div>"+L.members.map(m=>nameChipL(m,m===L.founder)).join(" ")+"</div></div>";
     }
     h+="</div>";
   } else h+="<div class='dim sm'>No hay ligas.</div>";
@@ -963,7 +969,7 @@ function diploOwnHTML(){
     h+="<td class='sm'>"+(A.length?A.map(m=>escOf(m)).join(" "):dDash)+"</td>";
     h+="<td class='sm'>"+(R.length?R.map(m=>escOf(m)).join(" "):dDash)+"</td>";
     h+="<td class='sm'>"+(E.length?E.map(m=>escOf(m)).join(" "):dDash)+"</td>";
-    h+="<td title=\""+relTip(me,n)+"\">"+relBarHTML(v)+" <span style='color:"+t.color+";font-weight:600'>"+(v>0?"+":"")+Math.round(v)+"</span></td>";
+    h+="<td>"+relBarTip(me,n)+" <span style='color:"+t.color+";font-weight:600'>"+(v>0?"+":"")+Math.round(v)+"</span></td>";
     h+="<td class='sm' style='color:"+(atWar(me,n)?"#d08080":t.color)+"'>"+(atWar(me,n)?"EN GUERRA":t.label)+"</td>";
     h+="</tr>";
   }
@@ -981,8 +987,7 @@ function diploNationHTML(n){
   h+="<div style='margin-bottom:4px'>"+escOf(n,1)+" <b style='font-size:15px'>"+NATIONS[n].name+"</b> "+
      "<span style='color:"+t.color+";font-weight:600'>"+(v>0?"+":"")+Math.round(v)+" · "+t.label+"</span>"+
      (isRival(me,n)?" <span class='dPair mine' style='padding:1px 6px'>⚔ Rivalidad</span>":"")+"</div>";
-  h+="<div style='margin:4px 0'>"+relBarHTML(v)+"</div>";
-  h+="<div class='sm' style='color:#7a828b;margin-bottom:6px'>"+relTip(me,n)+"</div>";
+  h+="<div style='margin:5px 0 8px'>"+relBarTip(me,n)+"</div>"; // el desglose vive en el hover de la barra
   h+="<div class='dGrid'>"+
      "<div><span class='dLbl'>🛡 Liga</span>"+(L?("<span class='dChip' onclick='openLeagues("+L.id+")'>🛡 <b>"+L.name+"</b></span> <span class='sm' style='color:#7a828b'>("+L.members.length+")</span>"):dDash)+"</div>"+
      "<div><span class='dLbl'>🤝 Aliados</span>"+(A.length?A.map(nameChip).join(" "):dDash)+"</div>"+
@@ -993,8 +998,8 @@ function diploNationHTML(n){
   const ci=canInsult(me,n);
   h+="<div class='dipActs'>";
   h+="<button class='bbtn'"+(ci.ok?" onclick='dipInsult("+n+")'":" disabled title='En cooldown (≈1 mes entre insultos)'")+">⚡ Insultar</button>";
-  h+="<span class='dipGiftBox'>🎁 <input id='dipGiftAmt' type='number' min='0' step='50' value='500' style='width:74px'> duc. "+
-     "<button class='bbtn' onclick='dipGift("+n+")'>Regalar</button></span>";
+  h+="<button class='bbtn' onclick='openDipModal(&quot;gift&quot;,"+n+")'>🎁 Regalar</button>";
+  h+="<button class='bbtn' onclick='openDipModal(&quot;claim&quot;,"+n+")'>📜 Reclamaciones</button>";
   const emb=isEmbargoed(me,n), canEmb=v<=THRESH.embargo;
   if(emb) h+="<button class='bbtn' onclick='dipEmbargo("+n+")' title='Sin efecto económico hasta localizar el comercio'>🚫 Levantar embargo</button>";
   else h+="<button class='bbtn'"+(canEmb?" onclick='dipEmbargo("+n+")' title='Sin efecto económico hasta localizar el comercio'":" disabled title='Necesitas ≤ "+THRESH.embargo+" de tensión'")+">🚫 Embargo</button>";
@@ -1038,17 +1043,58 @@ function diploNationHTML(n){
     h+="<button class='bbtn red'"+(dis?" disabled title=\""+tip+"\"":" onclick='playerDeclare("+n+")'")+">Declarar guerra</button>";
   }
   h+="</div>";
-  // --- reclamaciones ---
-  const duchies=S.duchies.filter(d=>S.provs[d.cap]&&S.provs[d.cap].owner===n);
-  if(duchies.length){
-    h+="<div class='dipClaims'><span class='sm' style='color:#9aa3ad'>Reclamar ducados <span class='statv' data-tip='Fabrica un derecho sobre el ducado: sube la tensión con el dueño y servirá de casus belli (anulará la reacción de los vecinos al conquistarlo).'>ⓘ</span></span> ";
-    for(const d of duchies){
-      if(hasClaim(me,d.id)) h+="<span class='dipClaimed' title='Ya reclamado'>📜 "+d.name+"</span>";
-      else h+="<button class='bbtn sm' onclick='dipClaim("+d.id+")'>"+d.name+"</button>";
+  return h;
+}
+// --- popup de ACCIÓN diplomática (S.dipModal): cada acción con ajustes tiene su propia ventana ---
+function refreshDipModal(){
+  const el=document.getElementById("dipModalBody"), tl=document.getElementById("dipModalTitle");
+  if(!el||!tl)return;
+  const M=S.dipModal; if(!M){el.innerHTML="";return;}
+  const me=S.player;
+  let h="";
+  if(M.kind==="rival"){
+    tl.textContent="⚔ Declarar rival";
+    const cand=[];
+    for(let m=0;m<NPLAY;m++)if(m!==me&&S.nations[m]&&S.nations[m].alive&&canRival(me,m))cand.push(m);
+    cand.sort((a,b)=>getRel(me,a)-getRel(me,b)); // los más tensos primero
+    h+="<div class='dList'>";
+    for(const m of cand){ const v=getRel(me,m), t=relTier(v);
+      h+="<div class='dRow' onclick='dipRival("+m+")'>"+escOf(m,1)+"<span class='dRowN'>"+NATIONS[m].name+"</span>"+
+         "<span style='color:"+t.color+";font-weight:600'>"+(v>0?"+":"")+Math.round(v)+"</span>"+
+         "<span class='sm' style='color:#7a828b;min-width:52px;text-align:right'>"+t.label+"</span></div>";
     }
     h+="</div>";
+    if(!cand.length)h="<p style='text-align:center;color:#9aa3ad'>No hay países a los que puedas rivalizar.</p>";
+  }else if(M.kind==="gift"){
+    const n=M.target, have=Math.floor(S.nations[me].res.dinero||0), amt=Math.min(M.gold||0,have);
+    tl.textContent="🎁 Regalar";
+    h+="<div style='text-align:center;margin-bottom:10px'>"+escOf(n,1)+" <b>"+NATIONS[n].name+"</b></div>";
+    h+="<div style='display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:8px'>"+
+       "<button class='uiBtn' onclick='giftStep(-5000)'"+(amt<=0?" disabled":"")+">−</button>"+
+       "<span class='giftBig'>"+fmt(amt)+"</span>"+
+       "<button class='uiBtn' onclick='giftStep(5000)'"+(amt>=have?" disabled":"")+">+</button></div>";
+    h+="<div class='sm' style='text-align:center;color:#7a828b;margin-bottom:14px'>Tesoro: "+fmt(have)+" ducados</div>";
+    h+="<div style='display:flex;gap:8px;justify-content:center'>"+
+       "<button class='uiBtn' style='border-color:#8fb06a'"+(amt>0?" onclick='giftSend()'":" disabled")+">Enviar</button>"+
+       "<button class='uiBtn' onclick='closeDipModal()'>Cancelar</button></div>";
+  }else if(M.kind==="claim"){
+    const n=M.target;
+    tl.textContent="📜 Reclamaciones";
+    h+="<div style='text-align:center;margin-bottom:10px'>"+escOf(n,1)+" <b>"+NATIONS[n].name+"</b> "+
+       "<span class='statv' data-tip='Fabrica un derecho sobre el ducado: sube la tensión con el dueño y servirá de casus belli (anulará la reacción de los vecinos al conquistarlo).'>ⓘ</span></div>";
+    const duchies=S.duchies.filter(d=>S.provs[d.cap]&&S.provs[d.cap].owner===n);
+    if(duchies.length){
+      h+="<div class='dList'>";
+      for(const d of duchies){
+        const done=hasClaim(me,d.id);
+        h+="<div class='dRow'"+(done?" style='cursor:default;opacity:.65'":" onclick='dipClaim("+d.id+")'")+">"+
+           "<span class='dRowN'>"+d.name+" <span class='sm' style='color:#7a828b'>("+d.provs.length+")</span></span>"+
+           (done?"<span style='color:#c9a86a'>📜</span>":"<span class='sm' style='color:#8fb06a'>Reclamar</span>")+"</div>";
+      }
+      h+="</div>";
+    }else h+="<p style='text-align:center;color:#9aa3ad'>No tiene ducados.</p>";
   }
-  return h;
+  el.innerHTML=h;
 }
 function refreshDiplomacy(){
   const el=document.getElementById("dipBody"); if(!el)return;
@@ -1121,8 +1167,7 @@ function leagueDetailHTML(L){
   h+="<div style='margin-bottom:10px'><b style='font-size:16px'>🛡 "+L.name+"</b> <span class='sm' style='color:#7a828b'>("+L.members.length+"/"+MAX_LEAGUE+")</span></div>";
   h+="<table class='dip'>";
   for(const m of L.members){
-    h+="<tr><td>"+escOf(m)+" "+NATIONS[m].name+
-       (m===L.founder?" <span class='sm' style='color:#c9a86a'>♛</span>":"")+
+    h+="<tr><td>"+escOf(m,0,m===L.founder)+" "+NATIONS[m].name+
        (m===me?" <span class='sm' style='color:#7a828b'>(tú)</span>":"")+"</td>";
     h+=(mine&&m!==me&&m!==L.founder)
       ?"<td><button class='bbtn sm' onclick='leagueExpel("+m+")' title='Proponer expulsión: votan los miembros'>Expulsar</button></td>"
@@ -1161,7 +1206,7 @@ function leagueGeneralHTML(){
     for(const L of S.leagues){
       const mine=L.members.includes(me);
       h+="<div class='dCard"+(mine?" mine":"")+"'><div class='dCardT'><span class='dChip' onclick='openLeagues("+L.id+")'>🛡 "+L.name+"</span> <span class='sm' style='color:#7a828b'>("+L.members.length+"/"+MAX_LEAGUE+")</span></div>"+
-         "<div>"+L.members.map(m=>escOf(m)+(m===L.founder?"<span class='sm' style='color:#c9a86a'>♛</span>":"")).join(" ")+"</div></div>";
+         "<div>"+L.members.map(m=>escOf(m,0,m===L.founder)).join(" ")+"</div></div>";
     }
     h+="</div>";
   } else h+="<div class='dim sm'>No hay ligas.</div>";
@@ -1525,5 +1570,5 @@ function refreshFiscal(){
   body.innerHTML=h;
 }
 export {
-  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, buildRealmMenu, refreshMetricsLog, refreshArmyPanel, refreshTreasury, refreshEstates, refreshMercado, refreshFiscal, refreshCouncil, refreshCoalPeace, refreshLeagues, refreshCallToArms
+  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, buildRealmMenu, refreshMetricsLog, refreshArmyPanel, refreshTreasury, refreshEstates, refreshMercado, refreshFiscal, refreshCouncil, refreshCoalPeace, refreshLeagues, refreshCallToArms, refreshDipModal
 };

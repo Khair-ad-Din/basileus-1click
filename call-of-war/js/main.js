@@ -5,7 +5,7 @@ import {
   enterEditor, exitEditor, pushUndo, restoreWorldFromSnap, toggleRoadEdit, setProvinceOwner, dpSimplify, simplifyRing, traceProvince, applyShape, mergeProvinces, rasterPoly, keepLargestFragment, splitProvince, refreshEditorPanel, vertexAt, nearestSegment
 } from "./editor.js";
 import {
-  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, refreshArmyPanel, buildRealmMenu, refreshTreasury, refreshEstates, refreshMercado, refreshFiscal, refreshCouncil, refreshCoalPeace, refreshLeagues, refreshCallToArms
+  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, refreshArmyPanel, buildRealmMenu, refreshTreasury, refreshEstates, refreshMercado, refreshFiscal, refreshCouncil, refreshCoalPeace, refreshLeagues, refreshCallToArms, refreshDipModal
 } from "./ui.js";
 import {
   atWar, declareWar, makePeace, underTruce, spawnArmy, setupNations, tryRoad, nbrs, bfsPath, startLeg, orderMove, takeTile, updateDuchy, isKeyTile, hourTick, resolveBattles, applyDamage, mergeIdle, aiTurn, findTarget, tryBuild, tryRecruit, disbandUnit, raiseLevies, checkVictory, armiesIn,
@@ -337,9 +337,31 @@ window.openDiplo=function(n){
   refreshDiplomacy();
   document.getElementById("dipOverlay").style.display="flex";
 };
-window.diploBack=function(){S.diploView={mode:"own",target:-1};S.diploPick=false;refreshDiplomacy();};
-// Abre/cierra el selector de rivales (escudos de los países a los que puedes rivalizar).
-window.dipRivalPick=function(){S.diploPick=!S.diploPick;refreshDiplomacy();};
+window.diploBack=function(){S.diploView={mode:"own",target:-1};refreshDiplomacy();};
+// --- popups de ACCIÓN diplomática: cada acción con ajustes abre su propia ventana ---
+window.openDipModal=function(kind,target){
+  if(S.player<0)return;
+  S.dipModal={kind,target:(target!=null?target:-1),gold:0};
+  refreshDipModal();
+  document.getElementById("dipModalOverlay").style.display="flex";
+};
+window.closeDipModal=function(){S.dipModal=null;document.getElementById("dipModalOverlay").style.display="none";};
+// regalo: el importe se ajusta de 5000 en 5000, topado al tesoro
+window.giftStep=function(d){
+  const M=S.dipModal; if(!M||M.kind!=="gift")return;
+  const have=Math.floor(S.nations[S.player].res.dinero||0);
+  M.gold=Math.max(0,Math.min(have,(M.gold||0)+d));
+  refreshDipModal();
+};
+window.giftSend=function(){
+  const M=S.dipModal; if(!M||M.kind!=="gift"||!(M.gold>0))return;
+  const n=M.target, r=giftGold(S.player,n,M.gold);
+  if(r.ok){report("🎁","<b>"+NATIONS[S.player].name+"</b> obsequia "+Math.round(r.given)+" ducados a <b>"+NATIONS[n].name+"</b>.",[S.player,n]);
+    log("Regalas "+Math.round(r.given)+" ducados a "+NATIONS[n].name+" (+"+r.gain.toFixed(1)+" de concordia).");}
+  else if(r.reason==="sinfondos")log("No tienes ducados para ese regalo.");
+  window.closeDipModal();
+  refreshDiplomacy();refreshTop();
+};
 // Declarar/quitar RIVALIDAD (pública): tensión con él y concordia con quien comparta ese rival.
 window.dipRival=function(n){
   const mine=(rivalsOf(S.player)||[]).includes(n);
@@ -354,7 +376,7 @@ window.dipRival=function(n){
     report("⚔","<b>"+NATIONS[S.player].name+"</b> declara públicamente su rivalidad con <b>"+NATIONS[n].name+"</b>.",[S.player,n]);
     log("Declaras rival a "+NATIONS[n].name+". Quien comparta este rival te verá con mejores ojos.");
   }
-  S.diploPick=false; // el selector se cierra al elegir
+  if(S.dipModal&&S.dipModal.kind==="rival")window.closeDipModal(); // el popup se cierra al elegir
   refreshDiplomacy();
 };
 window.dipSelect=function(n){window.openDiplo(n)};
@@ -363,14 +385,6 @@ window.dipInsult=function(n){
   if(r.ok){report("⚡","<b>"+NATIONS[S.player].name+"</b> lanza un insulto a <b>"+NATIONS[n].name+"</b>.",[S.player,n]);
     log("Insultas a "+NATIONS[n].name+". La tensión sube.");}
   refreshDiplomacy();
-};
-window.dipGift=function(n){
-  const el=document.getElementById("dipGiftAmt"), amt=el?Math.floor(+el.value||0):0;
-  const r=giftGold(S.player,n,amt);
-  if(r.ok){report("🎁","<b>"+NATIONS[S.player].name+"</b> obsequia "+Math.round(r.given)+" ducados a <b>"+NATIONS[n].name+"</b>.",[S.player,n]);
-    log("Regalas "+Math.round(r.given)+" ducados a "+NATIONS[n].name+" (+"+r.gain.toFixed(1)+" de concordia).");}
-  else if(r.reason==="sinfondos")log("No tienes ducados para ese regalo.");
-  refreshDiplomacy();refreshTop();
 };
 // Embargo: solo TOGGLE de estado (sin efecto económico aún; ver diplomacy.js). Gate a ≤ THRESH.embargo.
 window.dipEmbargo=function(n){
@@ -400,7 +414,7 @@ window.dipClaim=function(duchyId){
   const r=fabricateClaim(S.player,duchyId);
   if(r.ok){report("📜","<b>"+NATIONS[S.player].name+"</b> fabrica una reclamación sobre el <b>"+r.duchy+"</b> ("+NATIONS[r.owner].name+").",[S.player,r.owner]);
     log("Reclamas el "+r.duchy+". La tensión con "+NATIONS[r.owner].name+" sube.");}
-  refreshDiplomacy();
+  refreshDipModal();refreshDiplomacy(); // el popup de reclamaciones sigue abierto
 };
 // --- LIGAS DEFENSIVAS (Fase 6c): fundar, aplicar (voto IA al momento), votar solicitudes, expulsar, salir ---
 // openLeagues() = vista general de ligas; openLeagues(id) = ficha de esa liga (miembros, aplicar, gestionar).
@@ -571,7 +585,7 @@ function regenerateWorld(){
   setTimeout(()=>{
     S.provs=[];S.armies=[];S.wars=new Map();S.truces=new Map();S.armyIdSeq=1;S.duchies=[];S.reports=[];
     S.rel=new Map();S.relMonthKey=-1;S.dipCd=new Map();S.dipSel=-1;S.embargoes=new Set();S.claims=new Set();S.pacts=new Map();
-    S.council=null;S.coalitions=new Map();S.coalSeq=0;S.leagues=[];S.leagueSeq=0;S.callToArms=null;S.diploView={mode:"own",target:-1};S.diploPick=false;S.leagueView=null;
+    S.council=null;S.coalitions=new Map();S.coalSeq=0;S.leagues=[];S.leagueSeq=0;S.callToArms=null;S.diploView={mode:"own",target:-1};S.leagueView=null;
     S.peaceWith=-1;S.peaceSel=new Set();S.peaceGold=0;S.incomingPeace=null;
     S.player=-1;S.hour=0;S.acc=0;S.started=false;S.gameOver=false;
     S.selProv=-1;S.selArmy=null;S.battleFlash={};clearSelOutline();
@@ -954,8 +968,13 @@ document.getElementById("ledgerBtn").addEventListener("click",()=>{refreshLedger
   // tooltip flotante reutilizable: cualquier elemento con [data-tip] lo muestra al pasar el ratón
   const tipEl=document.getElementById("tip");
   if(tipEl){
-    document.addEventListener("mouseover",e=>{const t=e.target.closest&&e.target.closest("[data-tip]");if(t){tipEl.textContent=t.getAttribute("data-tip");tipEl.style.display="block"}});
-    document.addEventListener("mouseout",e=>{const t=e.target.closest&&e.target.closest("[data-tip]");if(t)tipEl.style.display="none"});
+    // data-tip = texto plano · data-tiph = tooltip HTML ESTRUCTURADO (tablas de desglose, etc.)
+    document.addEventListener("mouseover",e=>{const t=e.target.closest&&e.target.closest("[data-tip],[data-tiph]");if(t){
+      const html=t.getAttribute("data-tiph");
+      if(html!=null){tipEl.innerHTML=html;tipEl.classList.add("rich")} else {tipEl.textContent=t.getAttribute("data-tip");tipEl.classList.remove("rich")}
+      tipEl.style.display="block";
+    }});
+    document.addEventListener("mouseout",e=>{const t=e.target.closest&&e.target.closest("[data-tip],[data-tiph]");if(t)tipEl.style.display="none"});
     document.addEventListener("mousemove",e=>{if(tipEl.style.display!=="block")return;let x=e.clientX+14,y=e.clientY+16;const w=tipEl.offsetWidth,h=tipEl.offsetHeight;if(x+w>innerWidth-8)x=innerWidth-8-w;if(y+h>innerHeight-8)y=innerHeight-8-h;tipEl.style.left=x+"px";tipEl.style.top=y+"px"});
   }
 }
