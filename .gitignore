@@ -8,5 +8,7 @@ call-of-war/_test_*
 call-of-war/_preview*
 
 # Logs economicos de partida: son DATOS de una partida concreta, no codigo.
-# Los genera tools/econlog-server.mjs (ese si se versiona).
+# Los genera tools/econlog-server.mjs (ese si se versiona). El .N son partidas
+# anteriores que el recolector archiva solo al detectar una partida nueva.
 tools/*.jsonl
+tools/*.jsonl.*
