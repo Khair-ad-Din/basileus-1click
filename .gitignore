@@ -1,1 +1,8 @@
-﻿.claude/
+# Ajustes y estado LOCALES de la maquina (no se comparten)
+.claude/settings.local.json
+.claude/.state/
+
+# Arneses de verificacion temporales: se generan, se usan y se borran.
+# Nunca deben llegar al repo (ni a GitHub Pages). Ver basileus-dev-workflow.
+call-of-war/_test_*
+call-of-war/_preview*
