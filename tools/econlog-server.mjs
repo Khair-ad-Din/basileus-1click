@@ -24,11 +24,13 @@ const DIR = path.dirname(fileURLToPath(import.meta.url));
 const FILE = path.resolve(DIR, process.argv[2] || "econlog.jsonl");
 const PORT = 8124;
 
-let lineas = 0;
+let lineas = 0, ultimoMes = null;
 if (fs.existsSync(FILE)) {
-  lineas = fs.readFileSync(FILE, "utf8").split("\n").filter(Boolean).length;
-  console.log(`Continuando un log que ya tenía ${lineas} meses. Para empezar de cero, borra el fichero`);
-  console.log(`o usa clearEconLog() en la consola del juego y otro nombre de fichero.`);
+  const prev = fs.readFileSync(FILE, "utf8").split("\n").filter(Boolean);
+  lineas = prev.length;
+  if (lineas) { try { ultimoMes = JSON.parse(prev[prev.length - 1]).d; } catch {} }
+  console.log(`Continuando un log que ya tenía ${lineas} meses (último: ${ultimoMes || "?"}).`);
+  console.log(`Si empiezas una partida nueva, este fichero se archiva solo y el log arranca limpio.`);
 }
 
 const CORS = {
@@ -46,8 +48,22 @@ http.createServer((req, res) => {
     req.on("end", () => {
       const nuevas = body.split("\n").filter(Boolean);
       if (nuevas.length) {
+        // ROTACIÓN AUTOMÁTICA: si el mes que llega NO es posterior al último, es una PARTIDA NUEVA
+        // (el jugador recargó o empezó otra). Sin esto, dos partidas se apilan en el mismo fichero con
+        // los mismos meses y quien lo lea las coserá sin darse cuenta — ya pasó, y una lectura mezclada
+        // dio un diagnóstico falso ("el grano no se comercia" era de la partida vieja).
+        let primero = null;
+        try { primero = JSON.parse(nuevas[0]).d; } catch {}
+        if (primero && ultimoMes && primero <= ultimoMes) {
+          let i = 1; while (fs.existsSync(`${FILE}.${i}`)) i++;
+          fs.renameSync(FILE, `${FILE}.${i}`);
+          console.log(`\n── PARTIDA NUEVA (llega ${primero} y ya teníamos ${ultimoMes}).`);
+          console.log(`   La anterior se guarda en ${path.basename(FILE)}.${i} (${lineas} meses). Empezando de cero.\n`);
+          lineas = 0; ultimoMes = null;
+        }
         fs.appendFileSync(FILE, nuevas.join("\n") + "\n");
         lineas += nuevas.length;
+        try { ultimoMes = JSON.parse(nuevas[nuevas.length - 1]).d; } catch {}
         // Enseña el último mes recibido: así se ve el avance sin abrir el fichero.
         let cola = "";
         try {
