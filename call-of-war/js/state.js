@@ -9,6 +9,7 @@ export const S = {
   duchies: [], reports: [],
   rel: new Map(), relMonthKey: -1, // diplomacia: campo compartido Tensión↔Concordia por par "a|b" (−100..+100); mes del último tick de deriva
   dipCd: new Map(), dipSel: -1, // diplomacia: cooldowns de acción ("accion|a|b"→hora) y nación seleccionada en el panel
+  diploView: {mode:"own", target:-1}, // vista de diplomacia: "own" (resumen + entidades) | "nation" (bilateral con target)
   embargoes: new Set(), claims: new Set(), // embargos por par "a|b" (sin efecto econ. aún) y reclamaciones "nacion|duchyId"
   pacts: new Map(), // pactos diplomáticos por par "a|b" → "nap" | "alliance"
   council: null, // consejo de deliberación activo (guerra ofensiva): {leader,target,candidates,invited:Map,phase}

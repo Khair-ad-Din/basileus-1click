@@ -7,7 +7,7 @@ import { canvas, clampPan } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
 import { armiesIn, atWar, duchyValue, fortGarrison, occupiedDuchiesBy, tryBuild, tryRecruit, tryRoad, warscore, coalitionOf, coalScore, coalCededDuchies } from "./sim.js";
 import { getRel, relTier, THRESH, canDeclareWar, canInsult, isEmbargoed, hasClaim, relBreakdown, hasPact, canPact,
-  MAX_LEAGUE, leagueOf, sameLeague, canApplyLeague } from "./diplomacy.js";
+  MAX_LEAGUE, leagueOf, sameLeague, canApplyLeague, MAX_RIVALS, rivalsOf, isRival, canRival } from "./diplomacy.js";
 
 // Metadata de las CATEGORÍAS de bienes (orden, icono, etiqueta), reutilizada por el Mercado, la Tesorería y
 // el panel del reino para agrupar los bienes por categoría. 'moneda' (Ducados) va aparte (su propia pestaña).
@@ -373,7 +373,9 @@ function refreshProvPanel(){
   }
   // Identidad agrupada arriba: reino + ducado juntos
   s+="<div class='tl'><span class='chip' style='background:"+NATIONS[p.owner].color+"'></span> "+NATIONS[p.owner].name+
-     (p.duchy>=0&&S.duchies[p.duchy]?" <span style='color:#5c636b'>|</span> "+uiIcon('ducado')+" "+S.duchies[p.duchy].name:"")+"</div>";
+     (p.duchy>=0&&S.duchies[p.duchy]?" <span style='color:#5c636b'>|</span> "+uiIcon('ducado')+" "+S.duchies[p.duchy].name:"")+
+     ((S.player>=0&&p.owner!==S.player&&p.owner<NPLAY&&S.nations[p.owner]&&S.nations[p.owner].alive)
+       ?" <button class='bbtn sm' onclick='openDiplo("+p.owner+")' title='Diplomacia con "+NATIONS[p.owner].name+"'>🕊 Diplomacia</button>":"")+"</div>";
   if(isOccupied(p))s+="<div class='tl' style='color:#e0a17a'>⚔ Ocupada por <span class='chip' style='background:"+NATIONS[p.occupier].color+"'></span> "+NATIONS[p.occupier].name+"</div>";
   const good=p.urban?("Ciudad"+(p.resType?" · "+RES_LABEL[p.resType]:"")):(p.resType?RES_LABEL[p.resType]:"Sin especial");
   s+="<div class='tl'>"+(p.resType?resImg(p.resType)+" ":"")+good+"</div>";
@@ -695,6 +697,7 @@ function buildRealmMenu(){
     {img:"btn_tesoreria",on:"openTreasury()"},
     {img:"btn_leyes",dis:1},
     {img:"btn_estamentos",on:"openEstates()"},
+    {emoji:"🕊",on:"openDiplo()",title:"Diplomacia: ligas, alianzas y rivalidades (clic derecho en un país para su diplomacia)"},
     {emoji:"⚖️",on:"openFiscal()",title:"Cortes · Hacienda (ajustar impuestos)"},
     {emoji:"🏪",on:"openMercado()",title:"Mercado"},
     {emoji:"📝",on:"startEconLog()",title:"Log económico EN VIVO (elige un fichero; se rellena mientras juegas)"},
@@ -887,88 +890,167 @@ function relBarHTML(v){
   return "<div class='relbar' title='"+t.label+" ("+(v>0?"+":"")+Math.round(v)+")'>"+
     "<div class='relfill' style='"+seg+"'></div><div class='relzero'></div></div>";
 }
-// Cabecera de DETALLE del país seleccionado: relación + acciones diplomáticas (Fase 4). Se acciona
-// haciendo clic en el nombre de un país de la tabla (S.dipSel).
-function dipDetailHTML(n){
-  const v=getRel(S.player,n), t=relTier(n===S.dipSel?v:v);
-  const ci=canInsult(S.player,n);
-  let h="<div class='dipDetail'>";
-  h+="<div class='dipDetHead'><span class='chip' style='background:"+NATIONS[n].color+"'></span> <b>"+NATIONS[n].name+"</b> "+
-     "<span style='color:"+t.color+";font-weight:600' title=\""+relTip(S.player,n)+"\">"+(v>0?"+":"")+Math.round(v)+" · "+t.label+"</span>"+
-     " <span class='sm' style='color:#7a828b'>"+relTip(S.player,n)+"</span></div>";
+// ============ VISTA DE DIPLOMACIA (componente único) ============
+// TODA la diplomacia vive aquí. Dos modos en S.diploView:
+//  · "own"    → resumen de MI diplomacia + las ENTIDADES del tablero (ligas, alianzas, rivalidades) + tabla.
+//  · "nation" → diplomacia BILATERAL con un país: su perfil y todas las acciones.
+// Se abre con el botón del reino (arriba-izq), con clic DERECHO sobre un país (sin ejército seleccionado)
+// o desde la ficha de provincia. refreshDiplomacy() se sigue llamando desde todos los handlers.
+const chipOf=n=>"<span class='chip' style='background:"+NATIONS[n].color+"'></span>";
+const chipT=n=>"<span class='chip' title='"+NATIONS[n].name+"' style='background:"+NATIONS[n].color+"'></span>";
+const nameChip=n=>"<span class='dChip' onclick='openDiplo("+n+")' title='Diplomacia con "+NATIONS[n].name+"'>"+chipOf(n)+" "+NATIONS[n].name+"</span>";
+const dDash="<span class='dim'>—</span>";
+// aliados (pacto de alianza) de n
+function alliesOf(n){const o=[];for(let m=0;m<NPLAY;m++)if(m!==n&&S.nations[m]&&S.nations[m].alive&&hasPact(n,m)==="alliance")o.push(m);return o;}
+// quién rivaliza a n (rivalidad entrante)
+function rivaledBy(n){const o=[];for(let m=0;m<NPLAY;m++)if(m!==n&&S.nations[m]&&S.nations[m].alive&&(rivalsOf(m)||[]).includes(n))o.push(m);return o;}
+
+// --- MODO "own": mi diplomacia + entidades del tablero + tabla por nación ---
+function diploOwnHTML(){
+  const me=S.player;
+  const myL=leagueOf(me), myA=alliesOf(me), myR=rivalsOf(me)||[], byR=rivaledBy(me);
+  let h="";
+  if(S.hour<WAR_LOCK_HOURS)h+="<div class='sm' style='color:#c9a86a;margin-bottom:8px'>⚔ Paz obligada: no se puede declarar la guerra hasta dentro de "+fmtDur(WAR_LOCK_HOURS-S.hour)+".</div>";
+  h+="<div class='dipDetail'><div style='margin-bottom:6px'>"+chipOf(me)+" <b style='font-size:15px'>"+NATIONS[me].name+"</b></div><div class='dGrid'>"+
+     "<div><span class='dLbl'>🛡 Mi liga</span>"+(myL?("<b>"+myL.name+"</b> <span class='sm' style='color:#7a828b'>("+myL.members.length+"/"+MAX_LEAGUE+")</span> <button class='bbtn sm' onclick='openLeagues()'>Gestionar</button>"):("<span class='dim'>Sin liga</span> <button class='bbtn sm' onclick='openLeagues()'>Ligas</button>"))+"</div>"+
+     "<div><span class='dLbl'>🤝 Aliados</span>"+(myA.length?myA.map(nameChip).join(" "):dDash)+"</div>"+
+     "<div><span class='dLbl'>⚔ Mis rivales</span>"+(myR.length?myR.map(nameChip).join(" "):dDash)+" <span class='sm' style='color:#7a828b'>("+myR.length+"/"+MAX_RIVALS+")</span></div>"+
+     "<div><span class='dLbl'>☠ Me rivalizan</span>"+(byR.length?byR.map(nameChip).join(" "):dDash)+"</div>"+
+     "</div></div>";
+  // ENTIDADES: ligas
+  h+="<div class='dSecT'>🛡 Ligas <span class='statv' data-tip='Organización defensiva multi-miembro: atacar a un miembro convoca a los demás a defenderlo. ♛ = fundador.'>ⓘ</span></div>";
+  if(S.leagues.length){
+    h+="<div class='dCards'>";
+    for(const L of S.leagues){
+      const mine=L.members.includes(me);
+      h+="<div class='dCard"+(mine?" mine":"")+"'><div class='dCardT'>🛡 "+L.name+" <span class='sm' style='color:#7a828b'>("+L.members.length+"/"+MAX_LEAGUE+")</span></div>"+
+         "<div>"+L.members.map(m=>nameChip(m)+(m===L.founder?"<span class='sm' style='color:#c9a86a'> ♛</span>":"")).join(" ")+"</div></div>";
+    }
+    h+="</div>";
+  } else h+="<div class='dim sm'>No hay ligas.</div>";
+  // ENTIDADES: alianzas
+  const pairs=[];
+  for(const [k,t] of S.pacts){
+    if(t!=="alliance")continue;
+    const i=k.indexOf("|"), a=+k.slice(0,i), b=+k.slice(i+1);
+    if(!S.nations[a]||!S.nations[a].alive||!S.nations[b]||!S.nations[b].alive)continue;
+    pairs.push([a,b]);
+  }
+  h+="<div class='dSecT'>🤝 Alianzas</div>";
+  h+=pairs.length?("<div class='dPairs'>"+pairs.map(x=>"<span class='dPair"+((x[0]===me||x[1]===me)?" mine":"")+"'>"+nameChip(x[0])+" ↔ "+nameChip(x[1])+"</span>").join("")+"</div>"):"<div class='dim sm'>Ninguna.</div>";
+  // ENTIDADES: rivalidades
+  const rp=[];
+  for(let n=0;n<NPLAY;n++){
+    if(!S.nations[n]||!S.nations[n].alive)continue;
+    for(const t of (rivalsOf(n)||[]))if(S.nations[t]&&S.nations[t].alive)rp.push([n,t]);
+  }
+  h+="<div class='dSecT'>⚔ Rivalidades <span class='statv' data-tip='Declaración pública, visible para todos: da tensión con el rival y CONCORDIA con quien comparta ese mismo rival (aptos a aliarse).'>ⓘ</span></div>";
+  h+=rp.length?("<div class='dPairs'>"+rp.map(x=>"<span class='dPair"+((x[0]===me||x[1]===me)?" mine":"")+"'>"+nameChip(x[0])+" → "+nameChip(x[1])+"</span>").join("")+"</div>"):"<div class='dim sm'>Ninguna.</div>";
+  // TABLA por nación
+  h+="<div class='dSecT'>Por nación <span class='sm' style='color:#7a828b'>(clic en una fila para su diplomacia)</span></div>";
+  h+="<table class='dip'><tr><th>Nación</th><th>Liga</th><th>Aliados</th><th>Rivales</th><th>Relación</th><th>Estado</th></tr>";
+  for(let n=0;n<NPLAY;n++){
+    if(n===me||!S.nations[n])continue;
+    if(!S.nations[n].alive)continue;
+    const L=leagueOf(n), A=alliesOf(n), R=rivalsOf(n)||[], v=getRel(me,n), t=relTier(v);
+    h+="<tr class='dipRow' onclick='openDiplo("+n+")'>";
+    h+="<td class='dipName'>"+chipOf(n)+" "+NATIONS[n].name+"</td>";
+    h+="<td class='sm'>"+(L?("🛡 "+L.name):dDash)+"</td>";
+    h+="<td class='sm'>"+(A.length?A.map(chipT).join(" "):dDash)+"</td>";
+    h+="<td class='sm'>"+(R.length?R.map(chipT).join(" "):dDash)+"</td>";
+    h+="<td title=\""+relTip(me,n)+"\">"+relBarHTML(v)+" <span style='color:"+t.color+";font-weight:600'>"+(v>0?"+":"")+Math.round(v)+"</span></td>";
+    h+="<td class='sm' style='color:"+(atWar(me,n)?"#d08080":t.color)+"'>"+(atWar(me,n)?"EN GUERRA":t.label)+"</td>";
+    h+="</tr>";
+  }
+  h+="</table>";
+  return h;
+}
+
+// --- MODO "nation": diplomacia bilateral con n (su perfil + TODAS las acciones) ---
+function diploNationHTML(n){
+  const me=S.player, v=getRel(me,n), t=relTier(v);
+  const L=leagueOf(n), A=alliesOf(n), R=rivalsOf(n)||[];
+  const locked=S.hour<WAR_LOCK_HOURS;
+  let h="<div style='margin-bottom:8px'><button class='bbtn' onclick='diploBack()'>← Vista general</button></div>";
+  h+="<div class='dipDetail'>";
+  h+="<div style='margin-bottom:4px'>"+chipOf(n)+" <b style='font-size:15px'>"+NATIONS[n].name+"</b> "+
+     "<span style='color:"+t.color+";font-weight:600'>"+(v>0?"+":"")+Math.round(v)+" · "+t.label+"</span>"+
+     (isRival(me,n)?" <span class='dPair mine' style='padding:1px 6px'>⚔ Rivalidad</span>":"")+"</div>";
+  h+="<div style='margin:4px 0'>"+relBarHTML(v)+"</div>";
+  h+="<div class='sm' style='color:#7a828b;margin-bottom:6px'>"+relTip(me,n)+"</div>";
+  h+="<div class='dGrid'>"+
+     "<div><span class='dLbl'>🛡 Su liga</span>"+(L?("<b>"+L.name+"</b> <span class='sm' style='color:#7a828b'>("+L.members.length+")</span>"):dDash)+"</div>"+
+     "<div><span class='dLbl'>🤝 Sus aliados</span>"+(A.length?A.map(nameChip).join(" "):dDash)+"</div>"+
+     "<div><span class='dLbl'>⚔ Sus rivales</span>"+(R.length?R.map(nameChip).join(" "):dDash)+"</div>"+
+     "</div></div>";
+  // --- gestos / economía ---
+  const ci=canInsult(me,n);
   h+="<div class='dipActs'>";
   h+="<button class='bbtn'"+(ci.ok?" onclick='dipInsult("+n+")'":" disabled title='En cooldown (≈1 mes entre insultos)'")+">⚡ Insultar</button>";
   h+="<span class='dipGiftBox'>🎁 <input id='dipGiftAmt' type='number' min='0' step='50' value='500' style='width:74px'> duc. "+
      "<button class='bbtn' onclick='dipGift("+n+")'>Regalar</button></span>";
-  // Embargo: solo toggle (sin efecto económico aún; ver diplomacy.js). Activarlo exige ≤ THRESH.embargo.
-  const emb=isEmbargoed(S.player,n), canEmb=v<=THRESH.embargo;
+  const emb=isEmbargoed(me,n), canEmb=v<=THRESH.embargo;
   if(emb) h+="<button class='bbtn' onclick='dipEmbargo("+n+")' title='Sin efecto económico hasta localizar el comercio'>🚫 Levantar embargo</button>";
   else h+="<button class='bbtn'"+(canEmb?" onclick='dipEmbargo("+n+")' title='Sin efecto económico hasta localizar el comercio'":" disabled title='Necesitas ≤ "+THRESH.embargo+" de tensión'")+">🚫 Embargo</button>";
   h+="</div>";
-  // Pactos: no agresión / alianza (bonus estructural + bloquean la guerra). Formar exige concordia.
-  const pact=hasPact(S.player,n);
-  const pTip=c=>c.reason==="guerra"?"Haz la paz primero":("Necesitas "+Math.ceil(c.need||0)+" de concordia más");
+  // --- rivalidad (pública) ---
+  const myR=rivalsOf(me)||[], isR=myR.includes(n);
+  h+="<div class='dipActs' style='margin-top:6px'>";
+  if(isR) h+="<button class='bbtn' onclick='dipRival("+n+")' title='Dejar de considerarlo rival'>⚔ Quitar rivalidad</button>";
+  else{
+    const full=myR.length>=MAX_RIVALS, ok=canRival(me,n);
+    const tip=full?("Ya tienes "+MAX_RIVALS+" rivales: quita uno primero"):(!ok?"No puedes rivalizar a un aliado ni a un co-miembro de tu liga":"Declaración pública: tensión con él, y concordia con quien comparta este rival");
+    h+="<button class='bbtn'"+((ok&&!full)?" onclick='dipRival("+n+")' title=\""+tip+"\"":" disabled title=\""+tip+"\"")+">⚔ Declarar rival</button>";
+  }
+  h+="<span class='sm' style='color:#7a828b'>Tus rivales: "+myR.length+"/"+MAX_RIVALS+"</span></div>";
+  // --- pactos ---
+  const pact=hasPact(me,n);
+  const pTip=c=>c.reason==="guerra"?"Haz la paz primero":("Necesitas "+Math.ceil(c.need||0)+" de concordia más (o un rival común)");
   h+="<div class='dipActs' style='margin-top:6px'>";
   if(pact==="alliance"){
     h+="<span class='dipPactTag ally'>🤝 Aliados</span><button class='bbtn' onclick='dipBreakPact("+n+")' title='Romper = traición: gran tensión'>💔 Romper alianza</button>";
   }else if(pact==="nap"){
     h+="<span class='dipPactTag'>🕊 No agresión</span><button class='bbtn' onclick='dipBreakPact("+n+")' title='Romper = traición: gran tensión'>💔 Romper</button>";
-    const ca=canPact(S.player,n,"alliance"); if(ca.ok)h+="<button class='bbtn' onclick='dipPact("+n+",&quot;alliance&quot;)'>🤝 Alianza</button>";
+    const ca=canPact(me,n,"alliance"); if(ca.ok)h+="<button class='bbtn' onclick='dipPact("+n+",&quot;alliance&quot;)'>🤝 Alianza</button>";
   }else{
-    const cn=canPact(S.player,n,"nap"), ca=canPact(S.player,n,"alliance");
+    const cn=canPact(me,n,"nap"), ca=canPact(me,n,"alliance");
     h+="<button class='bbtn'"+(cn.ok?" onclick='dipPact("+n+",&quot;nap&quot;)'":" disabled title=\""+pTip(cn)+"\"")+">🕊 No agresión</button>";
     h+="<button class='bbtn'"+(ca.ok?" onclick='dipPact("+n+",&quot;alliance&quot;)'":" disabled title=\""+pTip(ca)+"\"")+">🤝 Alianza</button>";
   }
   h+="</div>";
-  // Reclamaciones: ducados del país seleccionado (dueño = dueño de la capital del ducado)
+  // --- guerra / paz ---
+  h+="<div class='dipActs' style='margin-top:6px'>";
+  if(atWar(me,n)){
+    const cl=coalitionOf(me,n);
+    if(cl){
+      const lead=cl.leadA===me;
+      h+="<span style='color:#d08080;font-weight:600'>EN GUERRA</span> <button class='bbtn'"+(lead?" onclick='openCoalPeace("+n+")'":" disabled title='Espera a que el líder de la coalición proponga la paz'")+">⚔ Coalición</button>";
+    }else h+="<span style='color:#d08080;font-weight:600'>EN GUERRA</span> <button class='bbtn' onclick='openPeace("+n+")'>Gestionar paz</button>";
+  }else{
+    const cw=canDeclareWar(me,n), dis=locked||!cw.ok;
+    const tip=locked?"Bloqueo de guerra inicial":(cw.league?"Es co-miembro de tu liga defensiva":(cw.pact?"Rompe el pacto primero":(!cw.ok?("Necesitas "+Math.ceil(cw.need)+" de tensión más (≤ "+THRESH.war+")"):"")));
+    h+="<button class='bbtn red'"+(dis?" disabled title=\""+tip+"\"":" onclick='playerDeclare("+n+")'")+">Declarar guerra</button>";
+  }
+  h+="</div>";
+  // --- reclamaciones ---
   const duchies=S.duchies.filter(d=>S.provs[d.cap]&&S.provs[d.cap].owner===n);
   if(duchies.length){
     h+="<div class='dipClaims'><span class='sm' style='color:#9aa3ad'>Reclamar ducados <span class='statv' data-tip='Fabrica un derecho sobre el ducado: sube la tensión con el dueño y servirá de casus belli (anulará la reacción de los vecinos al conquistarlo).'>ⓘ</span></span> ";
     for(const d of duchies){
-      if(hasClaim(S.player,d.id)) h+="<span class='dipClaimed' title='Ya reclamado'>📜 "+d.name+"</span>";
+      if(hasClaim(me,d.id)) h+="<span class='dipClaimed' title='Ya reclamado'>📜 "+d.name+"</span>";
       else h+="<button class='bbtn sm' onclick='dipClaim("+d.id+")'>"+d.name+"</button>";
     }
     h+="</div>";
   }
-  h+="</div>";
   return h;
 }
 function refreshDiplomacy(){
-  const locked=S.hour<WAR_LOCK_HOURS;
-  let h="";
-  if(locked)h+="<div class='sm' style='color:#c9a86a;margin-bottom:8px'>⚔ Paz obligada: no se puede declarar la guerra hasta dentro de "+fmtDur(WAR_LOCK_HOURS-S.hour)+".</div>";
-  { const myL=leagueOf(S.player);
-    h+="<div style='margin-bottom:8px'><button class='bbtn' onclick='openLeagues()' title='Ligas defensivas: al atacar a un miembro, los demás acuden a defenderlo'>🛡 Ligas defensivas"+
-       (myL?(" — "+myL.name):"")+"</button></div>"; }
-  // detalle del país seleccionado (con sus acciones), si sigue vivo y no es el jugador
-  if(S.dipSel>=0&&S.dipSel<NPLAY&&S.dipSel!==S.player&&S.nations[S.dipSel]&&S.nations[S.dipSel].alive)
-    h+=dipDetailHTML(S.dipSel);
-  h+="<table class='dip'><tr><th>Nación</th><th>Prov.</th><th>Fuerza</th><th>Relación</th><th>Estado</th><th></th></tr>";
-  for(let n=0;n<NPLAY;n++){
-    if(n===S.player)continue;
-    const alive=S.nations[n].alive, sel=n===S.dipSel;
-    h+="<tr"+(sel?" class='dipRowSel'":"")+"><td class='dipName' onclick='dipSelect("+n+")' title='Ver acciones'><span class='chip' style='background:"+NATIONS[n].color+"'></span> "+NATIONS[n].name+"</td>";
-    h+="<td>"+nationProvCount(n)+"</td><td>"+Math.round(nationStrength(n))+"</td>";
-    if(!alive){h+="<td colspan='3'>Eliminada</td></tr>";continue}
-    const v=getRel(S.player,n), t=relTier(v);
-    h+="<td title=\""+relTip(S.player,n)+"\">"+relBarHTML(v)+" <span style='color:"+t.color+";font-weight:600'>"+(v>0?"+":"")+Math.round(v)+"</span></td>";
-    if(atWar(S.player,n)){
-      if(coalitionOf(S.player,n)){
-        const cl=coalitionOf(S.player,n), lead=cl.leadA===S.player;
-        h+="<td style='color:#d08080'>EN GUERRA</td><td><button class='bbtn'"+(lead?" onclick='openCoalPeace("+n+")'":" disabled title='Espera a que el líder de la coalición proponga la paz'")+">⚔ Coalición</button></td>";
-      }else
-        h+="<td style='color:#d08080'>EN GUERRA</td><td><button class='bbtn' onclick='openPeace("+n+")'>Gestionar paz</button></td>";
-    }else{
-      const cw=canDeclareWar(S.player,n);
-      const dis=locked||!cw.ok;
-      const tip=locked?"Bloqueo de guerra inicial":(cw.pact?"Rompe el pacto primero":(!cw.ok?"Necesitas "+Math.ceil(cw.need)+" de tensión más (≤ "+THRESH.war+")":""));
-      h+="<td style='color:"+t.color+"'>"+t.label+"</td>";
-      h+="<td><button class='bbtn red'"+(dis?" disabled title=\""+tip+"\"":" onclick='playerDeclare("+n+")'")+">Declarar guerra</button></td>";
-    }
-    h+="</tr>";
-  }
-  h+="</table>";
-  document.getElementById("dipBody").innerHTML=h;
+  const el=document.getElementById("dipBody"); if(!el)return;
+  if(S.player<0){el.innerHTML="<p style='text-align:center;color:#9aa3ad'>Toma el mando de un reino para ejercer la diplomacia.</p>";return;}
+  const v=S.diploView||(S.diploView={mode:"own",target:-1});
+  const tgt=v.target;
+  const okTgt=v.mode==="nation"&&tgt>=0&&tgt<NPLAY&&tgt!==S.player&&S.nations[tgt]&&S.nations[tgt].alive;
+  el.innerHTML = okTgt ? diploNationHTML(tgt) : diploOwnHTML();
 }
 // Consejo de deliberación (Fase 6b, Etapa 3a): ventana del líder para llamar a sus aliados a la guerra,
 // ver sus votos y lanzar/cancelar. El estado vive en S.council.

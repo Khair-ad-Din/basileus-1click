@@ -92,6 +92,22 @@
   .dipClaimed{font-size:11px;color:#c9a86a;padding:2px 6px;border:1px dashed #6b5a3a;border-radius:4px}
   .dipPactTag{font-size:12px;font-weight:600;color:#8fb06a;padding:2px 8px;border:1px solid #4a5b3a;border-radius:4px;background:#2c3524}
   .dipPactTag.ally{color:#6ba7d0;border-color:#3a5060;background:#232f36}
+  /* --- vista de diplomacia (componente único): entidades del tablero --- */
+  .dGrid{display:grid;grid-template-columns:1fr 1fr;gap:4px 14px}
+  .dGrid>div{font-size:12px;display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+  .dLbl{color:#7a828b;min-width:88px;display:inline-block}
+  .dSecT{margin:12px 0 5px;font-size:12px;font-weight:600;color:#c9a86a;letter-spacing:.3px;border-bottom:1px solid #3a4047;padding-bottom:3px}
+  .dCards{display:flex;flex-wrap:wrap;gap:8px}
+  .dCard{background:#2a2f36;border:1px solid #4a525b;border-radius:6px;padding:6px 9px;min-width:180px;flex:1 1 220px}
+  .dCard.mine{border-color:#6b8a3a;background:#2b322a}
+  .dCardT{font-size:12px;font-weight:600;color:#e8dcc0;margin-bottom:4px}
+  .dPairs{display:flex;flex-wrap:wrap;gap:5px;max-height:118px;overflow:auto}
+  .dPair{font-size:11px;padding:2px 7px;border:1px solid #3a4047;border-radius:4px;background:#262b31;white-space:nowrap}
+  .dPair.mine{border-color:#6b8a3a;background:#2b322a}
+  .dChip{cursor:pointer;white-space:nowrap}
+  .dChip:hover{color:#cfe0a8;text-decoration:underline}
+  tr.dipRow{cursor:pointer}
+  tr.dipRow:hover{background:rgba(107,167,208,.13)}
   /* consejo de deliberación: botón flotante abajo-derecha (visible mientras el consejo esté abierto) */
   .councilFab{position:fixed;right:16px;bottom:52px;z-index:40;background:#7a2f2f;color:#f0d9b5;border:2px solid #a85a5a;border-radius:8px;padding:10px 16px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 3px 12px #0009}
   .councilFab:hover{background:#8f3a3a;border-color:#c06a6a}
@@ -453,10 +469,11 @@
 </div>
 
 <div class="overlay" id="dipOverlay" style="display:none">
-  <div class="panel" style="min-width:540px">
-    <h1>Diplomacia</h1>
+  <div class="panel" style="min-width:820px;max-width:960px;max-height:88vh;overflow:auto">
+    <button class="panelX" title="Cerrar" onclick="document.getElementById('dipOverlay').style.display='none'">✕</button>
+    <h1 style="text-align:center;margin-bottom:2px">🕊 Diplomacia</h1>
+    <p style="text-align:center;color:#9aa3ad;font-size:12px;margin:0 0 12px">Ligas, alianzas y rivalidades del tablero. Clic en un país para su diplomacia.</p>
     <div id="dipBody"></div>
-    <p style="text-align:center;margin-top:16px"><button class="uiBtn" onclick="document.getElementById('dipOverlay').style.display='none'">Cerrar</button></p>
   </div>
 </div>
 

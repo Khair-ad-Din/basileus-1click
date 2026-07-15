@@ -12,7 +12,8 @@ import {
   getWar, warscore, duchyValue, occupiedDuchiesBy, report, coalitionOf, coalitionPeace
 } from "./sim.js";
 import { insult, giftGold, isEmbargoed, setEmbargo, fabricateClaim, getRel, THRESH, formPact, breakPact, hasPact,
-  leagueOf, createLeague, applyToLeague, resolveApplication, proposeExpel, leaveLeague, refuseDefense } from "./diplomacy.js";
+  leagueOf, createLeague, applyToLeague, resolveApplication, proposeExpel, leaveLeague, refuseDefense,
+  MAX_RIVALS, rivalsOf, canRival, addRival, removeRival } from "./diplomacy.js";
 import { openCouncil, councilToggle, councilConvene, launchCouncil, cancelCouncil, playerJoinDefense } from "./council.js";
 import {
   hex2rgb, provColor, paintAll, paintBorders, repaintProvince, roadCurve, drawRoads, fitCanvas, clampPan, armyPos, draw, drawArrow, drawEditorOverlay, NCOL, TCOL, WASTECOL, baseC, baseCtx, roadsC, canvas, baseData, clearSelOutline
@@ -327,7 +328,33 @@ window.coalPeaceSign=function(){
 window.coalPeaceCancel=function(){S.coalPeace=null;document.getElementById("coalPeaceOverlay").style.display="none";};
 // --- Diplomacia (Fase 4): seleccionar país y acciones. La función de acción toca estado; aquí van
 // el parte al periódico (report), el log y el refresco de UI. ---
-window.dipSelect=function(n){S.dipSel=(S.dipSel===n?-1:n);refreshDiplomacy()};
+// --- VISTA DE DIPLOMACIA (componente único). openDiplo() sin argumento = resumen propio; openDiplo(n) =
+// diplomacia bilateral con n. Se abre desde el botón del reino, el clic DERECHO en el mapa (sin ejército
+// seleccionado) y la ficha de provincia. ---
+window.openDiplo=function(n){
+  if(S.player<0)return;
+  S.diploView=(n!=null&&n>=0&&n!==S.player)?{mode:"nation",target:n}:{mode:"own",target:-1};
+  refreshDiplomacy();
+  document.getElementById("dipOverlay").style.display="flex";
+};
+window.diploBack=function(){S.diploView={mode:"own",target:-1};refreshDiplomacy();};
+// Declarar/quitar RIVALIDAD (pública): tensión con él y concordia con quien comparta ese rival.
+window.dipRival=function(n){
+  const mine=(rivalsOf(S.player)||[]).includes(n);
+  if(mine){
+    removeRival(S.player,n);
+    report("⚔","<b>"+NATIONS[S.player].name+"</b> deja de considerar rival a <b>"+NATIONS[n].name+"</b>.",[S.player,n]);
+    log("Retiras la rivalidad con "+NATIONS[n].name+".");
+  }else{
+    if((rivalsOf(S.player)||[]).length>=MAX_RIVALS){log("Ya tienes "+MAX_RIVALS+" rivales: retira uno primero.");return;}
+    if(!canRival(S.player,n)){log("No puedes rivalizar a un aliado ni a un co-miembro de tu liga.");return;}
+    addRival(S.player,n);
+    report("⚔","<b>"+NATIONS[S.player].name+"</b> declara públicamente su rivalidad con <b>"+NATIONS[n].name+"</b>.",[S.player,n]);
+    log("Declaras rival a "+NATIONS[n].name+". Quien comparta este rival te verá con mejores ojos.");
+  }
+  refreshDiplomacy();
+};
+window.dipSelect=function(n){window.openDiplo(n)};
 window.dipInsult=function(n){
   const r=insult(S.player,n);
   if(r.ok){report("⚡","<b>"+NATIONS[S.player].name+"</b> lanza un insulto a <b>"+NATIONS[n].name+"</b>.",[S.player,n]);
@@ -536,7 +563,7 @@ function regenerateWorld(){
   setTimeout(()=>{
     S.provs=[];S.armies=[];S.wars=new Map();S.truces=new Map();S.armyIdSeq=1;S.duchies=[];S.reports=[];
     S.rel=new Map();S.relMonthKey=-1;S.dipCd=new Map();S.dipSel=-1;S.embargoes=new Set();S.claims=new Set();S.pacts=new Map();
-    S.council=null;S.coalitions=new Map();S.coalSeq=0;S.leagues=[];S.leagueSeq=0;S.callToArms=null;
+    S.council=null;S.coalitions=new Map();S.coalSeq=0;S.leagues=[];S.leagueSeq=0;S.callToArms=null;S.diploView={mode:"own",target:-1};
     S.peaceWith=-1;S.peaceSel=new Set();S.peaceGold=0;S.incomingPeace=null;
     S.player=-1;S.hour=0;S.acc=0;S.started=false;S.gameOver=false;
     S.selProv=-1;S.selArmy=null;S.battleFlash={};clearSelOutline();
@@ -847,13 +874,19 @@ canvas.addEventListener("contextmenu",e=>{
     }
     return;
   }
-  if(!S.started||!S.selArmy||S.selArmy.nation!==S.player)return;
+  if(!S.started)return;
   const r=canvas.getBoundingClientRect();
   const wx=(e.clientX-r.left-S.panX)/S.zoom, wy=(e.clientY-r.top-S.panY)/S.zoom;
   const ix=wx|0,iy=wy|0;
   if(ix<0||iy<0||ix>=MW||iy>=MH)return;
   const t=S.provIdx[iy*MW+ix];
   if(t<0)return;
+  // SIN ejército seleccionado, el clic derecho sobre un país ABRE su diplomacia (con ejército = orden de marcha)
+  if(!S.selArmy||S.selArmy.nation!==S.player){
+    const o=S.provs[t].owner;
+    if(S.player>=0&&o>=0&&o<NPLAY&&o!==S.player&&S.nations[o]&&S.nations[o].alive)window.openDiplo(o);
+    return;
+  }
   if(orderMove(S.selArmy,t)){
     S.selArmy.muster=null; // mover a mano cancela la espera de levas
     const tp=S.provs[t];
@@ -878,7 +911,7 @@ document.querySelectorAll(".spdBtn").forEach(b=>b.addEventListener("click",()=>{
   document.querySelectorAll(".spdBtn").forEach(x=>x.classList.toggle("active",x===b));
 }));
 document.getElementById("helpBtn").addEventListener("click",()=>document.getElementById("helpOverlay").style.display="flex");
-document.getElementById("dipBtn").addEventListener("click",()=>{refreshDiplomacy();document.getElementById("dipOverlay").style.display="flex"});
+document.getElementById("dipBtn").addEventListener("click",()=>window.openDiplo());
 document.getElementById("reportsBtn").addEventListener("click",()=>{refreshReports();document.getElementById("reportsOverlay").style.display="flex"});
 document.getElementById("ledgerBtn").addEventListener("click",()=>{refreshLedger();document.getElementById("ledgerOverlay").style.display="flex"});
 {
