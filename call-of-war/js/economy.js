@@ -976,7 +976,13 @@ function recruitTime(p,u){
 // dt = número de ticks (horas de juego) que representa esta llamada. El juego usa dt=1 (idéntico
 // al modelo original); el arnés de análisis puede avanzar a paso de día (dt=24) para ir más rápido.
 // Todas las magnitudes por tick (producción, consumo, crecimiento, regeneración) se escalan por dt.
-function economyTick(dt=1){
+// dt = horas de juego que avanza esta llamada. Desde 2026-07-16 la economía corre 1×/DÍA (dt=24), no cada
+// hora: el recorrido de las ~3680 provincias (producción, subsistencia, población) es LINEAL en dt (crece,
+// consume y procrea igual en 1×24 que en 24×1, verificado: error de población 0%), así que espaciarlo no
+// cambia el resultado y ahorra ~23/24 del coste. doArb controla el ARBITRAJE internacional, que NO es
+// lineal (mueve un % del stock por paso) y además era LENTO de verdad — la muda de Flandes hacía ~1
+// expedición cada 14 meses (mercader) — así que corre 1×/MES. Ver hourTick en sim.js.
+function economyTick(dt=1,doArb=true){
   _bjGen++;                       // invalida la memoización de buildJobs de este tick (los edificios no cambian dentro del tick)
   // 0. mano de obra movilizada por provincia (soldados que dejaron el trabajo): retira dotación
   for(const p of S.provs)p.mob=0;
@@ -1231,8 +1237,10 @@ function economyTick(dt=1){
   // que se quedan el DIFERENCIAL (comprar barato/vender caro). Global sin distancia en v1 (futuro: coste por
   // distancia/ruta). La corona grava la aduana (ALMOJARIFAZGO, ver almojOf) → res.dinero + tsyAlc (variable, como la alcábala).
   for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(N&&N.alive)N.almojRate=0} // reset aduana/tick (se acumula en el arbitraje de abajo)
-  kmSync();                                                                  // 1× por tick: sin la caché, el O(n²) de abajo dispararía ~66.000 haversines
-  for(const g of MKT_TRADE){
+  // ARBITRAJE internacional: solo si doArb (1×/mes, ver hourTick). Iterar sobre lista vacía cuando no toca
+  // deja intacta toda la estructura del bloque (aduana, telemetría) sin desbalancear llaves.
+  if(doArb)kmSync();                                                        // 1× por tick de arbitraje: sin la caché, el O(n²) dispararía ~66.000 haversines
+  for(const g of (doArb?MKT_TRADE:[])){
     const ref=MKT_PRICE[g]||1, node=[];
     for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(!N||!N.alive)continue;ensureMarket(N);if(!N.mktInfo[g])N.mktInfo[g]={price:N.mktPrice[g]||ref};
       node.push({N,p:N.mktPrice[g]!=null?N.mktPrice[g]:ref,s:N.mkt[g]||0});}

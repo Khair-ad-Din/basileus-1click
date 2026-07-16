@@ -556,12 +556,19 @@ function estateBuild(){
 }
 function hourTick(){
   S.hour++;
-  const tsyBefore=S.player>=0?{...S.nations[S.player].res}:null; // foto del tesoro antes del tick (para el delta recurrente exacto)
-  economyTick(); // secciones 0/1/1b: movilizados, economía+necesidades por nación, comida/población/soldadesca (sin DOM)
-  tsyTick(tsyBefore); // capa mensual: acumula el delta recurrente del jugador y publica la cifra "/mes" al cambiar de mes (sin tocar el motor)
-  prosperityTick(); // prosperidad por provincia/bien: +1/−1 punto al mes según excedente (se autodispara al cambiar de mes)
-  relTick(); // diplomacia: deriva mensual del campo de relaciones hacia su línea base (se autodispara al cambiar de mes)
-  if(S.hour%24===0)estateBuild(); // E2: los estamentos levantan su tipo de edificio con su riqueza (1 vez/día)
+  // ECONOMÍA: 1×/DÍA con dt=24 (antes: cada hora con dt=1). El recorrido de las ~3680 provincias es el 90%
+  // del coste del tick y es LINEAL en dt (población: 0% de error a dt=24, verificado), así que espaciarlo
+  // no cambia el resultado y da ~24× de velocidad. El ARBITRAJE internacional corre 1×/MES (era lento de
+  // verdad: la muda de Flandes, ~1 expedición cada 14 meses). Movimiento/combate/construcción siguen
+  // horarios (abajo). Equivalencia medida vs. todo-horario: población 0%, tesoro 1,1%.
+  if(S.hour%24===0){
+    const tsyBefore=S.player>=0?{...S.nations[S.player].res}:null; // foto del tesoro antes del tick económico
+    economyTick(24, S.hour%730<24); // dt=24 (1 día); arbitraje solo el primer día de cada mes de juego (730h)
+    tsyTick(tsyBefore); // capa mensual: acumula el delta recurrente del jugador y publica la cifra "/mes"
+    prosperityTick(); // prosperidad por provincia/bien: +1/−1 punto al mes (se autodispara al cambiar de mes)
+    relTick(); // diplomacia: deriva mensual del campo de relaciones hacia su línea base (se autodispara al mes)
+    estateBuild(); // E2: los estamentos levantan su tipo de edificio con su riqueza (1 vez/día)
+  }
   degradeBuildings(); // ciclo de vida: los edificios deshabilitados se degradan y, a condición 0, se destruyen
   // 2. construcción
   for(const p of S.provs){
