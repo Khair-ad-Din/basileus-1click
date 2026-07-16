@@ -318,19 +318,29 @@ const CHANNEL_GOODS={}; for(const _g in BONUS_BIEN)for(const _ch in BONUS_BIEN[_
 const TRADE_RATE=0.05;        // fracción del stock exportable que se mueve por tick (convergencia gradual)
 const TRADE_MIN_SPREAD=0.06;  // diferencial mínimo (sobre el precio ref) para que el arbitraje sea rentable
 // ---- COSTE DE TRANSPORTE POR PAR: aquí es donde el pool global se convierte en mercados locales ----
-// Calibrado contra dos rutas MARÍTIMAS reales: grano báltico Danzig→Brujas (~1100 km) ≈ 50% del precio de
-// desembarco, y sal Portugal→Brujas (~1800 km) ≈ 85%. Las dos dan ~4.6e-4 por km: dentro de los bienes a
-// granel manda la DISTANCIA, no el precio → aquí NO hay divisor de precio, a propósito.
-// ⚠ NO es el 8:4:1 tierra:río:mar: eso es por TONELADA-MILLA. En rutas comparables reales el mar solo le
-// ganaba a la tierra ~1,5× (Brujas→Barcelona 1398: mar 15% vs tierra 22%). Tampoco se modela el tipo de
-// barco, aunque pesaba tanto como el mar (misma saca de lana: 25% en galera veneciana, 5,16% en coca
-// genovesa): es demasiado ruido para lo que aporta.
-const TRADE_KM=6.8e-4;        // fracción del valor por km, ruta TERRESTRE y bien a granel
-const TRADE_SEA=0.68;         // ambas capitales costeras → 6.8e-4*0.68 ≈ 4.6e-4, que es el ancla histórica
-// Lo que de verdad decide QUÉ viaja es la DENSIDAD DE VALOR: solo lo caro por unidad de peso soportaba el
-// flete. Por eso la piedra no cruzaba Europa y la seda sí. Peso por ducado, por categoría de bien.
-const TRADE_BULK={cereal:1.0, mar:1.0, cultivo:1.0, ganado:0.8, bosque:1.6, extractivo:2.2,
-  manufactura:0.3, comercio:0.15, moneda:0.05};
+// LA REGLA, y es la que gobierna toda la geografía comercial de 1444: el flete se paga por PESO, pero lo
+// que decide si compensa moverlo es su peso frente a lo que VALE. Por mucho que pese, si vale muchísimo,
+// compensa. Por eso la pimienta cruzaba medio mundo y la piedra no salía del valle:
+//        coste (fracción del valor) = km × PESO por unidad ÷ PRECIO por unidad
+// ⚠ ERROR CORREGIDO (2026-07-15): la primera versión NO dividía por el precio. Se calibró con dos anclas
+// —grano Danzig→Brujas y sal Portugal→Brujas— que daban el mismo coeficiente por km, y de ahí se concluyó
+// que "en el granel manda la distancia, no el precio". Era un espejismo: grano y sal tienen densidad de
+// valor PARECIDA. Al generalizarlo, el peso pasó a ser "por ducado" y por categoría, lo que metió a las
+// PIELES (ref 4.5) en el mismo saco que la MADERA (ref 1.0) por ser ambas "bosque", y al ÁMBAR (5.0) con
+// el PESCADO (1.5) por ser "mar". Resultado medido en partida real: fletes del 230-350% y un mundo con
+// 436.529 de lino a 0,43 que no podía llegar a un reino que lo pagaba a 1,20.
+// Ahora TRADE_BULK es peso FÍSICO por unidad (no por ducado) y el precio divide: dentro de una categoría,
+// lo caro viaja y lo barato no. Que es justo lo que pasaba.
+const TRADE_KM=5.35e-4;       // calibrado: grano (ref 0.8, peso 1.0) a 1100 km por mar = 50% del valor
+const TRADE_SEA=0.68;         // ambas capitales costeras. NO es el 8:4:1 tierra:río:mar (eso es por
+                              // TONELADA-MILLA); en rutas comparables el mar ganaba ~1,5× (Brujas→Barcelona
+                              // 1398: mar 15% vs tierra 22%). Tampoco se modela el tipo de barco, aunque
+                              // pesaba tanto como el mar (misma saca de lana: 25% en galera veneciana vs
+                              // 5,16% en coca genovesa): demasiado ruido para lo que aporta.
+// PESO FÍSICO por unidad, relativo al grano (=1.0). Calibrado: la sal a 1800 km por mar = 85% de su valor
+// (ref 1.6) exige peso 2.1 — es un mineral, pesa más que el grano por unidad. El ganado ANDA SOLO.
+const TRADE_BULK={cereal:1.0, cultivo:1.0, mar:2.1, ganado:0.8, bosque:1.6, extractivo:2.2,
+  manufactura:0.6, comercio:0.5, moneda:0.05};
 // El riesgo era POLÍTICO, no meteorológico: ≥50% del coste del seguro marítimo venía de corso e
 // incautaciones por guerra (el recargo de invierno nunca pasó del 13%).
 const TRADE_WAR=3.0;          // la guerra ENCARECE el par; no lo corta (había contrabando y neutrales)
@@ -338,7 +348,8 @@ function tradeCost(g,a,b){    // fracción del valor de referencia; Infinity = p
   if(isEmbargoed(a,b))return Infinity;                    // el embargo del jugador CORTA el par (ya no es un placebo)
   const pa=S.provs[S.nations[a].capital], pb=S.provs[S.nations[b].capital];
   if(!pa||!pb)return Infinity;
-  let c=TRADE_KM*kmBetween(pa,pb)*(TRADE_BULK[RES_CAT[g]]||1);
+  // peso × distancia ÷ VALOR: por mucho que pese, si vale muchísimo compensa moverlo.
+  let c=TRADE_KM*kmBetween(pa,pb)*(TRADE_BULK[RES_CAT[g]]||1)/(MKT_PRICE[g]||1);
   if(pa.coastal&&pb.coastal)c*=TRADE_SEA;
   if(atWarPair(a,b))c*=TRADE_WAR;
   return c;
