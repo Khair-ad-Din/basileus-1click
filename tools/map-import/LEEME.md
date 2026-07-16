@@ -1,8 +1,13 @@
 # Importar el mapa: costa de Natural Earth + ducados de EU4
 
-Fases A-C hechas y verificadas. Faltan D (duenos, terreno, nombres, ciudades) y E (exportar
-official_map.js + verificar el juego). Los intermedios (ids.png, duchies.png, provs.png) son
-grandes y viven en el scratchpad, no aqui.
+Fases A-C hechas, verificadas y aprobadas. Faltan D (duenos, terreno, nombres, ciudades) y E
+(exportar official_map.js + verificar el juego entero).
+
+## AL RETOMAR: HAY QUE REGENERAR LOS INTERMEDIOS
+`ids.svg`, `ids.png`, `duchies.png` y `provs.png` son grandes y vivian en el scratchpad TEMPORAL de
+la sesion: **ya no existen**. Hay que correr la cadena entera de abajo (~40 min, casi todo Python
+puro sobre 3,3M de pixeles). Los .geojson de Natural Earth tambien: se bajan con curl (ver Fuentes).
+Todo es DETERMINISTA (RNG mulberry32 con semilla 193909), asi que sale identico.
 
 ## Resultado
 - 1.006 ducados historicos (Lappland, Abruzzi, Kola...), 5.789 provincias.
