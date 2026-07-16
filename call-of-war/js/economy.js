@@ -344,13 +344,35 @@ const TRADE_BULK={cereal:1.0, cultivo:1.0, mar:2.1, ganado:0.8, bosque:1.6, extr
 // El riesgo era POLÍTICO, no meteorológico: ≥50% del coste del seguro marítimo venía de corso e
 // incautaciones por guerra (el recargo de invierno nunca pasó del 13%).
 const TRADE_WAR=3.0;          // la guerra ENCARECE el par; no lo corta (había contrabando y neutrales)
+// Caché de distancias entre capitales. El arbitraje evalúa TODOS los pares por bien y por tick (O(n²)),
+// así que la haversine no puede recalcularse cada vez. Se sincroniza UNA vez por tick (O(n)) y se invalida
+// sola si alguna capital cambió (conquista). Sin esto, ~66.000 haversines por tick.
+let _kmCap=null, _kmCache=null;
+function kmSync(){                                        // llamar 1× por tick, antes del arbitraje
+  let cambio=!_kmCap||_kmCap.length!==NPLAY;
+  if(!cambio)for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(_kmCap[n]!==(N?N.capital:-1)){cambio=true;break}}
+  if(!cambio)return;
+  _kmCap=[];for(let n=0;n<NPLAY;n++){const N=S.nations[n];_kmCap.push(N?N.capital:-1)}
+  _kmCache=new Map();
+}
+function capKm(a,b){
+  const k=a<b?a*1000+b:b*1000+a;
+  let v=_kmCache.get(k);
+  if(v===undefined){
+    const pa=S.provs[S.nations[a].capital], pb=S.provs[S.nations[b].capital];
+    v=(pa&&pb)?kmBetween(pa,pb):Infinity;
+    _kmCache.set(k,v);
+  }
+  return v;
+}
 function tradeCost(g,a,b){    // fracción del valor de referencia; Infinity = par cortado
   if(isEmbargoed(a,b))return Infinity;                    // el embargo del jugador CORTA el par (ya no es un placebo)
-  const pa=S.provs[S.nations[a].capital], pb=S.provs[S.nations[b].capital];
-  if(!pa||!pb)return Infinity;
+  if(!_kmCache)kmSync();
+  const km=capKm(a,b); if(!isFinite(km))return Infinity;
   // peso × distancia ÷ VALOR: por mucho que pese, si vale muchísimo compensa moverlo.
-  let c=TRADE_KM*kmBetween(pa,pb)*(TRADE_BULK[RES_CAT[g]]||1)/(MKT_PRICE[g]||1);
-  if(pa.coastal&&pb.coastal)c*=TRADE_SEA;
+  let c=TRADE_KM*km*(TRADE_BULK[RES_CAT[g]]||1)/(MKT_PRICE[g]||1);
+  const pa=S.provs[S.nations[a].capital], pb=S.provs[S.nations[b].capital];
+  if(pa&&pb&&pa.coastal&&pb.coastal)c*=TRADE_SEA;
   if(atWarPair(a,b))c*=TRADE_WAR;
   return c;
 }
@@ -1198,35 +1220,54 @@ function economyTick(dt=1){
   // que se quedan el DIFERENCIAL (comprar barato/vender caro). Global sin distancia en v1 (futuro: coste por
   // distancia/ruta). La corona grava la aduana (ALMOJARIFAZGO, ver almojOf) → res.dinero + tsyAlc (variable, como la alcábala).
   for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(N&&N.alive)N.almojRate=0} // reset aduana/tick (se acumula en el arbitraje de abajo)
+  kmSync();                                                                  // 1× por tick: sin la caché, el O(n²) de abajo dispararía ~66.000 haversines
   for(const g of MKT_TRADE){
     const ref=MKT_PRICE[g]||1, node=[];
     for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(!N||!N.alive)continue;ensureMarket(N);if(!N.mktInfo[g])N.mktInfo[g]={price:N.mktPrice[g]||ref};
       node.push({N,p:N.mktPrice[g]!=null?N.mktPrice[g]:ref,s:N.mkt[g]||0});}
     if(node.length<2)continue;
-    node.sort((a,b)=>a.p-b.p);                                                  // ascendente por precio: baratos primero
-    let lo=0,hi=node.length-1;
-    while(lo<hi){
-      const A=node[lo],B=node[hi];                                             // A barato (vende su excedente), B caro (compra)
-      // El COSTE del par (geografía + política) es lo que convierte este pool en mercados locales
-      // conectados: el flete entra en el TEST DE RENTABILIDAD, no solo en el margen. Ponerlo solo en el
-      // margen sería inútil — recortaría al mercader mientras el stock sigue viajando y los precios
-      // convergiendo global. Y por eso el corte ya no puede ser `break`: con coste POR PAR, que el par de
-      // mayor diferencial no sea rentable ya no implica que ningún otro lo sea (los extremos suelen estar
-      // lejos; dos vecinos con menos spread sí comercian). Embargo → Infinity; guerra → ×TRADE_WAR.
-      const cost=tradeCost(g,A.N.idx,B.N.idx)*ref;                             // ducados/unidad (Infinity = par cortado)
-      if(!(B.p-A.p>=TRADE_MIN_SPREAD*ref+cost)){lo++;hi--;continue}            // este par no; puede que otro sí
-      const q=(A.s||0)*TRADE_RATE*dt;                                          // A exporta una fracción de su stock (convergencia gradual)
-      if(q>1e-9){
+    // MERCADO DE MUCHOS A MUCHOS. Antes esto ordenaba por precio a secas y emparejaba los EXTREMOS
+    // (el más barato con el más caro, el 2º con el 2º…), así que cada reino tenía UN SOLO socio por tick
+    // y gastaba su única bala contra el reino más barato del mundo — que suele estar lejísimos. Cuando
+    // fallaba por flete, el bien no comerciaba, aunque a dos posiciones hubiera un vecino rentable.
+    // Medido en partida real: Castilla pagaba la madera a ×2.58 con 105.346 en el mundo a 0.54, y su
+    // MEJOR vendedor (2.122 km, margen +0.16) no se probaba jamás. Venecia compraba a Alejandría Y al
+    // Mar Negro Y a Creta: una plaza barata abastece a MUCHAS y una cara se surte de MUCHAS.
+    // El coste es del PAR, así que no hay un orden global por "precio puesto en destino": cada comprador
+    // tiene el suyo. Por eso se evalúan todos los pares (O(n²), barato con la caché de kmSync).
+    for(const A of node){
+      const cupo=(A.s||0)*TRADE_RATE*dt;                                       // lo que este vendedor saca al mercado ESTE tick (total)
+      if(cupo<=1e-9)continue;
+      // Compradores rentables y su margen NETO por unidad (ya con el flete de ESTE par descontado).
+      let tot=0; const cand=[];
+      for(const B of node){
+        if(B===A)continue;
+        const cost=tradeCost(g,A.N.idx,B.N.idx)*ref;                           // Infinity = embargo o par imposible
+        const m=B.p-A.p-cost;                                                  // margen neto: lo que gana el mercader por unidad
+        if(!(m>=TRADE_MIN_SPREAD*ref))continue;                                // a este no le compensa; a otro quizá sí
+        cand.push({B,cost,m}); tot+=m;
+      }
+      if(!cand.length||tot<=0)continue;
+      // El cupo se REPARTE entre los compradores rentables en proporción al margen: más carga adonde más
+      // se gana. Sin memoria ni tanteo: se recalcula cada tick. Es lo que hacía el mercader —"repartir el
+      // capital entre varios socios; enviar poca mercancía en muchos barcos"— y dimensionaba a priori por
+      // el margen esperado, NO ajustando sobre la marcha: la información de una plaza lejana tardaba MESES
+      // (la muda Venecia-Flandes hacía 2,8-8,6 viajes por DÉCADA). Un lazo de tanteo al ritmo del tick
+      // (1 hora) sería un mercader recibiendo carta de su factor en horas. Ver memoria del `mercader`.
+      // El volumen TOTAL exportado no cambia (sigue siendo el cupo): lo que cambia es a cuántos va.
+      for(const c of cand){
+        const q=cupo*(c.m/tot);
+        if(q<=1e-9)continue;
+        const B=c.B;
         A.N.mkt[g]=Math.max(0,(A.N.mkt[g]||0)-q); B.N.mkt[g]=(B.N.mkt[g]||0)+q; // el stock viaja del mercado barato al caro
-        const half=q*(B.p-A.p-cost)*0.5;                                       // el mercader paga el flete y se queda medio diferencial NETO
-        const taxA=half*almojOf(A.N.idx), taxB=half*almojOf(B.N.idx);         // ALMOJARIFAZGO: la corona de cada reino grava la aduana del comercio EXTERIOR
+        const half=q*c.m*0.5;                                                  // el mercader paga el flete y se queda medio diferencial NETO
+        const taxA=half*almojOf(A.N.idx), taxB=half*almojOf(B.N.idx);          // ALMOJARIFAZGO: la corona de cada reino grava la aduana del comercio EXTERIOR
         A.N.res.dinero+=taxA; A.N.almojRate=(A.N.almojRate||0)+taxA/dt; A.N.sWealth.burgues+=half-taxA;
         B.N.res.dinero+=taxB; B.N.almojRate=(B.N.almojRate||0)+taxB/dt; B.N.sWealth.burgues+=half-taxB;
         recFlow(A.N.idx,"burgues","Arbitraje",half-taxA);recFlow(B.N.idx,"burgues","Arbitraje",half-taxB);
         A.N.mktInfo[g].exp=(A.N.mktInfo[g].exp||0)+q/dt*730;                   // exporta (panel)
         B.N.mktInfo[g].imp=(B.N.mktInfo[g].imp||0)+q/dt*730;                   // importa (panel)
       }
-      lo++;hi--;                                                               // cada reino comercia con su opuesto; converge en varios ticks
     }
   }
   // Telemetría de comercio SUAVIZADA (para el panel): el volumen de cada tick es "a golpes" (el arbitraje
