@@ -12,3 +12,6 @@ call-of-war/_preview*
 # anteriores que el recolector archiva solo al detectar una partida nueva.
 tools/*.jsonl
 tools/*.jsonl.*
+
+# imagenes de previsualizacion del mapa nuevo (se regeneran; no van al repo)
+_mapa_nuevo/
