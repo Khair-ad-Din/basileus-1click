@@ -19,6 +19,8 @@ export const S = {
   coalPeace: null, // pantalla de paz conjunta del jugador: {coalId, sel:Set(duchyIds), gold}
   leagues: [], leagueSeq: 0, // ligas defensivas: [{id,name,founder,members[],apps[]}]; org. multi-miembro (Fase 6c)
   roads: new Map(), roadQueue: [], customRoads: false, // clave "a|b" -> nivel (1..3)
+  marketEdges: null, mktDirty: false, // topología del mercado provincial: plaza -> [plazas vecinas]
+  // (buildMarketEdges) + p.marketOf (assignMarkets). mktDirty: las fronteras han cambiado, hay que rehacerla.
   player: -1, hour: 0, acc: 0, speed: 1, started: false, gameOver: false,
   // capa de presentación mensual de la tesorería del jugador (ver economy.js: tsyTick/tsyAvail)
   tsyAccrual: {}, tsyMonthBal: {}, monthKey: -1, tsyAlc: 0, // tsyAlc = alcábala acumulada del mes en curso

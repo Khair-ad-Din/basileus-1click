@@ -209,6 +209,7 @@ function transferDuchy(d,to){
     repaintProvince(pid);
   }
   d.occBy=-1;
+  S.mktDirty=true; // las fronteras han cambiado: la topología del mercado se rehace al próximo uso
 }
 // Levanta la ocupación mutua entre a y b (las provincias vuelven al control de su dueño).
 function clearOccupation(a,b){

@@ -705,6 +705,7 @@ function seedStrata(p){
   if(!p.wealth){p.wealth={}; for(const k of STRATA)p.wealth[k]=0}
 }
 function rebuildProvinceData(){
+  S.mktDirty=true;      // el mundo cambia (carga, editor, generación): la topología del mercado caduca
   S.adj=S.provs.map(()=>new Set());
   S.seaAdj=S.provs.map(()=>new Set());
   S.pixOfProv=S.provs.map(()=>[]);
@@ -902,6 +903,104 @@ function generateRoads(){
     if(path&&path.length<=14)for(let i=0;i<path.length-1;i++)S.roads.set(roadKey(path[i],path[i+1]),1);
   }
 }
+// ===================== Topología del mercado provincial =====================
+// Grafo RALO entre PLAZAS (las provincias `urban`), la osamenta que el mercado provincial
+// (ADR 0001) usará para el arbitraje corto. Nadie lo consume todavía: construirlo no cambia
+// el comportamiento. Dos plazas se enlazan si son vecinas por tierra o por mar, o si son del
+// mismo dueño y distan menos de MKT_LINK_KM (las plazas rara vez se tocan: el 93% del mapa
+// son aldeas, así que sin el radio el grafo saldría casi vacío).
+// Depende del dueño → hay que rehacerlo cuando cambian las fronteras.
+// El radio se fijó MIDIENDO (tools/market-topology.mjs), no a ojo: con 150 km el grafo sale roto
+// (40 plazas aisladas, 36 de 59 reinos con el mercado en dos o más islas que jamás comerciarían);
+// con 250 quedan 6 aisladas y 15 reinos partidos, y sigue siendo la mitad de caro que el arbitraje
+// nacional de hoy. 250 km ≈ 8-10 días de carreta: el circuito regional de un mercader.
+// El radio solo crea la ARISTA; que el trato salga a cuenta ya lo decide el flete (tradeCost).
+const MKT_LINK_KM=250;
+function buildMarketEdges(){
+  const g=new Map(); S.marketEdges=g;
+  // toda capital es nodo de mercado aunque no sea `urban` (medido: Nikšić y Aqaba lo son; sin esto
+  // Ragusa se quedaba sin ninguna plaza y sus aldeas no tendrían dónde ir en la Fase 1).
+  const plazas=S.provs.filter(p=>(p.urban||p.capital)&&!p.wasteland);
+  for(const p of plazas)g.set(p.id,new Set());
+  const link=(a,b)=>{g.get(a).add(b);g.get(b).add(a)};
+  for(const p of plazas){
+    for(const q of S.adj[p.id])if(g.has(q))link(p.id,q);
+    for(const q of S.seaAdj[p.id])if(g.has(q))link(p.id,q);
+  }
+  const byOwner=new Map();
+  for(const p of plazas){if(!byOwner.has(p.owner))byOwner.set(p.owner,[]);byOwner.get(p.owner).push(p)}
+  for(const list of byOwner.values())
+    for(let i=0;i<list.length;i++)for(let j=i+1;j<list.length;j++)
+      if(kmBetween(list[i],list[j])<MKT_LINK_KM)link(list[i].id,list[j].id);
+  for(const[k,v]of g)g.set(k,[...v].sort((a,b)=>a-b));
+  return g;
+}
+// Cada provincia pertenece a UNA plaza: `p.marketOf` (la plaza es satélite de sí misma). Es la
+// pertenencia de la aldea a su mercado — dónde irá a vender su grano en la Fase 2. Aquí NO se
+// mueve un ducado: solo se asigna.
+// DIJKSTRA MULTIFUENTE en KILÓMETROS desde todas las plazas a la vez, sobre la adyacencia real
+// (tierra + mar). Deja en `p.marketKm` los km de camino hasta su plaza — que es justo lo que la
+// Fase 2 necesita para cobrarle el flete a la aldea.
+// (El plan decía "BFS sobre S.marketEdges". Dos correcciones, ambas medidas: (1) ese grafo solo une
+// plazas entre sí, las aldeas no están en él — la pertenencia va sobre S.adj/S.seaAdj y marketEdges
+// es para el arbitraje; (2) un BFS cuenta SALTOS, y un salto por mar son 500 km: contando saltos,
+// Alanya vendía en Port Said a 624 km y Alghero en Perpiñán a 537, porque llegaban en menos saltos
+// que a su plaza de tierra. Contando kilómetros, cada una va a la suya.)
+// LA FRONTERA NO CONFINA: la aldea va a la plaza más cercana AUNQUE SEA EXTRANJERA. En 1444 se
+// pagaba PEAJE, no pasaporte — la frontera fiscalizaba el comercio, no lo redirigía (Aragón Ruano
+// sobre Álava/Navarra: los alaveses seguían sacando el vino de Navarra; "lo que sí varió, sin duda,
+// fue la fiscalización de ese comercio"). Quien frena la arista extranjera es la aduana (almojOf)
+// y la guerra/embargo (TRADE_WAR, isEmbargoed) cuando llegue el FLUJO, no la topología: por eso
+// esto no se rehace al declarar una guerra. Confinar por dueño mandaba a Temryuk a vender su grano
+// a Génova, a 2.245 km — y Balard documenta lo contrario: Caffa se abastecía de su hinterland
+// tártaro, no de Liguria.
+// Empate a saltos → gana la plaza más cercana en km. La aldea que no alcanza ninguna plaza (isla
+// sin puerto) cae en la capital de su reino.
+function assignMarkets(){
+  const km=new Float64Array(S.provs.length).fill(Infinity);
+  for(const p of S.provs){p.marketOf=-1;p.marketKm=0}
+  const h=[];                                             // montículo binario de [km, provincia]
+  const push=(d,i)=>{
+    h.push([d,i]);
+    for(let c=h.length-1;c>0;){const par=(c-1)>>1;if(h[par][0]<=h[c][0])break;[h[par],h[c]]=[h[c],h[par]];c=par}
+  };
+  const pop=()=>{
+    const top=h[0],last=h.pop();
+    if(h.length){h[0]=last;
+      for(let c=0;;){const l=2*c+1,r=l+1;let m=c;
+        if(l<h.length&&h[l][0]<h[m][0])m=l;
+        if(r<h.length&&h[r][0]<h[m][0])m=r;
+        if(m===c)break;[h[m],h[c]]=[h[c],h[m]];c=m}
+    }
+    return top;
+  };
+  const plazas=S.provs.filter(p=>(p.urban||p.capital)&&!p.wasteland&&p.owner<NPLAY);
+  plazas.sort((a,b)=>a.id-b.id);                          // orden fijo de las fuentes = determinista
+  for(const p of plazas){p.marketOf=p.id;km[p.id]=0;push(0,p.id)}
+  while(h.length){
+    const[d,c]=pop();
+    if(d>km[c])continue;                                  // entrada rancia
+    const P=S.provs[c];
+    for(const nb of [...S.adj[c],...S.seaAdj[c]]){
+      const Q=S.provs[nb];
+      if(Q.wasteland)continue;
+      const nd=d+kmBetween(P,Q);
+      if(nd<km[nb]-1e-9){km[nb]=nd;Q.marketOf=P.marketOf;Q.marketKm=nd;push(nd,nb)}
+      else if(Math.abs(nd-km[nb])<1e-9&&P.marketOf<Q.marketOf)Q.marketOf=P.marketOf; // empate exacto: id menor
+    }
+  }
+  for(const p of S.provs){                                // isla sin puerto → la capital de su reino
+    if(p.marketOf>=0||p.wasteland||p.owner>=NPLAY)continue;
+    const N=S.nations[p.owner];
+    if(N&&N.capital>=0){p.marketOf=N.capital;p.marketKm=kmBetween(p,S.provs[N.capital])}
+  }
+}
+// Rehace la topología del mercado (grafo + pertenencia). Solo cuesta cuando cambian las fronteras:
+// `transferDuchy` es el ÚNICO sitio donde cambia p.owner en partida, y marca S.mktDirty.
+function ensureMarketTopology(){
+  if(S.marketEdges&&!S.mktDirty)return;
+  buildMarketEdges();assignMarkets();S.mktDirty=false;
+}
 function kmBetween(a,b){
   const[lo1,la1]=pxToLonLat(a.x,a.y),[lo2,la2]=pxToLonLat(b.x,b.y);
   const R=6371,dla=(la2-la1)*Math.PI/180,dlo=(lo2-lo1)*Math.PI/180;
@@ -910,5 +1009,5 @@ function kmBetween(a,b){
 }
 
 export {
-  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, seedStrata, rebuildProvinceData, buildDuchies, isDuchyCap, kmBetween, roadKey, hasRoad, roadLvl, landPath, generateRoads
+  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, seedStrata, rebuildProvinceData, buildDuchies, isDuchyCap, buildMarketEdges, assignMarkets, ensureMarketTopology, MKT_LINK_KM, kmBetween, roadKey, hasRoad, roadLvl, landPath, generateRoads
 };
