@@ -53,11 +53,30 @@ Los cinco eran de la MISMA familia: mirar el resultado en vez de la materia prim
    incrustados en otra. Y los empates se rompian por orden de pixel -> recuadros alineados con los
    ejes en los ducados pequenos (Italia).
    SOLUCION: repartir por VENTAJA (d2-d1): primero los pixeles con dueno claro.
+3b. **Pero repartir por ventaja creo el siguiente artefacto**: los pixeles disputados (los del
+   BORDE, los de menos ventaja) se colocan los ULTIMOS, cuando sus centroides preferidos ya han
+   llenado el cupo -> caen en uno lejano y dejan una FRANJA fina del color equivocado pegada a la
+   costura. En la practica: un trozo de una provincia cuyo cuerpo esta a 40 km.
+   SOLUCION: holgura en el cupo (x1,08) + exigir que CADA PROVINCIA SEA UNA SOLA PIEZA (cada trozo
+   suelto se lo queda el gajo que mas lo rodea). Quedan 68 de 5.789 en varios trozos (1,2%): son
+   ISLAS, que no tienen vecina terrestre a la que unirse. Correcto: el mapa de hoy tambien tiene
+   provincias multilobulo. Coste: la proporcion menor/mayor baja de 1,00 a 0,84 — los gajos ya no
+   son exactos, y esta bien: 0,84 es un reparto de verdad.
 4. **Limpiar fragmentos sobre un raster sucio** se desboca: movio 830.000 px (37% de la tierra) sin
    converger y destrozo un ducado. Sobre el raster limpio converge en 3 vueltas y 56.000 px.
    El orden importa: limpiar DESPUES de arreglar la causa, no antes.
 5. **El filtro de mayoria** sobre el raster (66 -> 3,3 trozos por ducado) parecia el arreglo, pero
    erosiona los ducados pequenos: se comio 167. Era tapar el ruido en vez de no generarlo.
+
+## EL PATRON (lo mas importante de todo esto)
+CADA arreglo mio mato un sintoma y CREO el siguiente:
+  semillas por lejania -> astillas
+  k-medias normal      -> la 2a provincia al 4%
+  cupo por distancia   -> discos incrustados
+  cupo por ventaja     -> franjas en las costuras
+Cuatro arreglos, cuatro artefactos nuevos, y las cuatro veces los detecto SERGIO mirando la
+pantalla mientras mi metrica sonreia. Cuando un arreglo "funciona" segun el numero, MIRAR LA IMAGEN
+antes de cantarlo. Siempre.
 
 ## LA LECCION DE METODO
 Medi el RESULTADO (provincias por ducado, tamanos, proporciones) durante ocho horas y cada metrica

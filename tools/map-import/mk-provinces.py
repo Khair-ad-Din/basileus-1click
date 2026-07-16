@@ -66,8 +66,8 @@ def particion(pts,k):
             # alineados con los ejes en los ducados pequenos (Italia).
             # Ahora manda la VENTAJA que el mejor centroide le saca al segundo: primero se colocan
             # los pixeles con dueno claro y los disputados se reparten al final. Fronteras rectas.
-            cap=-(-n//k)
-            orden=[]
+            cap=int(n/k*1.08)+1     # holgura: con el cupo justo, los ultimos pixeles
+            orden=[]              # (los del borde) no tienen donde caer y acaban en un centroide lejano
             for i,p in enumerate(pts):
                 ds=sorted(((p[0]-c[0])**2+(p[1]-c[1])**2, j) for j,c in enumerate(cent))
                 # ventaja = lo que el 2o esta peor que el 1o. Cuanto mayor, menos discutible.
@@ -93,6 +93,52 @@ def particion(pts,k):
             j=lab[i];sx[j]+=p[0];sy[j]+=p[1];sn[j]+=1
         for j in range(k):
             if sn[j]: cent[j]=(sx[j]/sn[j],sy[j]/sn[j])
+    # CADA PROVINCIA, UNA SOLA PIEZA. El reparto por ventaja coloca los pixeles disputados —los del
+    # borde— los ULTIMOS, cuando sus centroides preferidos ya han llenado el cupo: caian en uno
+    # lejano y dejaban una FRANJA fina del color equivocado pegada a la costura, que en la practica
+    # era un trozo de una provincia cuyo cuerpo estaba a 40 km. Aqui cada trozo suelto se lo queda
+    # el gajo que mas lo rodea.
+    idx={p:i for i,p in enumerate(pts)}
+    for _ in range(6):
+        vis=[False]*n; cuerpo={}
+        for i0 in range(n):
+            if vis[i0]: continue
+            l=lab[i0]; pila=[i0]; vis[i0]=True; trozo=[i0]
+            while pila:
+                i=pila.pop(); x,y=pts[i]
+                for dx,dy in ((1,0),(-1,0),(0,1),(0,-1)):
+                    j=idx.get((x+dx,y+dy))
+                    if j is not None and not vis[j] and lab[j]==l:
+                        vis[j]=True; pila.append(j); trozo.append(j)
+            if l not in cuerpo or len(trozo)>len(cuerpo[l][1]): cuerpo.setdefault(l,(0,[]))
+            if len(trozo)>len(cuerpo[l][1]): cuerpo[l]=(len(trozo),trozo)
+            else: cuerpo.setdefault(l,(len(trozo),trozo))
+        # recorrer otra vez marcando los trozos que NO son el cuerpo de su gajo
+        vis=[False]*n; sueltos=[]
+        for i0 in range(n):
+            if vis[i0]: continue
+            l=lab[i0]; pila=[i0]; vis[i0]=True; trozo=[i0]
+            while pila:
+                i=pila.pop(); x,y=pts[i]
+                for dx,dy in ((1,0),(-1,0),(0,1),(0,-1)):
+                    j=idx.get((x+dx,y+dy))
+                    if j is not None and not vis[j] and lab[j]==l:
+                        vis[j]=True; pila.append(j); trozo.append(j)
+            if len(trozo)<cuerpo[l][0]: sueltos.append(trozo)
+        if not sueltos: break
+        cambio=False
+        for trozo in sueltos:
+            v=Counter()
+            for i in trozo:
+                x,y=pts[i]
+                for dx,dy in ((1,0),(-1,0),(0,1),(0,-1)):
+                    j=idx.get((x+dx,y+dy))
+                    if j is not None and lab[j]!=lab[i]: v[lab[j]]+=1
+            if not v: continue
+            nuevo=v.most_common(1)[0][0]
+            for i in trozo: lab[i]=nuevo
+            cambio=True
+        if not cambio: break
     return lab
 
 prov=[[0]*MW for _ in range(MH)]
