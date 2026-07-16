@@ -459,7 +459,17 @@ function jobsOf(b){return BUILD_JOBS[b]!=null?BUILD_JOBS[b]:JOBS_PER_LEVEL} // e
 // una fábrica que no se puede dotar solo produce a medias y drena su mantenimiento. La industria se
 // concentra así en los NÚCLEOS poblados (idea de diseño), y las provincias pobres quedan agrícolas.
 function canStaffIndustry(p,b){return !!p&&!p.wasteland&&specialistCap(p)>=jobsOf(b)}
-function buildJobs(p){let j=0;for(const b in BUILDINGS)j+=effLvl(p,b)*jobsOf(b);return j} // deshabilitados NO exigen empleos → liberan dotación
+// buildJobs recorre TODOS los edificios y se llama varias veces por provincia y por tick (vía staffing).
+// Como los edificios NO cambian DURANTE un economyTick (solo entre ticks, en la fase de construcción de
+// sim.js), se memoiza con un sello de tick (_bjGen, que economyTick incrementa al empezar): la primera
+// llamada del tick calcula, las demás devuelven el valor. Sin invalidadores dispersos → no puede quedar
+// obsoleto. Perfilado: buildJobs+staffing+afines eran ~34% del tick.
+let _bjGen=0;
+function buildJobs(p){
+  if(p._bjGen===_bjGen)return p._bj;
+  let j=0;for(const b in BUILDINGS)j+=effLvl(p,b)*jobsOf(b);
+  p._bj=j; p._bjGen=_bjGen; return j;
+}
 function freeLabor(p){return Math.max(0,specialistCap(p)-(p.mob||0))}    // libres tras descontar movilizados
 function staffing(p){const j=buildJobs(p);return j>0?Math.min(1,freeLabor(p)/j):1} // dotación 0..1
 // Producción POP-DRIVEN: cada nivel de edificio ofrece jobsOf(b) puestos; los pops libres los cubren
@@ -967,6 +977,7 @@ function recruitTime(p,u){
 // al modelo original); el arnés de análisis puede avanzar a paso de día (dt=24) para ir más rápido.
 // Todas las magnitudes por tick (producción, consumo, crecimiento, regeneración) se escalan por dt.
 function economyTick(dt=1){
+  _bjGen++;                       // invalida la memoización de buildJobs de este tick (los edificios no cambian dentro del tick)
   // 0. mano de obra movilizada por provincia (soldados que dejaron el trabajo): retira dotación
   for(const p of S.provs)p.mob=0;
   for(const a of S.armies)if(a.src)for(const pid in a.src){const P=S.provs[pid];if(P)P.mob+=a.src[pid]}
