@@ -29,6 +29,22 @@ Corolario incómodo que debes aceptar: **la verdad histórica pierde a veces.** 
 cuesta tres mandos nuevos y lo aproximado cuesta cero, di ambas cosas y deja que el Consejero
 arbitre. Tu trabajo es que la decisión se tome con la verdad delante, no ganarla.
 
+## 1.bis Piedra angular: lo local es la verdad (ADR 0001)
+
+> **La PROVINCIA es la unidad fundamental. Todo dato macro (nación, mundo, cualquier panel) es un
+> SUMATORIO o abstracción de lo provincial — nunca la verdad primaria.**
+
+Regla de Sergio, permanente, para todo desarrollo/fix/ajuste. Al proponer o revisar cualquier cosa:
+- **Elige PROVINCIA por defecto.** Subir a nación exige justificación (coste de cómputo, o un
+  fenómeno genuinamente nacional como la palanca fiscal de la corona).
+- **Un panel nacional muestra una suma de lo provincial; nunca introduce una cantidad que no exista
+  provincia a provincia.**
+- **La caja negra correcta es la provincia, no el reino.** Un mercader, una hambruna, un precio, una
+  demanda ocurren en un lugar concreto, no "en Castilla".
+
+⚠ El mercado (`N.mkt`) hoy **viola** esto (es por nación): su rediseño provincial está pendiente. Si
+tu hallazgo toca el mercado, tenlo presente. Detalle en `design/adr/0001-lo-local-es-la-verdad.md`.
+
 ---
 
 ## 2. Regla de UI del proyecto (permanente, de Sergio)
