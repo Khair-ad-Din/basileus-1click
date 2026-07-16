@@ -20,17 +20,33 @@ print(f"recorte del SVG: x {x0:.1f}..{x1:.1f}  y {y0:.1f}..{y1:.1f}")
 print(f"viewBox = {vx:.2f} {vy:.2f} {vw:.2f} {vh:.2f}   ->  render {W}x{H} px (x{SCALE})")
 
 s=open(SRC,encoding="utf8").read()
+# PALETA A PRUEBA DE MEZCLAS. Codificar el id como (n, n>>8, n>>16) fue el error de raiz de todo:
+# casi cualquier mezcla de antialiasing sigue siendo un id VALIDO, solo que de otra region — asi
+# aparecian "Columbia" y "Nunavut" (Canada) en Europa. Y taparlo con un trazo del color propio hacia
+# que las regiones se pisaran: confeti de 1 px por toda frontera (16.582 trozos de un pixel).
+# Los dos sintomas, una sola causa.
+# Ahora: rejilla de 16x16x16 sobre [BASE..255] -> 4.096 colores separados STEP entre si y TODOS
+# CLAROS. Asi una mezcla con el negro del fondo sale oscura (canal < BASE) y se descarta; y una
+# mezcla entre dos regiones cae, como mucho, en una de las dos. Decodificar = cuantizar.
+BASE,STEP,N=80,11,16
+def col_of(i):
+    a=i%N; b=(i//N)%N; c=(i//(N*N))%N
+    return (BASE+a*STEP, BASE+b*STEP, BASE+c*STEP)
 ids=[]
 def repl(m):
     pid=m.group(1)
     i=len(ids); ids.append(pid)
-    n=i+1                                   # 0 se reserva para "ninguna region"
-    col="#%02x%02x%02x"%(n&255,(n>>8)&255,(n>>16)&255)
-    # EL TRAZO VA DEL MISMO COLOR QUE EL RELLENO. EU4 dibuja las regiones con stroke negro de
-    # 0.25 y ese trazo TAPA las costuras entre paths (no teselan perfecto). Al quitarlo, el 37% de
-    # la tierra se quedaba en negro. Con el trazo del color de la region, cada una crece media
-    # anchura y la costura se cierra sola.
-    return f'<path id="{pid}" fill="{col}" stroke="{col}" stroke-width=".45" shape-rendering="crispEdges"'
+    r,g,b=col_of(i)
+    col="#%02x%02x%02x"%(r,g,b)
+    # SIN TRAZO. Puse el trazo del color de la region para tapar las costuras entre paths (EU4 las
+    # tapa con un stroke negro; sin nada se perdia el 37% de la tierra). Fue un error grave: un
+    # trazo PISA al vecino, y como cada region se dibuja en su turno, el que pinta ultimo gana en
+    # cada pixel del borde. Medido en el render: 16.918 componentes para 652 ducados, con 16.582
+    # trozos de UN pixel. Cada frontera era un domino de motas de los dos ducados, y ese confeti
+    # envenenaba todo lo de despues (la k-medias "separaba tentaculos" que eran motas; las astillas
+    # no se podian fusionar porque sus vecinas eran de otro ducado).
+    # Las costuras las cierra el relleno por DISTANCIA de mk-duchies.py: determinista y sin motas.
+    return f'<path id="{pid}" fill="{col}" stroke="none" shape-rendering="crispEdges"'
 s2=re.sub(r'<path id="([^"]+)"\s+fill="[^"]*"(?:\s+fill-rule="[^"]*")?\s+stroke="[^"]*"\s+stroke-width="[^"]*"', repl, s)
 print(f"paths recoloreados: {len(ids)}")
 # el fondo a negro (0 = sin region) y el recorte
@@ -45,5 +61,5 @@ s2=re.sub(r'<svg xmlns="http://www.w3.org/2000/svg" id="map"[^>]*>',
   '<svg xmlns="http://www.w3.org/2000/svg" id="map" width="1200" height="480" viewBox="0 0 1200 480" overflow="visible">', s2, count=1)
 open(SP+"ids.svg","w",encoding="utf8").write(s2)
 json.dump({"ids":ids,"vx":vx,"vy":vy,"vw":vw,"vh":vh,"W":W,"H":H,"SCALE":SCALE,
-           "A":A,"B":B,"AY":AY,"BY":BY}, open(SP+"idsvg.json","w",encoding="utf8"))
+           "A":A,"B":B,"AY":AY,"BY":BY,"BASE":BASE,"STEP":STEP,"N":N}, open(SP+"idsvg.json","w",encoding="utf8"))
 print(f"-> ids.svg  ({len(s2)/1e6:.1f} MB)")

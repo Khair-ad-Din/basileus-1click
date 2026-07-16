@@ -41,16 +41,22 @@ meta=json.load(open(SP+"idsvg.json",encoding="utf8"))
 ids=meta["ids"]; A,B,AY,BY=meta["A"],meta["B"],meta["AY"],meta["BY"]
 vx,vy,SC=meta["vx"],meta["vy"],meta["SCALE"]
 im=Image.open(SP+"ids.png").convert("RGB"); ip=im.load(); IW,IH=im.size
-# FILTRO ANTI-ARTEFACTO: el antialiasing mezcla dos colores y produce un id FALSO — asi salian
-# "Columbia" o "Nunavut" (¡Canada!) dentro de Europa. Una region de verdad ocupa miles de pixeles
-# en el render x16; un artefacto, un punado suelto. Se aceptan solo los colores con cuerpo.
-from collections import Counter as _C
-_px=_C(im.getdata())
-valid=set()
-for col,c in _px.items():
-    n=col[0]|(col[1]<<8)|(col[2]<<16)
-    if 0<n<=len(ids) and c>=60: valid.add(n)
-print(f"   regiones con cuerpo en el render: {len(valid)} (de {len(_px)} colores; el resto, antialias)")
+# DECODIFICAR = CUANTIZAR contra la rejilla de la paleta (ver mk-idsvg.py). Un color solo vale si
+# cae CERCA de un punto de la rejilla y no es oscuro: una mezcla con el negro del fondo baja de
+# BASE y se descarta sola. Antes se decodificaba (n, n>>8, n>>16) y cualquier mezcla era un id
+# valido de otra region: de ahi Canada en Europa.
+BASE=meta.get("BASE",80); STEP=meta.get("STEP",11); NG=meta.get("N",16)
+TOL=STEP*0.34
+def idx_of(r,g,b):
+    if r<BASE-TOL or g<BASE-TOL or b<BASE-TOL: return 0          # mezcla con el fondo
+    o=[]
+    for v in (r,g,b):
+        k=round((v-BASE)/STEP)
+        if k<0 or k>=NG: return 0
+        if abs(v-(BASE+k*STEP))>TOL: return 0                    # entre dos casillas: mezcla
+        o.append(k)
+    i=o[0]+NG*o[1]+NG*NG*o[2]
+    return i+1 if i<len(ids) else 0
 def miller(la): return 1.25*math.log(math.tan(math.pi/4+0.4*la*math.pi/180))
 
 duchy=[[0]*MW for _ in range(MH)]
@@ -71,8 +77,8 @@ for y in range(MH):
         px=sx_of[x]
         if not(0<=px<IW): continue
         r,g,b=ip[px,py]
-        n=r|(g<<8)|(b<<16)
-        if n in valid: row[x]=n
+        n=idx_of(r,g,b)
+        if n: row[x]=n
         else: sinreg+=1
 print(f"B) tierra sin region (costuras del SVG y desajuste de costa): {sinreg:,} px")
 
