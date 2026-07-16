@@ -563,7 +563,7 @@ function hourTick(){
   // horarios (abajo). Equivalencia medida vs. todo-horario: población 0%, tesoro 1,1%.
   if(S.hour%24===0){
     const tsyBefore=S.player>=0?{...S.nations[S.player].res}:null; // foto del tesoro antes del tick económico
-    economyTick(24, S.hour%730<24); // dt=24 (1 día); arbitraje solo el primer día de cada mes de juego (730h)
+    economyTick(24, true); // dt=24 (1 día); arbitraje TAMBIÉN diario (barato, ~5ms) para reponer gradual y evitar la oscilación mensual
     tsyTick(tsyBefore); // capa mensual: acumula el delta recurrente del jugador y publica la cifra "/mes"
     prosperityTick(); // prosperidad por provincia/bien: +1/−1 punto al mes (se autodispara al cambiar de mes)
     relTick(); // diplomacia: deriva mensual del campo de relaciones hacia su línea base (se autodispara al mes)

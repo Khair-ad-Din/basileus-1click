@@ -997,9 +997,11 @@ function recruitTime(p,u){
 // dt = horas de juego que avanza esta llamada. Desde 2026-07-16 la economía corre 1×/DÍA (dt=24), no cada
 // hora: el recorrido de las ~3680 provincias (producción, subsistencia, población) es LINEAL en dt (crece,
 // consume y procrea igual en 1×24 que en 24×1, verificado: error de población 0%), así que espaciarlo no
-// cambia el resultado y ahorra ~23/24 del coste. doArb controla el ARBITRAJE internacional, que NO es
-// lineal (mueve un % del stock por paso) y además era LENTO de verdad — la muda de Flandes hacía ~1
-// expedición cada 14 meses (mercader) — así que corre 1×/MES. Ver hourTick en sim.js.
+// cambia el resultado y ahorra ~23/24 del coste. doArb controla el ARBITRAJE internacional (flag por si
+// alguna vez conviene espaciarlo; hoy corre a diario como el resto). Su cupo usa convergencia GEOMÉTRICA
+// (`stock*(1-(1-TRADE_RATE)^dt)`) para no saturar a dt grande: correrlo mensual con cupo lineal daba
+// golpes de importación >100% del stock y el precio oscilaba techo↔suelo mes a mes. A diario repone
+// gradual y el precio no oscila. Ver hourTick en sim.js.
 function economyTick(dt=1,doArb=true){
   _bjGen++;                       // invalida la memoización de buildJobs de este tick (los edificios no cambian dentro del tick)
   // 0. mano de obra movilizada por provincia (soldados que dejaron el trabajo): retira dotación
@@ -1274,7 +1276,7 @@ function economyTick(dt=1,doArb=true){
     // El coste es del PAR, así que no hay un orden global por "precio puesto en destino": cada comprador
     // tiene el suyo. Por eso se evalúan todos los pares (O(n²), barato con la caché de kmSync).
     for(const A of node){
-      const cupo=(A.s||0)*TRADE_RATE*dt;                                       // lo que este vendedor saca al mercado ESTE tick (total)
+      const cupo=(A.s||0)*(1-Math.pow(1-TRADE_RATE,dt));                                       // lo que este vendedor saca al mercado ESTE tick (total)
       if(cupo<=1e-9)continue;
       // Compradores rentables y su margen NETO por unidad (ya con el flete de ESTE par descontado).
       let tot=0; const cand=[];
