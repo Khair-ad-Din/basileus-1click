@@ -33,3 +33,18 @@
 - **2026-07-15 — [OJO con tu propio tópico]** No vendas el **8:4:1 tierra:río:mar**: es por **tonelada-milla**,
   no por ruta. En rutas comparables reales el mar solo le ganaba a la tierra **~1,5×** (Brujas→Barcelona
   1398: mar 15% vs tierra 22%). El modelo usa 0.68, coherente con eso.
+
+- **2026-07-16 — [CORRECCIÓN, no lo repitas]** En el consejo de diseño del **mercado provincial** dijiste que
+  sería *"más barato que hoy"*. → El consejero te corrigió: es más barato que la **MALLA COMPLETA** (400²×30
+  ≈ 4,8M ops, que **nadie va a construir**), pero **MÁS CARO que hoy** (~60 naciones → ~300-500 plazas +
+  arbitraje de aristas). Asumible por el ~28× que se ganó en `29e81dd`, pero **es gasto, no ahorro**:
+  mídelo en la **Fase 0** antes de fijar constantes. **No vuelvas a vender "más barato".**
+  **Alcance decidido:** los lujos y la materia de **largo alcance** (seda, especias, alumbre, tinte, azúcar,
+  pieles, ámbar) **NO se provincializan** — siguen capital-capital. Solo los 4 básicos y la materia
+  **regional** (lana, ganado, cuero, lino, uva…) bajan al grafo de plazas. Ver `design/mercado-provincial-plan.md`.
+
+- **2026-07-16 — [ENTRA, tu diseño de la estructura]** Tu jerarquía de 3 niveles (aldea `!p.urban` /
+  plaza `p.urban && !p.capital` / nodo internacional `p.capital`) + grafo ralo (`S.adj`/`S.seaAdj`/`S.roads`
+  + radio ~150 km, no malla) + mercader que vive en la plaza → **aceptada como base del plan** (5 fases). El
+  mercado internacional (Bloque 3, capital-capital) **no se toca hasta el final**: es la red de seguridad de
+  la migración incremental.
