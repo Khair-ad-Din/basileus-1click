@@ -539,7 +539,7 @@ function canAfford(n,cost){
  * pérdidas/gastos se notan al momento. La IA usa el saldo real (res), sin tocar nada. */
 function monthKeyOf(hour){const d=new Date(START_DATE+hour*3600e3);return d.getUTCFullYear()*12+d.getUTCMonth()}
 function resetTsyLedger(){ // (re)inicia el ledger al empezar/retomar partida o al tomar el mando
-  S.tsyAccrual={};S.monthKey=monthKeyOf(S.hour);S.tsyAlc=0;S.sFlow={};S.sConsume={};S.mktVol={};
+  S.tsyAccrual={};S.monthKey=monthKeyOf(S.hour);S.tsyAlc=0;S.sFlow={};S.sConsume={};S.mktVol={};S.sNG={};
   S.tsyMonthBal={};
   if(S.player>=0){const ec=nationEconomy(S.player).res;for(const k in ec)S.tsyMonthBal[k]=ec[k]*MONTH_TICKS} // semilla: proyección mensual del ritmo actual
 }
@@ -557,7 +557,7 @@ const ESTATE_ABBR={campesino:"c",burgues:"b",clero:"cl",nobleza:"n"};
 // primeros meses no se comercia en ningún sitio: eso es CALENTAMIENTO, no un diagnóstico. Mira `desp`
 // (llenado de despensas) ANTES de concluir nada sobre el mercado: con desp<1 el mercado aún no existe.
 // Por lo mismo, `M.comida[6]/[7]` (export/import) solo significa algo con las despensas llenas.
-const ECONLOG_V=2;               // versión del esquema (v2: +exp/imp por bien, +despensa, +cosecha, +fiscalidad, +pops)
+const ECONLOG_V=3;               // v3: +SC (cobertura de cesta y comida por estamento); v2: +exp/imp, despensa, cosecha, fiscalidad, pops
 function logEconMonth(monthIdx){
   const n=S.player; if(n<0)return; const N=S.nations[n]; if(!N||!N.sWealth)return;
   const yr=Math.floor(monthIdx/12), mo=(monthIdx%12)+1, d=yr+"-"+String(mo).padStart(2,"0");
@@ -614,6 +614,13 @@ function logEconMonth(monthIdx){
     hue:[used,slots],                                         // huecos de construcción usados/totales
     prsp:+(npr?pr0/npr:0).toFixed(2),                         // puntos de prosperidad medios por bien y provincia (0..60)
     war:[wars,embs],                                          // guerras y embargos activos: ambos cambian el coste del comercio
+    // COBERTURA por estamento: [cesta%, comida%] = qué fracción de lo que DESEA consigue comprar cada
+    // estamento. cesta = todos los bienes ponderados por valor; comida = solo grano (las élites lo compran,
+    // el campesino come su despensa → su comida% es null). Responde "¿quién come cuando escasea?" (§2/§3).
+    SC:Object.fromEntries(STRATA.map(k=>{
+      const e=S.sNG&&S.sNG[k];
+      return [ESTATE_ABBR[k], [e&&e.cN>0?+(e.cG/e.cN).toFixed(3):null, e&&e.fN>0?+(e.fG/e.fN).toFixed(3):null]];
+    })),
     W, F, M});
   if(S.econLog.length>3600)S.econLog.shift(); // cap ~300 años de juego
 }
@@ -625,7 +632,7 @@ function tsyTick(before){
   const mk=monthKeyOf(S.hour);
   if(mk!==S.monthKey){
     if(S.econLogOn)logEconMonth(S.monthKey);   // foto del mes que CIERRA (usa sFlow/mktVol/tsyAlc antes de limpiarlos)
-    S.tsyMonthBal=S.tsyAccrual;S.tsyAccrual={};S.tsyAlc=0;S.sFlow={};S.sConsume={};S.mktVol={};S.monthKey=mk // cierra el mes: se "cobra" la alcábala y se reinician los desgloses de estamentos
+    S.tsyMonthBal=S.tsyAccrual;S.tsyAccrual={};S.tsyAlc=0;S.sFlow={};S.sConsume={};S.mktVol={};S.sNG={};S.monthKey=mk // cierra el mes: se "cobra" la alcábala y se reinician los desgloses de estamentos
   }
   const R=S.nations[S.player].res;
   for(const k in R){const d=R[k]-(before[k]||0);if(d)S.tsyAccrual[k]=(S.tsyAccrual[k]||0)+d}
@@ -668,6 +675,17 @@ function recBuy(n,estate,good,qty,spend){
   if(n!==S.player||!(qty>0))return;
   const f=S.sConsume||(S.sConsume={}),e=f[estate]||(f[estate]={}),c=e[good]||(e[good]=[0,0]);
   c[0]+=qty;c[1]+=spend;
+}
+// COBERTURA por estamento (solo jugador, mes en curso): cuánto DESEA vs cuánto CONSIGUE cada estamento.
+// En VALOR (×precio ref) para poder sumar bienes distintos = cobertura de la cesta entera; y aparte el
+// GRANO en unidades, para el diagnóstico de hambre (¿el noble consigue su pan cuando escasea?). Ver §2/§3
+// del diseño de comida. Es telemetría pura: no toca la economía.
+function recNG(n,estate,good,need,got,ref){
+  if(n!==S.player||!(need>0))return;
+  const f=S.sNG||(S.sNG={}),e=f[estate]||(f[estate]={cN:0,cG:0,fN:0,fG:0}); // cesta Need/Got (valor) · comida Need/Got (unidades)
+  e.cN+=need*(ref||1); e.cG+=got*(ref||1);
+  if(good==="comida"){e.fN+=need; e.fG+=got}
+  f[estate]=e;
 }
 // VOLUMEN FÍSICO por bien (solo jugador, mes en curso): cuánto se PRODUCE y pone en el mercado, cuánto se VENDE, y
 // cuánto se TIRA (producido por encima del tope de inventario = sobreproducción pura). Diagnostica si el campesino
@@ -1106,6 +1124,7 @@ function economyTick(dt=1,doArb=true){
         const frac=Math.max(0,Math.min(DMAX,(res-price)/(res-ref))); // 1 a precio ref · 0 a la reserva · >1 si barato
         const buy=Math.min(need*frac,stock,(W[k]||0)/price);         // limitado por deseo elástico, stock y bolsillo
         if(buy>0){W[k]-=buy*price;stock-=buy;rev+=buy*price;sold+=buy;recFlow(n,k,"Necesidades (lujos)",-buy*price);recBuy(n,k,g,buy,buy*price)}
+        recNG(n,k,g,need,buy,ref);                                   // telemetría: cobertura de la cesta por estamento (deseo vs conseguido) → log/diagnóstico de hambre
       }
       // CADENAS: las FÁBRICAS compran su materia prima del mercado. El industrial (burgués) paga; el productor de
       // la materia (campesino) cobra su parte. Así la lana/uva/cobre… tienen demanda real → comercian y ponen precio.
