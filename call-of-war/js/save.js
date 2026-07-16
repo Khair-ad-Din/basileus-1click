@@ -1,7 +1,7 @@
 // save.js
 import { GH_PER_SEC, MH, MW, NATIONS, NEUTRAL, TERRAIN_KEYS, newBuildings } from "./config.js";
 import { S } from "./state.js";
-import { assignPopulation, assignResources, assignTerrain, isolateWastePockets, mulberry32, rebuildProvinceData, seedStrata } from "./mapgen.js";
+import { assignPopulation, assignResources, assignTerrain, isolateWastePockets, mulberry32, rebuildProvinceData, seedCities, seedStrata } from "./mapgen.js";
 import { canvas, clampPan, drawRoads, paintAll } from "./render.js";
 import { hourTick, syncDuchyOcc } from "./sim.js";
 import { resetTsyLedger } from "./economy.js";
@@ -65,7 +65,8 @@ function loadProvMap(snap){
   for(const p of S.provs)if(p.wasteland==null){p.wasteland=p.terrain==="desierto"&&!p.coastal&&!p.named;computed=true}
   if(computed)isolateWastePockets(); // los flags editados a mano se respetan tal cual
   for(const p of S.provs)if(p.wasteland){p.owner=NEUTRAL;p.owner0=NEUTRAL;p.capital=false;p.urban=false}
-  assignPopulation();
+  seedCities(); // el `urban` de la instantánea es el sorteo viejo: se rehace con las ciudades reales
+  assignPopulation();          // OJO: lee p.urban, así que va DESPUÉS de seedCities
   if(snap.roads){S.roads=parseRoads(snap.roads);S.roadQueue=[];S.customRoads=true}
   else S.customRoads=false;
 }

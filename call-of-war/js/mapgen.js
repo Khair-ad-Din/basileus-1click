@@ -257,7 +257,7 @@ function generateMap(){
     const own=MAPDATA.countries[seeds[i].c-1].nation;
     S.provs.push({id:S.provs.length,name:an||"",x:seeds[i].x,y:seeds[i].y,country:seeds[i].c,
       owner:own,owner0:own,named:!!an,coastal:false,
-      morale:60,urban:S.rand()<0.06,resType:null,shade:0.85+S.rand()*0.3,capital:false,
+      morale:60,urban:false,resType:null,shade:0.85+S.rand()*0.3,capital:false, // urban lo siembra seedCities (datos, no sorteo)
       buildings:newBuildings(),buildQueue:[],recruitQueue:[]});
   }
   for(let i=0;i<S.provIdx.length;i++){
@@ -281,6 +281,7 @@ function generateMap(){
   // y el desierto dejaba de ser impracticable (el Magreb crecia hacia el sur sin limite).
   for(const p of S.provs)p.anchor=p.named;
   assignRealNames();
+  seedCities();          // las ciudades reales de 1444 (y el suelo curado); sustituye al sorteo
   assignTerrain();
   assignResources();
   // territorio impracticable (estilo EU4): sin dueño ni transito. Dos biomas hostiles:
@@ -935,6 +936,45 @@ function buildMarketEdges(){
   for(const[k,v]of g)g.set(k,[...v].sort((a,b)=>a-b));
   return g;
 }
+// ===================== Las ciudades, donde las hubo =====================
+// Una provincia es CIUDAD porque allí había una ciudad en 1444 — no por sorteo. Hasta ahora la
+// mitad de las plazas salían de `S.rand()<0.06`: 209 provincias urbanas al azar (algunas ni eran
+// ciudades: "Gales del Sur", "Frisia", "Holstein" son REGIONES). Ahora mandan los datos.
+//
+// DOS FUENTES, y las dos hacen falta:
+//  1. cities1444.js — 319 ciudades ≥5.000 hab con lat/lon y población (Buringh 2021 + Bosker 2013
+//     + Chandler 1987). Es el dato duro, pero sus autores estudiaban la urbanización EUROPEA:
+//     medido, deja Rusia con 5 ciudades para 1.033 provincias y Escandinavia con 5 para 440 —
+//     332 km de mediana al mercado en la estepa. Eso no es historia, es el agujero de la fuente.
+//  2. MAPDATA.cities — las 217 ciudades curadas a mano, que SÍ cubren todo el mapa. Actúan de
+//     SUELO: tapan los 96 huecos que el dataset no ve. Sin ellas, media Rusia se queda sin mercado.
+// Resultado medido: 378 plazas (antes 423, la mitad al azar). Europa 81 km de mediana al mercado
+// (antes 76: casi igual, el dataset confirma lo que ya había); Rusia 192 y Escandinavia 148 (antes
+// 84 y 91) — peor acceso al mercado, que es la verdad de 1444 y el hueco que la fundación de
+// ciudades del rey vendrá a llenar.
+// Regenerar cities1444.js: node tools/gen-cities.mjs
+function seedCities(){
+  if(typeof CITIES1444==="undefined")return;   // sin el fichero de datos, se respeta lo que haya
+  for(const p of S.provs)if(!p.wasteland){p.urban=false;p.cityPop=0;p.cityName=null}
+  const marca=(x,y,pop,name)=>{
+    const pid=S.provIdx[y*MW+x];
+    if(pid<0)return;
+    const p=S.provs[pid];
+    if(p.wasteland)return;
+    p.urban=true;
+    // varias ciudades reales caen en la MISMA provincia (son grandes, ~85 km): manda la MÁS POBLADA
+    if(pop>(p.cityPop||0)){p.cityPop=pop;p.cityName=name}
+  };
+  for(const[name,x,y,pop] of CITIES1444)marca(x,y,pop,name);
+  for(const[name,cx,cy,c,cap] of MAPDATA.cities)marca(cx,cy,0,null); // el SUELO curado a mano
+  // La capital de un reino es CIUDAD por definición. Hace falta decirlo aparte porque el mapa
+  // oficial se editó a mano después de colocar las ciudades: 54 de las 217 coordenadas curadas ya
+  // no caen en la provincia que lleva su nombre (la de Toledo cae en "Puente de Vallecas"), así que
+  // sembrando solo por coordenada, 11 capitales —Toledo, Praga, Lübeck, Nóvgorod, Buda, Tabriz…—
+  // se quedaban sin ciudad. Esto es un PARCHE: desaparece cuando se rehaga el nombrado de
+  // provincias con el gazetteer histórico y el nombre vuelva a caer sobre la ciudad de verdad.
+  for(const p of S.provs)if(p.capital&&!p.wasteland)p.urban=true;
+}
 // Cada provincia pertenece a UNA plaza: `p.marketOf` (la plaza es satélite de sí misma). Es la
 // pertenencia de la aldea a su mercado — dónde irá a vender su grano en la Fase 2. Aquí NO se
 // mueve un ducado: solo se asigna.
@@ -1009,5 +1049,5 @@ function kmBetween(a,b){
 }
 
 export {
-  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, seedStrata, rebuildProvinceData, buildDuchies, isDuchyCap, buildMarketEdges, assignMarkets, ensureMarketTopology, MKT_LINK_KM, kmBetween, roadKey, hasRoad, roadLvl, landPath, generateRoads
+  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, seedStrata, rebuildProvinceData, buildDuchies, isDuchyCap, seedCities, buildMarketEdges, assignMarkets, ensureMarketTopology, MKT_LINK_KM, kmBetween, roadKey, hasRoad, roadLvl, landPath, generateRoads
 };
