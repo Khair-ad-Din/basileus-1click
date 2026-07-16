@@ -5,7 +5,7 @@ import {
   enterEditor, exitEditor, pushUndo, restoreWorldFromSnap, toggleRoadEdit, setProvinceOwner, dpSimplify, simplifyRing, traceProvince, applyShape, mergeProvinces, rasterPoly, keepLargestFragment, splitProvince, refreshEditorPanel, vertexAt, nearestSegment
 } from "./editor.js";
 import {
-  log, fmt, fmtDur, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, refreshArmyPanel, buildRealmMenu, refreshTreasury, refreshEstates, refreshMercado, refreshFiscal, refreshCouncil, refreshCoalPeace, refreshLeagues, refreshCallToArms, refreshDipModal
+  log, fmt, fmtDur, iInfo, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, refreshArmyPanel, buildRealmMenu, refreshTreasury, refreshEstates, refreshMercado, refreshFiscal, refreshCouncil, refreshCoalPeace, refreshLeagues, refreshCallToArms, refreshDipModal
 } from "./ui.js";
 import {
   atWar, declareWar, makePeace, underTruce, spawnArmy, setupNations, tryRoad, nbrs, bfsPath, startLeg, orderMove, takeTile, updateDuchy, isKeyTile, hourTick, resolveBattles, applyDamage, mergeIdle, aiTurn, findTarget, tryBuild, tryRecruit, disbandUnit, raiseLevies, checkVictory, armiesIn,
@@ -22,7 +22,7 @@ import {
   canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, armyCount, armyFood, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, recruitable, resetTsyLedger
 } from "./economy.js";
 import {
-  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, rebuildProvinceData, kmBetween, roadKey, hasRoad, landPath, generateRoads
+  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, rebuildProvinceData, ensureMarketTopology, kmBetween, roadKey, hasRoad, landPath, generateRoads
 } from "./mapgen.js";
 import { S } from "./state.js";
 import "./debug.js"; // registra window.dbg (herramientas de observación por consola)
@@ -663,16 +663,18 @@ window.scaleProvPop=function(f){
   refreshEditorPanel();
 };
 function syncMapModeUI(){
-  const cur=S.terrainView?"Terreno":S.popView?"Población":S.resView?"Recursos":"Político";
+  const cur=S.terrainView?"Terreno":S.popView?"Población":S.resView?"Recursos":S.mktView?"Mercados":"Político";
   const mb=document.getElementById("mapBtn");
   if(mb){mb.textContent="🗺 "+cur;mb.classList.toggle("active",cur!=="Político");}
   const tl=document.getElementById("terrLegend");if(tl)tl.style.display=S.terrainView?"block":"none";
   const pl=document.getElementById("popLegend");if(pl)pl.style.display=S.popView?"block":"none";
   const rl=document.getElementById("resLegend");if(rl)rl.style.display=S.resView?"block":"none";
+  const kl=document.getElementById("mktLegend");if(kl)kl.style.display=S.mktView?"block":"none";
 }
-// vista de mapa: político (null) o "terrain"/"pop"/"res" (excluyentes entre sí)
+// vista de mapa: político (null) o "terrain"/"pop"/"res"/"mkt" (excluyentes entre sí)
 window.setMapView=function(mode){
-  S.terrainView=mode==="terrain";S.popView=mode==="pop";S.resView=mode==="res";
+  S.terrainView=mode==="terrain";S.popView=mode==="pop";S.resView=mode==="res";S.mktView=mode==="mkt";
+  if(S.mktView)ensureMarketTopology(); // la vista es el primer consumidor de p.marketOf: hay que tenerla al día
   paintAll();
   syncMapModeUI();
   if(S.editMode)refreshEditorPanel();
@@ -949,7 +951,7 @@ document.getElementById("ledgerBtn").addEventListener("click",()=>{refreshLedger
   if(mb&&ml){
     mb.addEventListener("click",e=>{
       e.stopPropagation();
-      if(S.terrainView||S.popView||S.resView){window.setMapView(null);ml.style.display="none";}
+      if(S.terrainView||S.popView||S.resView||S.mktView){window.setMapView(null);ml.style.display="none";}
       else ml.style.display=(ml.style.display==="none"?"block":"none");
     });
     ml.querySelectorAll("div").forEach(d=>d.addEventListener("click",e=>{
@@ -969,6 +971,16 @@ document.getElementById("ledgerBtn").addEventListener("click",()=>{refreshLedger
     for(const[c,lab]of legend)lh+="<div class='row' style='margin:2px 0'><span><span class='chip' style='background:"+c+"'></span> "+lab+"</span></div>";
     lh+="<div class='row' style='margin:2px 0'><span><span class='chip' style='background:#847c6a'></span> Impracticable</span></div>";
     rl.innerHTML=lh;
+  }
+}
+{
+  // leyenda del mapa de mercados: el matiz = qué plaza; lo lavado = lo lejos que pilla (ver mktColor)
+  const kl=document.getElementById("mktLegend");
+  if(kl){
+    kl.innerHTML="<b style='font-size:12px'>Mercados"+iInfo("Cada mancha de color es un mercado: las provincias del mismo color acuden todas a la misma plaza a vender su grano y comprar sus bienes. El círculo marca la plaza. Una mancha muy grande es una comarca sin ciudad cerca, que apenas comercia y vive de lo suyo: fundar allí una ciudad partiría la mancha y abarataría el flete de todo su entorno. La frontera no manda: se acude a la plaza más cercana aunque sea extranjera, pagando aduana.")+"</b>"+
+      "<div class='row' style='margin:3px 0 0;color:#9aa3ad;font-size:10px'><span>"+
+      "<span class='chip' style='background:#8fd0a8'></span> un color = un mercado</span>"+
+      "<span>⬤ la plaza</span></div>";
   }
 }
 {

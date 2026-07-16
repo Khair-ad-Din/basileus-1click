@@ -29,6 +29,24 @@ function resColor(pid){
   if(p.wasteland)return WASTECOL;
   return RES_MAPCOL[p.resType]||[150,150,150];
 }
+// Mapa de MERCADOS (ADR 0001): a qué plaza acude cada provincia a vender (p.marketOf).
+// El color es una IDENTIDAD, no una medida: todas las provincias de una misma plaza salen
+// EXACTAMENTE del mismo color (ni degradado por distancia, ni el `shade` aleatorio que el resto
+// del mapa da a cada provincia — ver paintAll/repaintProvince). Si el tono varía dentro del racimo,
+// el ojo deja de ver el racimo, que es justo lo único que esta vista tiene que contar.
+// El matiz sale del id de la plaza por ÁNGULO ÁUREO: reparte los matices sin que dos vecinas
+// coincidan. Dónde está la plaza lo dice una FORMA (el anillo que pinta draw), no el color.
+function hsl2rgb(h,s,l){
+  const a=s*Math.min(l,1-l);
+  const f=n=>{const k=(n+h/30)%12;return 255*(l-a*Math.max(-1,Math.min(k-3,9-k,1)))};
+  return[f(0),f(8),f(4)];
+}
+function mktColor(pid){
+  const p=S.provs[pid];
+  if(p.wasteland)return WASTECOL;
+  if(p.marketOf==null||p.marketOf<0)return[228,224,214];   // sin plaza (no debería quedar ninguna)
+  return hsl2rgb((p.marketOf*137.508)%360,.58,.62);
+}
 // Jerarquía de fronteras (estilo EU4): nación = gruesa y opaca, ducado = media, provincia = fina.
 // [r,g,b,a]; el grosor por tier lo fija paintBorders al trazar los vectores (ver layer(...)).
 const B_NATION=[6,8,11,255];
@@ -123,6 +141,7 @@ function popColor(pid){
 function provColor(p){
   if(S.popView)return popColor(p);
   if(S.resView)return resColor(p);
+  if(S.mktView)return mktColor(p);
   if(S.terrainView)return TCOL[S.provs[p].terrain];
   return S.provs[p].wasteland?WASTECOL:NCOL[S.provs[p].owner];
 }
@@ -137,8 +156,8 @@ function paintAll(){
     }else{
       const P=S.provs[p];let c=provColor(p);
       // ocupación (solo en vista política): franjas diagonales del color del ocupante
-      if(!S.terrainView&&!S.popView&&!S.resView&&!P.wasteland&&P.occupier>=0&&P.occupier!==P.owner&&((x+y)>>2&1))c=NCOL[P.occupier];
-      const s=P.shade;
+      if(!S.terrainView&&!S.popView&&!S.resView&&!S.mktView&&!P.wasteland&&P.occupier>=0&&P.occupier!==P.owner&&((x+y)>>2&1))c=NCOL[P.occupier];
+      const s=S.mktView?1:P.shade;   // en Mercados el color es identidad: el shade rompería el racimo
       d[o]=c[0]*s;d[o+1]=c[1]*s;d[o+2]=c[2]*s;d[o+3]=255;
     }
   }
@@ -318,8 +337,8 @@ loadTerrainSprites();
 let POL_TINT=0.35;
 if(typeof window!=="undefined")window.setPolTint=v=>{POL_TINT=Math.max(0,Math.min(1,+v||0))};
 function repaintProvince(pid){
-  const P=S.provs[pid],base=provColor(pid),s=P.shade,d=baseData.data;
-  const occ=(!S.terrainView&&!S.popView&&!S.resView&&!P.wasteland&&P.occupier>=0&&P.occupier!==P.owner)?NCOL[P.occupier]:null;
+  const P=S.provs[pid],base=provColor(pid),s=S.mktView?1:P.shade,d=baseData.data;
+  const occ=(!S.terrainView&&!S.popView&&!S.resView&&!S.mktView&&!P.wasteland&&P.occupier>=0&&P.occupier!==P.owner)?NCOL[P.occupier]:null;
   for(const i of S.pixOfProv[pid]){
     const o=i*4;let c=base;
     if(occ){const x=i%MW,y=(i/MW)|0;if((x+y)>>2&1)c=occ}
@@ -509,7 +528,10 @@ function draw(){
   // cada provincia del mismo reino) en vez de mostrar píxeles duros al hacer zoom.
   ctx.imageSmoothingEnabled=true;
   ctx.drawImage(baseC,0,0);
-  if(_terrReady===_terrTotal){
+  // En las vistas de DATOS el color ES el dato: el relieve encima lo ahoga (el tinte solo pesa
+  // POL_TINT=0.35, así que la rampa de población quedaba en un oliva ilegible). Se pintan planas.
+  const dataView=S.popView||S.resView||S.mktView;
+  if(_terrReady===_terrTotal&&!dataView){
     ctx.drawImage(terrainC,0,0,MW,MH); // terreno sobre el relleno
     // TINTE POLÍTICO: se repinta baseC (color de dueño, ya actualizado al conquistar) con poca
     // opacidad sobre el terreno, recuperando el color de cada país sin ocultar el relieve.
@@ -534,6 +556,16 @@ function draw(){
       ctx.beginPath();ctx.arc(p.x,p.y,4,0,7);
       ctx.fillStyle="rgba(240,230,200,0.5)";ctx.fill();
       ctx.strokeStyle="rgba(34,34,34,0.45)";ctx.lineWidth=0.9/S.zoom;ctx.stroke();
+    }
+  }
+  // vista de Mercados: la plaza se marca con una FORMA, no con un tono — así el racimo conserva su
+  // color plano (que es lo único que hay que leer) y aun así se ve dónde está el mercado.
+  if(S.mktView&&S.started){
+    for(const p of S.provs){
+      if(p.wasteland||p.marketOf!==p.id)continue;
+      ctx.beginPath();ctx.arc(p.x,p.y,3.4,0,7);
+      ctx.fillStyle="rgba(28,24,18,0.82)";ctx.fill();
+      ctx.strokeStyle="rgba(255,252,242,0.9)";ctx.lineWidth=1.1/S.zoom;ctx.stroke();
     }
   }
   if(S.showGraph)ctx.drawImage(graphC,0,0); // malla de conexiones + nodos reales (encima de los marcadores)
