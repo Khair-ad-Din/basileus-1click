@@ -22,7 +22,7 @@ import {
   canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, armyCount, armyFood, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, recruitable, resetTsyLedger
 } from "./economy.js";
 import {
-  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, rebuildProvinceData, ensureMarketTopology, kmBetween, roadKey, hasRoad, landPath, generateRoads
+  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, rebuildProvinceData, seedCities, renameProvincesHistorical, ensureMarketTopology, kmBetween, roadKey, hasRoad, landPath, generateRoads
 } from "./mapgen.js";
 import { S } from "./state.js";
 import "./debug.js"; // registra window.dbg (herramientas de observación por consola)
@@ -708,6 +708,23 @@ window.importMapFile=function(input){
     }catch(e){alert("No se pudo importar el mapa: "+e.message)}
   };
   rd.readAsText(f);
+};
+// Rehace los nombres de TODAS las provincias con el gazetteer histórico y devuelve cada capital a
+// su ciudad. Explícito porque es destructivo: no distingue un nombre puesto a mano de uno generado.
+window.renameHistorical=function(){
+  if(!confirm("Se rehará el nombre de TODAS las provincias con las ciudades de 1444, y cada capital "+
+    "volverá a la provincia donde está su ciudad.\n\nSe pierden los nombres puestos a mano. "+
+    "Hazlo con las fronteras ya pulidas.\n\n¿Continuar?"))return;
+  pushUndo();
+  const antes=S.provs.filter(p=>p.capital).map(p=>p.id+"|"+p.name);
+  renameProvincesHistorical();
+  seedCities();          // la ciudad de cada provincia depende del nombre/geometría: se resiembra
+  S.mktDirty=true;       // y con ella la topología del mercado
+  const movidas=S.provs.filter(p=>p.capital&&!antes.includes(p.id+"|"+p.name)).length;
+  buildRealmMenu();paintAll();refreshSide();refreshEditorPanel();
+  log("Renombrado histórico: "+S.provs.filter(p=>p.named).length+" provincias con topónimo real, "+
+    S.provs.filter(p=>p.urban&&!p.wasteland).length+" ciudades, "+movidas+" capitales movidas. "+
+    "Guarda los cambios para conservarlo.");
 };
 window.restoreGenerated=function(){
   if(!confirm("Se descartará el mapa editado y se regenerará el original. ¿Continuar?"))return;

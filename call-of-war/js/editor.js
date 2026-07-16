@@ -411,6 +411,7 @@ function refreshEditorPanel(){
   if(loadProvMapSnapshot())h+="<p style='font-size:11px;color:#9fb878'>Jugando sobre un mapa editado (guardado en el navegador).</p>";
   h+="<div class='row'><button class='bbtn' style='width:100%' onclick='downloadMap()'>Descargar mapa editado (JSON)</button></div>";
   h+="<div class='row'><label class='bbtn' style='width:100%;text-align:center'>Importar mapa (JSON)<input type='file' accept='.json,application/json' style='display:none' onchange='importMapFile(this)'></label></div>";
+  h+="<div class='row'><button class='bbtn' style='width:100%' onclick='renameHistorical()'>Renombrar con el gazetteer histórico</button></div>";
   h+="<div class='row'><button class='bbtn red' style='width:100%' onclick='restoreGenerated()'>Descartar ediciones y regenerar</button></div>";
   h+="<div class='row'><button class='bbtn' style='width:100%' onclick='exitEditorBtn()'>Salir del editor</button></div>";
   el.innerHTML=h;el.style.display="block";

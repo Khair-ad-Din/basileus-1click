@@ -338,6 +338,67 @@ function applyNationOverrides(){
     p.owner=ni;p.owner0=ni;
   }
 }
+// ============ Renombrar el mapa con el gazetteer HISTÓRICO (acción del editor) ============
+// Rehace de cero el nombre de TODAS las provincias, y mueve las capitales a su ciudad.
+//
+// EL BUG QUE ARREGLA: assignRealNames bautiza a la provincia cuyo CENTRO le pilla más cerca a la
+// ciudad — no a la que la CONTIENE. Como además recorre PLACES (GeoNames ordenado por población
+// MODERNA), un barrio de Madrid llegaba antes que Toledo y le quitaba su provincia: medido, 54 de
+// las 217 ciudades curadas acabaron en la provincia de al lado, la de Toledo se llamaba "Puente de
+// Vallecas", y 11 capitales (Toledo, Praga, Lübeck, Nóvgorod, Buda, Tabriz…) dejaban de coincidir
+// con su ciudad. Aquí la regla es CONTIENE, que es exacta y no depende de dónde caiga el centro.
+//
+// Es EXPLÍCITA, no automática: el editor deja renombrar a mano (renameProvince), así que calcular
+// los nombres al cargar borraría ese trabajo. Y es DESTRUCTIVA: no distingue un nombre puesto a
+// mano de uno del gazetteer.
+function renameProvincesHistorical(){
+  const provAt=(x,y)=>{                                  // la provincia que CONTIENE ese píxel
+    if(!(x>=0&&y>=0&&x<MW&&y<MH))return null;
+    const pid=S.provIdx[y*MW+x];
+    if(pid<0)return null;
+    const p=S.provs[pid];
+    return p.wasteland?null:p;
+  };
+  // Las capitales de reinos cuya ciudad NO está curada (Nikšić, Aqaba) conservan la que tenían:
+  // sin esto se quedarían sin capital y setupNations les daría una provincia cualquiera.
+  const capPrevia=new Map();
+  for(const p of S.provs)if(p.capital&&p.owner<NPLAY)capPrevia.set(p.owner,p.id);
+  for(const p of S.provs){p.name="";p.named=false;p.capital=false}
+  const used=new Set();
+  // CAPA 1 — las 217 ciudades curadas a mano. Mandan ellas: son las de Sergio y van en español
+  // (CITY_POP_RAW, la tabla de población, está indexada por esos nombres: renombrar al inglés le
+  // haría perder a Praga sus 40.000 habitantes). Capitales primero y, a igualdad, la más poblada,
+  // para que si dos caen en la misma provincia gane la que importa.
+  const curadas=[...MAPDATA.cities].sort((a,b)=>
+    ((b[4]?1:0)-(a[4]?1:0))||((CITY_POP[popNormKey(b[0])]||0)-(CITY_POP[popNormKey(a[0])]||0)));
+  for(const[name,cx,cy,c,cap] of curadas){
+    const p=provAt(cx,cy);
+    if(!p)continue;
+    // La capital solo se planta si la provincia es de SU reino. El campo `c` de MAPDATA.cities es
+    // 1-based sobre countries (Toledo c=1 → countries[0] → Castilla; verificado con Zaragoza→Aragón
+    // y Lisboa→Portugal). Sin esta comprobación el Imperio Otomano salía con DOS capitales:
+    // Adrianópolis (la suya de verdad en 1444) y Rodas, cuyo reino perdió su provincia en el mapa.
+    if(cap){
+      const co=MAPDATA.countries[c-1];
+      if(co&&p.owner===co.nation)p.capital=true;         // va aunque la provincia ya tenga nombre
+    }
+    if(p.named)continue;                                 // se la quedó una mayor
+    p.name=name;p.named=true;used.add(name);
+  }
+  for(const[owner,pid] of capPrevia)                     // reinos sin ciudad curada: capital intacta
+    if(!S.provs.some(p=>p.owner===owner&&p.capital))S.provs[pid].capital=true;
+  // CAPA 2 — las ciudades del dataset que la curación no vio (Siwas, Tokat, Pérgamo, Asiut…, casi
+  // todas en Anatolia y Oriente Medio). CITIES1444 viene ordenado por población desc, así que si
+  // dos caen en la misma provincia se la queda la mayor. Las que la curación SÍ vio no llegan aquí:
+  // coinciden a 0-3 km con la suya, o sea en la misma provincia, que ya quedó nombrada en la capa 1.
+  if(typeof CITIES1444!=="undefined")for(const[name,x,y,pop] of CITIES1444){
+    const p=provAt(x,y);
+    if(!p||p.named||used.has(name))continue;
+    p.name=name;p.named=true;used.add(name);
+  }
+  // CAPA 3 — el resto (rural): el gazetteer moderno de siempre. Respeta las ya nombradas.
+  assignRealNames();
+}
 // nombres reales de ciudad por cercanía: recorre el gazetteer PLACES (ordenado por
 // población desc) y cada ciudad reclama la provincia SIN nombre más cercana dentro de un
 // radio. Así cada provincia toma el topónimo real de su zona y las urbes importantes caen
@@ -1049,5 +1110,5 @@ function kmBetween(a,b){
 }
 
 export {
-  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, seedStrata, rebuildProvinceData, buildDuchies, isDuchyCap, seedCities, buildMarketEdges, assignMarkets, ensureMarketTopology, MKT_LINK_KM, kmBetween, roadKey, hasRoad, roadLvl, landPath, generateRoads
+  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, seedStrata, rebuildProvinceData, buildDuchies, isDuchyCap, seedCities, renameProvincesHistorical, buildMarketEdges, assignMarkets, ensureMarketTopology, MKT_LINK_KM, kmBetween, roadKey, hasRoad, roadLvl, landPath, generateRoads
 };
