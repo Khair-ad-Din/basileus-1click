@@ -1,7 +1,7 @@
 // editor.js
-import { MH, MW, NATIONS, TERRAINS, TERRAIN_KEYS, newBuildings, terrainFx } from "./config.js";
+import { MH, MW, NATIONS, TERRAINS, TERRAIN_KEYS, newBuildings, terrainFx, isSea } from "./config.js";
 import { S } from "./state.js";
-import { generateRoads, rebuildProvinceData, roadKey } from "./mapgen.js";
+import { generateRoads, rebuildProvinceData, roadKey, buildDuchies } from "./mapgen.js";
 import { drawRoads, paintAll, repaintProvince, clearSelOutline } from "./render.js";
 import { buildSnapshot, loadProvMap, loadProvMapSnapshot } from "./save.js";
 import { setupNations } from "./sim.js";
@@ -9,7 +9,7 @@ import { log, showNationPicker } from "./ui.js";
 
 function enterEditor(){
   S.editMode=true;S.shapeSel=-1;S.shapePoly=[];S.dragVi=-1;
-  S.editTool="shape";S.mergeFrom=-1;S.splitFrom=-1;S.roadFrom=-1;S.ownerPaint=-1;
+  S.editTool="shape";S.mergeFrom=-1;S.splitFrom=-1;S.roadFrom=-1;S.ownerPaint=-1;S.duchyPaint=-1;
   S.editBackup=buildSnapshot();S.editUndoStack=[];S.editDirty=false;
   document.getElementById("provPanel").style.display="none";
   document.getElementById("provWin").style.display="none";
@@ -34,7 +34,7 @@ function exitEditor(){
     }else return;
   }
   S.editMode=false;S.shapeSel=-1;S.shapePoly=[];S.dragVi=-1;
-  S.editTool="shape";S.mergeFrom=-1;S.splitFrom=-1;S.roadFrom=-1;S.ownerPaint=-1;
+  S.editTool="shape";S.mergeFrom=-1;S.splitFrom=-1;S.roadFrom=-1;S.ownerPaint=-1;S.duchyPaint=-1;
   document.getElementById("side").style.display="none";
   if(!S.started)showNationPicker();
 }
@@ -217,6 +217,104 @@ function applyShape(pid,poly){
   clearSelOutline();
   if(blocked)log("Edición limitada: "+blocked+" provincia(s) vecina(s) no pueden quedar vacías.");
 }
+// DISOLVER una provincia: sus píxeles se los reparten las vecinas y ella desaparece. Para las que
+// salen mal del generador (tentáculos, virutas) y no tiene sentido conservar.
+// El reparto es por CERCANÍA (BFS multi-origen desde las vecinas hacia dentro), no por sorteo, así
+// que cada trozo se lo queda quien lo tiene más a mano. Prioridad a las del MISMO ducado —que es lo
+// que pidió Sergio—: sólo si no hay ninguna se recurre a las de fuera.
+function dissolveProvince(pid){
+  const P=S.provs[pid];
+  if(!P){return}
+  if(isSea(P)){log("El mar no se disuelve: es una tesela de la retícula.");return}
+  const nb=[...S.adj[pid]].filter(q=>S.provs[q]&&!isSea(S.provs[q]));
+  if(!nb.length){log("«"+P.name+"» no tiene vecinas por tierra: no se puede repartir.");return}
+  const mismo=nb.filter(q=>S.provs[q].duchy0===P.duchy0);
+  const dest=mismo.length?mismo:nb;
+  const dset=new Set(dest);
+  pushUndo();
+  // reparto por cercanía: sembrar en los píxeles de la provincia que tocan a cada vecina y crecer
+  const mine=new Set(S.pixOfProv[pid]);
+  const dueno=new Map(); const q=[];
+  const vecinos=i=>{const x=i%MW,y=(i/MW)|0,o=[];
+    if(x<MW-1)o.push(i+1); if(x>0)o.push(i-1); if(y<MH-1)o.push(i+MW); if(y>0)o.push(i-MW); return o};
+  for(const i of mine)for(const j of vecinos(i)){
+    const o=S.provIdx[j];
+    if(dset.has(o)&&!dueno.has(i)){dueno.set(i,o);q.push(i);break}
+  }
+  for(let h=0;h<q.length;h++){
+    const i=q[h],o=dueno.get(i);
+    for(const j of vecinos(i))if(mine.has(j)&&!dueno.has(j)){dueno.set(j,o);q.push(j)}
+  }
+  const reparto=new Map();
+  for(const i of mine){
+    const o=dueno.has(i)?dueno.get(i):dest[0];   // los que el BFS no alcanzó (islas internas)
+    S.provIdx[i]=o; reparto.set(o,(reparto.get(o)||0)+1);
+  }
+  // la población se reparte en proporción al suelo que se ha llevado cada una
+  const tot=mine.size||1;
+  for(const [o,k] of reparto){const D=S.provs[o]; if(!D.wasteland)D.pop=(D.pop||0)+(P.pop||0)*k/tot}
+  const mayor=[...reparto.entries()].sort((a,b)=>b[1]-a[1])[0][0];
+  if(P.urban)S.provs[mayor].urban=true;
+  if(P.capital)S.provs[mayor].capital=true;
+  quitarProvincia(pid,mayor);
+  log("«"+P.name+"» disuelta entre "+reparto.size+" vecina(s)"+(mismo.length?" del mismo ducado":" (de otros ducados: no tenía compañeras)")+".");
+}
+// Saca una provincia del array y reindexa TODO lo que apunta a ids (ráster, ejércitos, capitales,
+// caminos). Extraído de mergeProvinces porque disolver necesita exactamente lo mismo: la parte
+// delicada no es borrar, es que los ids se desplazan y nada externo puede quedarse con uno viejo.
+function quitarProvincia(a,target){
+  const newIdOf=i=>i<a?i:i-1;
+  const tgt=newIdOf(target);
+  S.provs.splice(a,1);
+  S.provs.forEach((p,i)=>p.id=i);
+  for(let i=0;i<MW*MH;i++){
+    const q=S.provIdx[i];
+    if(q<0)continue;
+    S.provIdx[i]=q===a?tgt:newIdOf(q);
+  }
+  for(const ar of S.armies){
+    ar.prov=ar.prov===a?tgt:newIdOf(ar.prov);
+    ar.path=ar.path.map(p=>p===a?tgt:newIdOf(p));
+    ar.path=ar.path.filter((p,i)=>i===0?p!==ar.prov:p!==ar.path[i-1]);
+    if(!ar.path.length){ar.legDone=0;ar.legTotal=0}
+  }
+  for(const n of S.nations){
+    if(n.capital===a)n.capital=tgt;
+    else if(n.capital>a)n.capital--;
+  }
+  S.battleFlash={};
+  S.selProv=-1;S.selArmy=null;
+  rebuildProvinceData();
+  buildDuchies();                       // los ids se han movido: S.duchies apuntaba a los viejos
+  if(S.customRoads){
+    const nr=new Map();
+    for(const [k,lvl] of S.roads){
+      let[x,y]=k.split("|").map(Number);
+      x=x===a?tgt:newIdOf(x);
+      y=y===a?tgt:newIdOf(y);
+      if(x!==y&&S.adj[x]&&S.adj[x].has(y))nr.set(roadKey(x,y),lvl);
+    }
+    S.roads=nr;S.roadQueue=[];
+  }else generateRoads();
+  paintAll();
+  drawRoads();
+  clearSelOutline();
+  S.shapeSel=tgt;S.shapePoly=traceProvince(tgt);
+  refreshEditorPanel();
+}
+// MOVER una provincia de ducado. Para cuando un ducado chico no merece existir y se prefiere
+// meterlo en el vecino. Cambia duchy0 (que es lo que persiste) y reconstruye.
+function setProvinceDuchy(pid,d){
+  const p=S.provs[pid];
+  if(!p||isSea(p)||p.wasteland||d<0||p.duchy0===d)return;
+  pushUndo();
+  p.duchy0=d;
+  buildDuchies();
+  paintAll();
+  clearSelOutline();
+  refreshEditorPanel();
+  log("«"+p.name+"» pasa al "+((S.duchyNames&&S.duchyNames[d])?"ducado de "+S.duchyNames[d]:"ducado "+d)+".");
+}
 function mergeProvinces(a,b){
   if(a===b||!S.provs[a]||!S.provs[b])return;
   pushUndo();
@@ -248,6 +346,7 @@ function mergeProvinces(a,b){
   S.battleFlash={};
   S.selProv=-1;S.selArmy=null;
   rebuildProvinceData();
+  buildDuchies();   // los ids se han desplazado: S.duchies[].provs y .cap apuntaban a los viejos
   if(S.customRoads){
     // remapear las claves de camino a los nuevos ids de provincia
     const nr=new Map();
@@ -329,6 +428,7 @@ function splitProvince(pid,poly,vi,vj,forcedName){
   const src=S.provs[pid];
   const srcPop=src.pop||0; // se repartirá por área entre las dos partes
   const np={id:S.provs.length,name:nm,x:0,y:0,country:src.country,owner:src.owner,owner0:src.owner0,
+    duchy0:src.duchy0,   // sin esto el trozo nuevo se quedaba FUERA de todos los ducados, en silencio
     named:true,coastal:false,morale:60,urban:false,resType:src.resType,shade:0.85+S.rand()*0.3,capital:false,
     terrain:src.terrain,wasteland:src.wasteland,pop:0,
     buildings:newBuildings(),buildQueue:[],recruitQueue:[]};
@@ -356,7 +456,8 @@ function refreshEditorPanel(){
   const el=document.getElementById("side");
   let h="<h2>Editor de provincias</h2>";
   const tb=(t,lab)=>"<button class='bbtn' style='flex:1"+(S.editTool===t?";outline:2px solid #9fb878":"")+"' onclick='setTool(\""+t+"\")'>"+lab+"</button>";
-  h+="<div class='row'>"+tb("shape","Formas")+tb("merge","Fusionar")+tb("split","Dividir")+tb("roads","Caminos")+tb("owner","Nación")+"</div>";
+  h+="<div class='row'>"+tb("shape","Formas")+tb("merge","Fusionar")+tb("split","Dividir")+tb("roads","Caminos")+"</div>";
+  h+="<div class='row'>"+tb("owner","Nación")+tb("duchy","Ducado")+tb("erase","Disolver")+"</div>";
   if(S.editTool==="shape"){
     h+="<p style='font-size:11px;color:#9aa3ad;line-height:1.5'>Clic: seleccionar provincia · arrastra un vértice para remodelar · clic sobre un borde: nuevo vértice · clic derecho en un vértice: borrarlo · Esc: deseleccionar. Los cambios se aplican al soltar, pero no se guardan hasta que pulses <b>Guardar cambios</b>.</p>";
   }else if(S.editTool==="merge"){
@@ -364,6 +465,17 @@ function refreshEditorPanel(){
   }else if(S.editTool==="roads"){
     h+="<p style='font-size:11px;color:#9aa3ad;line-height:1.5'>Arrastra entre dos provincias <b>adyacentes</b>: crea el camino si no existe y lo quita si ya existe. Los caminos se resaltan mientras esta herramienta está activa.</p>";
     h+="<div class='row sm'><span>Caminos en el mapa</span><b>"+S.roads.size+"</b></div>";
+  }else if(S.editTool==="erase"){
+    h+="<p style='font-size:11px;color:#9aa3ad;line-height:1.5'><b>Clic</b> en una provincia: <b>desaparece</b> y sus tierras se las reparten las vecinas <b>de su mismo ducado</b> (por cercanía). Para las que salieron mal del generador.</p>";
+  }else if(S.editTool==="duchy"){
+    h+="<p style='font-size:11px;color:#9aa3ad;line-height:1.5'><b>Clic derecho</b> (o el primer clic izquierdo) en una provincia <b>elige su ducado</b>; luego <b>clic izquierdo</b> en otras para pasarlas a él. Para suprimir un ducado pequeño dentro de uno grande.</p>";
+    if(S.duchyPaint>=0){
+      const dn=(S.duchyNames&&S.duchyNames[S.duchyPaint])||("ducado "+S.duchyPaint);
+      h+="<div class='row'><span>Pasando al</span><b>"+dn+"</b></div>";
+      h+="<div class='row'><button class='bbtn' style='width:100%' onclick='clearDuchyPaint()'>Cambiar ducado (elegir otro)</button></div>";
+    }else{
+      h+="<p style='font-size:11px;color:#d0a050'>Elige un ducado: clic en cualquier provincia suya.</p>";
+    }
   }else if(S.editTool==="owner"){
     h+="<p style='font-size:11px;color:#9aa3ad;line-height:1.5'><b>Clic derecho</b> (o el primer clic izquierdo) en una provincia <b>elige su nación</b>; luego <b>clic izquierdo</b> en otras provincias para asignárselas. Ideal para ajustar fronteras. No se guarda hasta <b>Guardar cambios</b>.</p>";
     if(S.ownerPaint>=0){
@@ -440,5 +552,5 @@ function nearestSegment(poly,wx,wy){
 }
 
 export {
-  enterEditor, exitEditor, pushUndo, restoreWorldFromSnap, toggleRoadEdit, setProvinceOwner, dpSimplify, simplifyRing, traceProvince, applyShape, mergeProvinces, rasterPoly, keepLargestFragment, splitProvince, refreshEditorPanel, vertexAt, nearestSegment
+  enterEditor, exitEditor, pushUndo, restoreWorldFromSnap, toggleRoadEdit, setProvinceOwner, dpSimplify, simplifyRing, traceProvince, applyShape, mergeProvinces, rasterPoly, keepLargestFragment, splitProvince, refreshEditorPanel, vertexAt, nearestSegment, dissolveProvince, setProvinceDuchy
 };

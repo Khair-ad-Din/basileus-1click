@@ -36,7 +36,7 @@ export const S = {
   // editor (compartido por editor, entrada y render del overlay)
   editMode: false, shapeSel: -1, shapePoly: [], dragVi: -1, editTool: "shape",
   mergeFrom: -1, mergeCur: null, splitFrom: -1, splitCur: null,
-  roadFrom: -1, roadCur: null, dragWas: null, dragIns: false, ownerPaint: -1,
+  roadFrom: -1, roadCur: null, dragWas: null, dragIns: false, ownerPaint: -1, duchyPaint:-1,
   buildFilter: "eco",
   // panel de reino / ejército (arriba-izquierda estilo EU4)
   recruitProv: -1, armyPanelOpen: false,

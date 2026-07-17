@@ -29,8 +29,11 @@ function buildSnapshot(){
   // en el navegador cargaría SIN ERROR contra el código nuevo y taparía en silencio el mapa oficial
   // —la precedencia es localStorage > OFFICIAL_MAP (main.js:565)—, así que el gate de abajo la
   // rechaza y el mapa nuevo entra solo. No hay que borrarle nada a mano a nadie.
-  return{v:2,W:MW,H:MH,rle,roads:[...S.roads],
-    provs:S.provs.map(p=>[p.name,p.x,p.y,p.owner0,p.named?1:0,p.urban?1:0,p.capital?1:0,TERRAIN_KEYS.indexOf(p.terrain),p.wasteland?1:0,p.pop!=null?Math.round(p.pop):null])};
+  // [10] = duchy0 y `duchies` = sus nombres. SIN ESTO, EL EDITOR SE COME LOS DUCADOS: en cuanto se
+  // pulsa "Guardar cambios" (o se hace undo, que tambien pasa por aqui) los 944 ducados historicos
+  // desaparecen del snapshot y buildDuchies() vuelve a inventarselos al recargar.
+  return{v:2,W:MW,H:MH,rle,roads:[...S.roads],duchies:S.duchyNames?S.duchyNames.slice():null,
+    provs:S.provs.map(p=>[p.name,p.x,p.y,p.owner0,p.named?1:0,p.urban?1:0,p.capital?1:0,TERRAIN_KEYS.indexOf(p.terrain),p.wasteland?1:0,p.pop!=null?Math.round(p.pop):null,p.duchy0!=null?p.duchy0:-1])};
 }
 function saveProvMap(){
   try{localStorage.setItem("basileus_provmap",JSON.stringify(buildSnapshot()))}

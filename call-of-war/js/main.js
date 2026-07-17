@@ -2,7 +2,7 @@ import {
   saveGame, loadSaveMeta, continueGame, runCatchup, buildSnapshot, saveProvMap, loadProvMapSnapshot, loadProvMap
 } from "./save.js";
 import {
-  enterEditor, exitEditor, pushUndo, restoreWorldFromSnap, toggleRoadEdit, setProvinceOwner, dpSimplify, simplifyRing, traceProvince, applyShape, mergeProvinces, rasterPoly, keepLargestFragment, splitProvince, refreshEditorPanel, vertexAt, nearestSegment
+  enterEditor, exitEditor, pushUndo, restoreWorldFromSnap, toggleRoadEdit, setProvinceOwner, dpSimplify, simplifyRing, traceProvince, applyShape, mergeProvinces, rasterPoly, keepLargestFragment, splitProvince, refreshEditorPanel, vertexAt, nearestSegment, dissolveProvince, setProvinceDuchy
 } from "./editor.js";
 import {
   log, fmt, fmtDur, iInfo, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, refreshArmyPanel, buildRealmMenu, refreshTreasury, refreshEstates, refreshMercado, refreshFiscal, refreshCouncil, refreshCoalPeace, refreshLeagues, refreshCallToArms, refreshDipModal
@@ -543,9 +543,14 @@ window.discardChanges=function(){
   refreshEditorPanel();
 };
 window.setTool=function(t){
-  S.editTool=t;S.mergeFrom=-1;S.splitFrom=-1;S.roadFrom=-1;S.dragVi=-1;
+  S.editTool=t;S.mergeFrom=-1;S.splitFrom=-1;S.roadFrom=-1;S.dragVi=-1;S.duchyPaint=-1;
   refreshEditorPanel();
 };
+window.clearDuchyPaint=function(){S.duchyPaint=-1;refreshEditorPanel()};
+// Las herramientas del editor, accesibles desde la consola y desde el arnes de verificacion. Sin
+// esto no hay forma de EJERCITARLAS de verdad: solo mirar el codigo y confiar, que es justo lo que
+// no funciona en este proyecto.
+window.__ed={dissolveProvince,setProvinceDuchy,setProvinceOwner,mergeProvinces,splitProvince,applyShape,buildSnapshot};
 window.clearOwnerPaint=function(){S.ownerPaint=-1;refreshEditorPanel()};
 
 // --- vectorización del contorno ---
@@ -866,6 +871,18 @@ window.addEventListener("mouseup",e=>{
       }
       return;
     }
+    if(S.editTool==="erase"){
+      if(pid>=0)dissolveProvince(pid);
+      return;
+    }
+    if(S.editTool==="duchy"){
+      if(pid>=0){
+        // mismo patrón que "Nación": el primer clic elige, los siguientes asignan
+        if(S.duchyPaint<0){S.duchyPaint=S.provs[pid].duchy0;refreshEditorPanel()}
+        else setProvinceDuchy(pid,S.duchyPaint);
+      }
+      return;
+    }
     if(pid>=0){S.shapeSel=pid;S.shapePoly=traceProvince(pid)}
     else{S.shapeSel=-1;S.shapePoly=[]}
     refreshEditorPanel();
@@ -902,11 +919,15 @@ window.addEventListener("mouseup",e=>{
 canvas.addEventListener("contextmenu",e=>{
   e.preventDefault();
   if(S.editMode){
-    if(S.editTool==="owner"){
+    if(S.editTool==="owner"||S.editTool==="duchy"){
       const r=canvas.getBoundingClientRect();
       const wx=(e.clientX-r.left-S.panX)/S.zoom, wy=(e.clientY-r.top-S.panY)/S.zoom;
       const pid=provAtWorld(wx,wy);
-      if(pid>=0){S.ownerPaint=S.provs[pid].owner;refreshEditorPanel()}
+      if(pid>=0){
+        if(S.editTool==="owner")S.ownerPaint=S.provs[pid].owner;
+        else S.duchyPaint=S.provs[pid].duchy0;
+        refreshEditorPanel();
+      }
       return;
     }
     if(S.shapeSel>=0&&S.shapePoly.length>3){
