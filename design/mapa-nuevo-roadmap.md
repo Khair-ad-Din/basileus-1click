@@ -224,6 +224,10 @@ vuelve a ser edición manual persistida, no un knob que se recarga).
 | **5** | Congelar estático + ajustes finales | Freeze | confirmación de Sergio |
 
 ## Decisiones pendientes de Sergio
-- [ ] Fase 0: ¿tipo(s) nuevo(s) (meseta/altiplano, sabana)? ¿Homogéneo puro o con salpicado?
+- [x] Fase 0: tipo nuevo = **meseta** (sin sabana); homogeneidad = **A (EU4 puro)**. HECHO y commiteado (`c0d3bc8`).
+- [ ] **Stats de terreno PROVISIONALES**: los stats de TODOS los terrenos (incl. `meseta` mov 1.0/def
+  1.1/prod 0.8, fertilidad 0.6) son de relleno → **revisión general con el consejo (mercader/campesino)
+  + cronista (investigación histórica) antes de congelar** (fase 5). Palabras de Sergio: "ponle esos
+  provisionalmente, luego revisaremos en general los stats de los terrenos".
 - [ ] Fase 3: alcance de la expansión de recursos (se plantea con el consejo).
 - [ ] Fase 5: luz verde para congelar.
