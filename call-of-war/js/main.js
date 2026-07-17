@@ -16,7 +16,7 @@ import { insult, giftGold, isEmbargoed, setEmbargo, fabricateClaim, getRel, THRE
   MAX_RIVALS, rivalsOf, canRival, addRival, removeRival } from "./diplomacy.js";
 import { openCouncil, councilToggle, councilConvene, launchCouncil, cancelCouncil, playerJoinDefense } from "./council.js";
 import {
-  hex2rgb, provColor, paintAll, paintBorders, repaintProvince, roadCurve, drawRoads, fitCanvas, clampPan, armyPos, draw, drawArrow, drawEditorOverlay, NCOL, TCOL, WASTECOL, baseC, baseCtx, roadsC, canvas, baseData, clearSelOutline
+  hex2rgb, provColor, paintAll, paintBorders, repaintProvince, roadCurve, drawRoads, fitCanvas, clampPan, armyPos, draw, drawArrow, drawEditorOverlay, NCOL, TCOL, WASTECOL, baseC, baseCtx, roadsC, canvas, baseData, clearSelOutline, bakeTerrainProvince
 } from "./render.js";
 import {
   canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, armyCount, armyFood, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, recruitable, resetTsyLedger
@@ -631,7 +631,12 @@ window.setTerrain=function(t){
   if(S.shapeSel<0||!TERRAINS[t]||S.provs[S.shapeSel].terrain===t)return;
   pushUndo();
   S.provs[S.shapeSel].terrain=t;
-  if(S.terrainView)repaintProvince(S.shapeSel);
+  // REHORNEAR EL SPRITE. Antes solo se repintaba el COLOR, y encima solo en la vista de terreno: en
+  // vista politica no pasaba nada de nada. La capa de sprites solo se rehacia en paintAll(), que no
+  // corre al cambiar el terreno, asi que la provincia se quedaba a color de pais pelado entre
+  // vecinas texturadas — parecia que el terreno no se habia asignado, y si lo estaba.
+  bakeTerrainProvince(S.shapeSel);
+  repaintProvince(S.shapeSel);
   refreshEditorPanel();
 };
 window.toggleWasteland=function(){
@@ -641,6 +646,7 @@ window.toggleWasteland=function(){
   p.wasteland=!p.wasteland;
   if(p.wasteland){p.owner=NEUTRAL;p.owner0=NEUTRAL;p.capital=false;p.urban=false;p.pop=0}
   else{p.pop=null;assignPopulation()} // al reactivarla, el modelo la resiembra (solo esta, que está a null)
+  bakeTerrainProvince(S.shapeSel);   // el páramo no lleva sprite: al marcarlo hay que borrarlo, y al quitarlo, ponerlo
   repaintProvince(S.shapeSel);
   refreshEditorPanel();
 };

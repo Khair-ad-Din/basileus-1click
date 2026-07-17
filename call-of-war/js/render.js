@@ -351,6 +351,32 @@ function bakeTerrain(){
     terrainCtx.restore();
   }
 }
+// Hornear UNA provincia. bakeTerrain() rehornea las 6.131 (limpia el lienzo entero y recorre todo),
+// por eso solo lo llama paintAll(). Al cambiar el terreno en el editor hacia falta esto: sin ello el
+// sprite no se rehacia NUNCA y la provincia se quedaba a color de pais pelado — se veia, no daba
+// error, y parecia que el terreno "no se habia asignado" cuando si lo estaba.
+// OJO: hay que LIMPIAR primero el recuadro recortado a la forma, o el sprite viejo asoma debajo.
+function bakeTerrainProvince(pid){
+  if(_terrReady<_terrTotal)return;
+  const p=S.provs[pid]; if(!p)return;
+  const px=S.pixOfProv[pid]; if(!px||!px.length)return;
+  let minx=MW,miny=MH,maxx=0,maxy=0;
+  for(const i of px){const x=i%MW,y=(i/MW)|0;if(x<minx)minx=x;if(x>maxx)maxx=x;if(y<miny)miny=y;if(y>maxy)maxy=y}
+  const bw=(maxx-minx+1)*BS,bh=(maxy-miny+1)*BS;
+  terrainCtx.save();
+  terrainCtx.clip(buildSelPath(pid,BS));
+  terrainCtx.clearRect(minx*BS,miny*BS,bw,bh);
+  const file=TERRAIN_SPRITE[p.terrain];
+  const img=p.wasteland?null:_terrImg[file];
+  if(img){
+    terrainCtx.fillStyle=TERRAIN_FILL[file]||"#7d6e1e";
+    terrainCtx.fillRect(minx*BS,miny*BS,bw,bh);
+    const sc=Math.max(bw/img.width,bh/img.height)*1.12;
+    const dw=img.width*sc,dh=img.height*sc;
+    terrainCtx.drawImage(img,minx*BS+(bw-dw)/2,miny*BS+(bh-dh)/2,dw,dh);
+  }
+  terrainCtx.restore();
+}
 loadTerrainSprites();
 // Opacidad del tinte político sobre el terreno (0 = sin tinte, 1 = color pleno). Ajustable en vivo
 // por consola: setPolTint(0.4). El bucle de dibujo (rAF) lo aplica en el siguiente frame.
@@ -711,5 +737,5 @@ function draw(){
 }
 
 export {
-  hex2rgb, provColor, paintAll, paintBorders, repaintProvince, drawGraph, roadCurve, drawRoads, fitCanvas, clampPan, armyPos, draw, drawArrow, drawEditorOverlay, NCOL, TCOL, WASTECOL, baseC, baseCtx, roadsC, canvas, baseData, clearSelOutline
+  hex2rgb, provColor, paintAll, paintBorders, repaintProvince, drawGraph, roadCurve, drawRoads, fitCanvas, clampPan, armyPos, draw, drawArrow, drawEditorOverlay, NCOL, TCOL, WASTECOL, baseC, baseCtx, roadsC, canvas, baseData, clearSelOutline, bakeTerrainProvince
 };
