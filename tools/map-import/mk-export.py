@@ -118,6 +118,29 @@ print(f"  de esas, rescatadas con su provincia mayor: {rescatadas}")
 huerf = [t for t in tag2idx if not any(v == tag2idx[t] for v in capitales.values())]
 if huerf: print(f"  OJO: {len(huerf)} naciones siguen sin capital -> {huerf[:6]}")
 
+# ---------- los ducados: los de EU4, no los que se inventa el juego ----------
+# UN DUCADO = UNA PROVINCIA DE EU4 (Lappland, Abruzzi, Kola...), que es de donde salio el corte de
+# nuestras provincias. Antes esto no se podia: los ducados salian PARTIDOS entre paises (220 de
+# 1.006 medidos) porque el dueno se sacaba provincia a provincia del raster viejo, y un ducado a
+# caballo de una frontera rompe el warscore, los asedios y las reclamaciones. Ahora el dueno se
+# asigna POR DUCADO, asi que todas sus provincias comparten dueno por construccion y la objecion
+# desaparece sola.
+ducsUsados = sorted({int(pd[str(n)]) for n in ordL})
+ducIdx = {d: i for i, d in enumerate(ducsUsados)}
+# El nombre del ducado: el de EU4 si se resolvio; si no, el del SVG, que SIEMPRE lo tenemos (los 6
+# sin resolver son paramos tipo Central_Sahara). Poner "Sin nombre" teniendo el nombre delante era
+# tirar informacion por pereza: salia "Ducado de Sin nombre" en el juego.
+svg = json.load(open(SP+"duchies.json", encoding="utf8"))["ids"]
+ducNom = []
+for d in ducsUsados:
+    v = E.get(str(d))
+    nom = v["nombre"] if v else (svg[d-1] if 0 < d <= len(svg) else None)
+    ducNom.append((nom or "Sin nombre").replace("_", " "))
+print(f"\nducados: {len(ducsUsados)} (historicos de EU4) · antes el juego se inventaba ~1.400 de 3-4 provincias")
+pxDuc = Counter(pd[str(n)] for n in ordL)
+sz = sorted(Counter(int(pd[str(n)]) for n in ordL).values())
+print(f"  provincias por ducado: mediana {sz[len(sz)//2]} · min {sz[0]} · max {sz[-1]}")
+
 # ---------- las tuplas ----------
 nomDuc = Counter()
 provs = [None]*NPROV
@@ -131,14 +154,19 @@ for n in ordL:
     own = tag2idx[tag] if (tag and tag in tag2idx) else NEUTRAL
     cx, cy = cent[n]
     # terreno/paramo/pop a null: los calcula el juego al cargar. `capital` solo si es la de su nacion.
-    provs[i] = [nom, int(cx), int(cy), own, 0, 0, 1 if capitales.get(n) == own else 0, None, None, None]
+    # El [10] es EL DUCADO, y es el motivo de que exista este campo: sin el, buildDuchies() se los
+    # INVENTA al arrancar (cumulos de 3-4 provincias del mismo dueno, "Ducado de <su capital>") y los
+    # 974 ducados historicos de EU4 —que son el 90% del trabajo de este pipeline— se tiran a la
+    # basura. Lo canto Sergio mirando el mapa: "juraria que los ducados son otra vez inventados".
+    provs[i] = [nom, int(cx), int(cy), own, 0, 0, 1 if capitales.get(n) == own else 0, None, None, None,
+                ducIdx[d]]
 for n in ordS:
     i = new[("S", n)]
     ps = pxS[n]
     cx = sum(k % MW for k in ps)/len(ps); cy = sum(k // MW for k in ps)/len(ps)
     # el mar: sin dueno, terreno "mar", NUNCA paramo (si lo fuera, isolateWastePockets lo saltaria
     # y cada isla del mapa quedaria aislada -> paramo), poblacion 0.
-    provs[i] = [f"Mar {i-len(ordL)+1}", int(cx), int(cy), NEUTRAL, 0, 0, 0, IMAR, 0, 0]
+    provs[i] = [f"Mar {i-len(ordL)+1}", int(cx), int(cy), NEUTRAL, 0, 0, 0, IMAR, 0, 0, -1]  # -1: el mar no tiene ducado
 
 # ---------- el raster comprimido ----------
 idx = [-1]*(MW*MH)
@@ -161,7 +189,7 @@ print(f"\nrle: {len(rle):,} numeros · suma {suma:,} = {MW}x{MH} OK")
 print(f"  agujeros (-1, se pintan de mar y no son provincia): {hueco:,} px = {100*hueco/(MW*MH):.1f}%")
 print(f"  (en el mapa de hoy el -1 eran 1.088.299 px: TODO el oceano)")
 
-out = {"v": 2, "W": MW, "H": MH, "rle": rle, "provs": provs}
+out = {"v": 2, "W": MW, "H": MH, "rle": rle, "duchies": ducNom, "provs": provs}
 open(REPO+"call-of-war/official_map.js", "w", encoding="utf8").write(
     "const OFFICIAL_MAP=" + json.dumps(out, ensure_ascii=False, separators=(",", ":")) + ";\n")
 mb = os.path.getsize(REPO+"call-of-war/official_map.js")/1e6

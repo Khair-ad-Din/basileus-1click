@@ -21,9 +21,19 @@ REPO = "c:/Users/sergi/OneDrive/Documentos/Basileus 1 click/"
 AQUI = os.path.dirname(os.path.abspath(__file__))
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
+# NACIONES QUE NACEN MUERTAS. Tener un ducado no basta: si TODAS sus provincias caen bajo la regla
+# del paramo (desierto + sin costa + sin nombre, save.js:65), el juego se las pasa a NEUTRAL y la
+# nacion se queda con cero. Medido EN EL JUEGO VIVO, no deducido: estas tres salian con 0 provincias.
+# Son tribus del desierto interior de Arabia, en el borde de la caja. Decision de Sergio: fuera.
+# Si algun dia se afina la regla del paramo o se amplia la caja, revisar esta lista.
+MUERTAS = {"ALH": "Haasa", "ANZ": "Aniza", "SHM": "Shammar"}   # ALH, no HAS: el tag me lo iba a inventar
+
 E = json.load(open(SP+"eu4.json", encoding="utf8"))["duchy"]
 usados = Counter(v["tag"] for v in E.values() if v["tag"])
 print(f"paises de EU4 con al menos un ducado nuestro: {len(usados)}")
+fuera = [t for t in list(usados) if t in MUERTAS]
+for t in fuera: del usados[t]
+if fuera: print(f"  fuera por nacer muertas (todo su suelo es paramo): {', '.join(MUERTAS[t] for t in fuera)}")
 
 # Orden: por numero de ducados (desc) y luego por tag. Determinista, y deja a los grandes delante,
 # que ayuda a leer cualquier volcado. El indice es el id de nacion del juego.

@@ -18,6 +18,16 @@ const borderC=Object.assign(document.createElement("canvas"),{width:MW*BS,height
 function hex2rgb(h){return[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]}
 const NCOL=NATIONS.map(n=>hex2rgb(n.color));
 const TCOL=Object.fromEntries(TERRAIN_KEYS.map(k=>[k,hex2rgb(TERRAINS[k].color)]));
+// El agua, por PROFUNDIDAD: la que toca tierra clarita, el mar abierto oscuro. `depth` son teselas
+// de distancia a la costa (mapgen.js). Se satura a DEEP porque a partir de ahí ya es "alta mar" y
+// seguir oscureciendo solo haría un agujero negro en mitad del Atlántico.
+const SEA_SHALLOW=[74,116,168], SEA_DEEP=[26,42,88], SEA_DEPTH_MAX=4;
+function seaCol(P){
+  const t=Math.min(1,Math.max(0,(P.depth||0)/SEA_DEPTH_MAX));
+  return [SEA_SHALLOW[0]+(SEA_DEEP[0]-SEA_SHALLOW[0])*t,
+          SEA_SHALLOW[1]+(SEA_DEEP[1]-SEA_SHALLOW[1])*t,
+          SEA_SHALLOW[2]+(SEA_DEEP[2]-SEA_SHALLOW[2])*t];
+}
 const WASTECOL=hex2rgb("#847c6a");
 // Mapa de RECURSOS: color por bien de la provincia (resType). Plata/oro destacan (metales preciosos).
 const RES_MAPHEX={comida:"#d9c463",materiales:"#4a7c3f",piedra:"#9a948a",metal:"#6b7078",
@@ -147,7 +157,7 @@ function provColor(p){
   // que vale NPLAY (193) y está FUERA de NCOL (0..192) -> undefined -> `c[0]*s` peta en paintAll y
   // la pantalla sale en blanco. Hoy no ocurría de milagro: todo NEUTRAL era además páramo y el
   // ternario cortaba antes de llegar a NCOL.
-  if(isSea(S.provs[p]))return TCOL.mar;
+  if(isSea(S.provs[p]))return seaCol(S.provs[p]);
   return S.provs[p].wasteland?WASTECOL:NCOL[S.provs[p].owner];
 }
 function paintAll(){

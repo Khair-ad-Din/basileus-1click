@@ -834,6 +834,28 @@ function rebuildProvinceData(){
     }
     if(best>=0){p.x=minx+(best%bw);p.y=miny+((best/bw)|0)}
   }
+  // PROFUNDIDAD DEL MAR: a cuántas teselas de la costa está cada una (BFS por el grafo del mar).
+  // Idea de Sergio: las teselas que tocan tierra, más claritas; las de mar abierto, más oscuras ->
+  // se distingue de un vistazo el agua somera de la profunda. Se calcula aquí (y no al pintar)
+  // porque es topología del mapa: sale gratis del grafo que acabamos de construir y no cambia nunca.
+  {
+    const q=[];
+    for(const p of S.provs){
+      if(!isSea(p)){p.depth=-1;continue}
+      p.depth=Infinity;
+      // toca tierra = alguna vecina del grafo... no: S.adj no cruza medios. Se mira el ráster.
+      for(const i of S.borderPxOfProv[p.id]){
+        const x=i%MW,y=(i/MW)|0;
+        const v=[x<MW-1?S.provIdx[i+1]:-1, x>0?S.provIdx[i-1]:-1, y<MH-1?S.provIdx[i+MW]:-1, y>0?S.provIdx[i-MW]:-1];
+        if(v.some(k=>k>=0&&!isSea(S.provs[k]))){p.depth=0;q.push(p.id);break}
+      }
+    }
+    for(let h=0;h<q.length;h++){
+      const d=S.provs[q[h]].depth;
+      for(const b of S.adj[q[h]])if(S.provs[b].depth===Infinity){S.provs[b].depth=d+1;q.push(b)}
+    }
+    for(const p of S.provs)if(isSea(p)&&!isFinite(p.depth))p.depth=0;   // mares cerrados (Mármara)
+  }
   // rutas marítimas (convoyes) entre provincias costeras cercanas
   const coast=S.provs.filter(p=>p.coastal);
   for(let i=0;i<coast.length;i++)for(let j=i+1;j<coast.length;j++){
@@ -865,6 +887,35 @@ function rebuildProvinceData(){
 function buildDuchies(){
   const TARGET=4,MAXMERGE=5; // 3-4 por ducado; al fusionar fragmentos no pasar de 5
   for(const p of S.provs){p.duchy=-1;if(p.occupier==null)p.occupier=-1}
+  // LOS DUCADOS IMPORTADOS MANDAN. Si el mapa los trae (duchy0), son los 974 HISTÓRICOS de EU4
+  // —Lappland, Abruzzi, Kola—, que además son el molde del que salieron nuestras provincias: un
+  // ducado ES una provincia de EU4. Inventárselos aquí era tirar el 90% del trabajo del pipeline.
+  // Se puede hacer porque el dueño ahora se asigna POR DUCADO: todas sus provincias comparten
+  // owner0 por construcción, así que ningún ducado queda a caballo de una frontera (que era la
+  // objeción real: un ducado partido rompe el warscore, los asedios y las reclamaciones).
+  // Los mapas viejos no traen duchy0 y caen al camino de siempre, intacto.
+  if(S.provs.some(p=>p.duchy0>=0)){
+    const byD=new Map();
+    for(const p of S.provs){
+      if(p.wasteland||isSea(p)||!(p.duchy0>=0))continue;   // páramo y mar nunca forman ducado
+      if(!byD.has(p.duchy0))byD.set(p.duchy0,[]);
+      byD.get(p.duchy0).push(p.id);
+    }
+    S.duchies=[];
+    for(const d of [...byD.keys()].sort((a,b)=>a-b)){
+      const m=byD.get(d);
+      const id=S.duchies.length;
+      for(const pid of m)S.provs[pid].duchy=id;
+      let cap=m.find(pid=>S.provs[pid].capital);
+      if(cap==null)cap=m.reduce((best,pid)=>{
+        const P=S.provs[pid],B=S.provs[best];
+        return (P.urban?1e9:0)+(P.pop||0)>(B.urban?1e9:0)+(B.pop||0)?pid:best;
+      },m[0]);
+      const nom=(S.duchyNames&&S.duchyNames[d])||S.provs[cap].name;
+      S.duchies.push({id,home:S.provs[m[0]].owner0,provs:m.slice(),cap,occBy:-1,name:"Ducado de "+nom});
+    }
+    return;
+  }
   // provincias agrupadas por dueño de iure (owner0); el páramo y el MAR quedan fuera
   // (sin el filtro del mar, las 344 teselas comparten owner0=NEUTRAL y se agruparían en "ducados"
   // de océano: asediables, reclamables por la diplomacia y con warscore. No.)

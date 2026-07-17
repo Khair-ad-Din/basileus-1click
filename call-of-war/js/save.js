@@ -57,7 +57,13 @@ function loadProvMap(snap){
     if(pid>=0)S.provIdx.fill(pid,pos,pos+run);
     pos+=run;
   }
+  // duchy0 = EL DUCADO IMPORTADO (a[10]). Si viene, buildDuchies() lo respeta en vez de inventarse
+  // cúmulos de 3-4 provincias: son los 974 ducados históricos de EU4 (Lappland, Abruzzi, Kola), que
+  // es de donde salió el corte de las propias provincias. Los mapas viejos no lo traen (a[10] es
+  // undefined) y siguen funcionando exactamente igual.
+  S.duchyNames=Array.isArray(snap.duchies)?snap.duchies.slice():null;
   S.provs=snap.provs.map((a,i)=>({id:i,name:a[0],x:a[1],y:a[2],country:0,owner:a[3],owner0:a[3],
+    duchy0:a[10]!=null?a[10]:-1,
     named:!!a[4],coastal:false,morale:60,urban:!!a[5],resType:null,shade:0.85+S.rand()*0.3,capital:!!a[6],
     terrain:(a[7]!=null&&TERRAIN_KEYS[a[7]])||null,
     wasteland:a[8]!=null?!!a[8]:null,
