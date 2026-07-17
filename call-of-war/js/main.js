@@ -31,7 +31,7 @@ import "./debug.js"; // registra window.dbg (herramientas de observación por co
 S.rand=mulberry32(193909);
 
 import {
-  GH_PER_SEC, MW, MH, NATIONS, NPLAY, NEUTRAL, RES_KEYS, RES_STRAT, RES_TRADE, RES_LABEL, RES_SHORT, RES_ICON, START_STOCK, BUILDINGS, BUILD_CATS, newBuildings, UNITS, TERRAINS, TERRAIN_KEYS, GOLD_PER_WS, terrainFx
+  GH_PER_SEC, MW, MH, NATIONS, NPLAY, NEUTRAL, RES_KEYS, RES_STRAT, RES_TRADE, RES_LABEL, RES_SHORT, RES_ICON, START_STOCK, BUILDINGS, BUILD_CATS, newBuildings, UNITS, TERRAINS, TERRAIN_KEYS, GOLD_PER_WS, terrainFx, isSea
 } from "./config.js";
 
 /* ============================= Estado global ============================= */
@@ -746,7 +746,15 @@ window.exitEditorBtn=exitEditor;
 document.getElementById("editBtn").addEventListener("click",()=>{S.editMode?exitEditor():enterEditor()});
 document.getElementById("editFromPicker").addEventListener("click",enterEditor);
 window.addEventListener("keydown",e=>{
-  if(!S.editMode)return;
+  // Esc EN JUEGO: suelta la provincia o el ejercito. Antes todo este manejador empezaba con
+  // `if(!S.editMode)return`, asi que Esc era exclusivo del editor. Hace falta una salida que no
+  // dependa de tener agua a mano: con el mapa ampliado sobre Alemania no hay mar donde clicar.
+  if(!S.editMode){
+    if(e.key==="Escape"&&(S.selProv>=0||S.selArmy)){
+      S.selProv=-1;S.selArmy=null;S.recruitUnit=null;S.armyEdit=false;refreshSide();
+    }
+    return;
+  }
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="z"){
     e.preventDefault();
     window.undoEdit();
@@ -883,8 +891,8 @@ window.addEventListener("mouseup",e=>{
       }
       return;
     }
-    if(pid>=0){S.shapeSel=pid;S.shapePoly=traceProvince(pid)}
-    else{S.shapeSel=-1;S.shapePoly=[]}
+    if(pid>=0&&!isSea(S.provs[pid])){S.shapeSel=pid;S.shapePoly=traceProvince(pid)}
+    else{S.shapeSel=-1;S.shapePoly=[]}   // el mar deselecciona, igual que en juego
     refreshEditorPanel();
     return;
   }
@@ -911,9 +919,14 @@ window.addEventListener("mouseup",e=>{
   }
   if(hit){S.selArmy=hit;S.selProv=-1;refreshSide();return}
   const ix=wx|0,iy=wy|0;
-  if(ix>=0&&iy>=0&&ix<MW&&iy<MH&&S.provIdx[iy*MW+ix]>=0){
-    S.selProv=S.provIdx[iy*MW+ix];S.selArmy=null;
-  }else{S.selProv=-1;S.selArmy=null}
+  const q=(ix>=0&&iy>=0&&ix<MW&&iy<MH)?S.provIdx[iy*MW+ix]:-1;
+  // CLIC EN EL MAR = DESELECCIONAR. Antes salia gratis: el oceano era -1 y caia en el `else`. Al
+  // teselarlo paso a ser provincia (>=0) y empezo a seleccionarse, dejando al jugador SIN forma de
+  // soltar una provincia — el gesto de toda la vida dejo de funcionar. Hoy una tesela de mar no
+  // tiene nada que enseñar (ni dueño, ni poblacion, ni edificios), asi que se respeta el gesto.
+  // El dia que haya barcos, este es el sitio donde decidir otra cosa.
+  if(q>=0&&!isSea(S.provs[q])){S.selProv=q;S.selArmy=null}
+  else{S.selProv=-1;S.selArmy=null}
   refreshSide();
 });
 canvas.addEventListener("contextmenu",e=>{

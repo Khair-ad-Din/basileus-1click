@@ -491,9 +491,15 @@ function refreshEditorPanel(){
   }
   if(S.shapeSel>=0&&S.provs[S.shapeSel]){
     const p=S.provs[S.shapeSel];
-    h+="<h3>"+(p.capital?"★ ":"")+"Provincia seleccionada</h3>";
+    // La ✕ va en la CABECERA, que es donde se busca cerrar algo. Ya habia un boton "Deseleccionar"
+    // al lado de "Renombrar", pero enterrado a media altura de un panel largo: Sergio lo tuvo
+    // delante y no lo encontro, que en interfaz es lo mismo que no existir.
+    h+="<h3 style='display:flex;justify-content:space-between;align-items:center;gap:6px'>"+
+       "<span>"+(p.capital?"★ ":"")+"Provincia seleccionada</span>"+
+       "<span onclick='deselectShape()' data-tip='Deseleccionar (Esc)' style='cursor:pointer;color:#9aa3ad;"+
+       "font-size:15px;line-height:1;padding:0 4px;border:1px solid #4a525b;border-radius:4px'>✕</span></h3>";
     h+="<input id='provName' style='width:100%;background:#1c2127;border:1px solid #4a525b;color:#e8e4d8;padding:4px 6px;border-radius:4px' value='"+p.name.replace(/'/g,"&#39;").replace(/"/g,"&quot;")+"' onkeydown=\"if(event.key==='Enter')renameProvince()\">";
-    h+="<div class='row' style='margin-top:6px'><button class='bbtn' onclick='renameProvince()'>Renombrar</button><button class='bbtn' onclick='deselectShape()'>Deseleccionar</button></div>";
+    h+="<div class='row' style='margin-top:6px'><button class='bbtn' style='width:100%' onclick='renameProvince()'>Renombrar</button></div>";
     h+="<div class='row sm'><span>Nación</span><span>"+NATIONS[p.owner].name+"</span></div>";
     h+="<div class='row sm'><span>Vértices / píxeles</span><span>"+S.shapePoly.length+" / "+S.pixOfProv[S.shapeSel].length+"</span></div>";
     h+="<h3>Terreno <span style='font-weight:normal;color:#9aa3ad;font-size:11px'>("+terrainFx(p.terrain)+")</span></h3>";
