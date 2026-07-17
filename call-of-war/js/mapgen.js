@@ -1,5 +1,5 @@
 // mapgen.js
-import { MW, MH, NATIONS, NPLAY, NEUTRAL, TERRAINS, TERRAIN_KEYS, newBuildings, STRATA, STRATA_SEED } from "./config.js";
+import { MW, MH, NATIONS, NPLAY, NEUTRAL, TERRAINS, TERRAIN_KEYS, newBuildings, STRATA, STRATA_SEED, isSea } from "./config.js";
 import { S } from "./state.js";
 
 function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
@@ -451,16 +451,19 @@ function assignRealNames(){
   for(const p of S.provs)if(!p.name)p.name=genName(used);
 }
 function isolateWastePockets(){
+  // EL MAR SE QUEDA FUERA DE ESTO, y no es un detalle: esta función se queda con el componente MAYOR
+  // y convierte en PÁRAMO todo lo demás. Las 344 teselas de mar forman su propio componente (S.adj
+  // no cruza medios), que es más pequeño que Eurasia -> el océano entero acabaría siendo páramo.
   const seen=new Set();
   const comps=[];
   for(const p of S.provs){
-    if(p.wasteland||seen.has(p.id))continue;
+    if(p.wasteland||isSea(p)||seen.has(p.id))continue;
     const st=[p.id];seen.add(p.id);
     const comp=[];
     while(st.length){
       const k=st.pop();comp.push(k);
-      for(const b of S.adj[k])if(!S.provs[b].wasteland&&!seen.has(b)){seen.add(b);st.push(b)}
-      for(const b of S.seaAdj[k])if(!S.provs[b].wasteland&&!seen.has(b)){seen.add(b);st.push(b)}
+      for(const b of S.adj[k])if(!S.provs[b].wasteland&&!isSea(S.provs[b])&&!seen.has(b)){seen.add(b);st.push(b)}
+      for(const b of S.seaAdj[k])if(!S.provs[b].wasteland&&!isSea(S.provs[b])&&!seen.has(b)){seen.add(b);st.push(b)}
     }
     comps.push(comp);
   }
@@ -621,7 +624,7 @@ function resTerrOK(spec,p){
 function assignResources(){
   for(const p of S.provs){
     p.resType=null;
-    if(p.wasteland)continue;
+    if(p.wasteland||isSea(p))continue;      // en el agua no hay yacimientos
     const[lon,lat]=pxToLonLat(p.x,p.y);
     const t=p.terrain;
     // Yacimientos de plata/oro (zonas mineras históricas) — prioridad
@@ -729,7 +732,7 @@ const CITY_POP=(()=>{const m={};for(const k in CITY_POP_RAW)m[popNormKey(k)]=CIT
 function assignPopulation(){
   const K=pxAreaConst();
   for(const p of S.provs){
-    if(p.wasteland){p.pop=0;continue}        // el páramo nunca tiene población
+    if(p.wasteland||isSea(p)){p.pop=0;continue}   // ni el páramo ni el mar tienen población
     if(p.pop!=null)continue;                 // valor guardado/editado: se respeta
     const npx=(S.pixOfProv[p.id]||[]).length;
     if(!npx){p.pop=0;continue}
@@ -773,6 +776,14 @@ function rebuildProvinceData(){
   S.pixOfProv=S.provs.map(()=>[]);
   S.borderPxOfProv=S.provs.map(()=>[]);
   for(const p of S.provs)p.coastal=false;
+  // `S.adj` = VECINO DEL MISMO MEDIO: tierra con tierra, mar con mar, nunca cruzando.
+  // Antes el océano no era provincia (provIdx=-1) y esto daba igual: cualquier vecino con id>=0 era
+  // tierra por fuerza. Ahora el mar son 344 provincias, y si entraran en S.adj envenenarían todo lo
+  // que trata una arista como "se puede andar por ahí": landPath (los ejércitos irían ANDANDO a
+  // Chipre), generateRoads (caminos cruzando el Mediterráneo), buildDuchies y assignMarkets.
+  // Separándolos, la tierra funciona exactamente igual que antes Y el grafo del mar sale gratis, que
+  // es justo lo que hará falta para mover tropas por mar y para las rutas de comercio.
+  // El cruce entre medios no se pierde: es `coastal`, y de ahí cuelga `S.seaAdj` (abajo).
   for(let y=0;y<MH;y++)for(let x=0;x<MW;x++){
     const i=y*MW+x,p=S.provIdx[i];
     if(p<0)continue;
@@ -780,9 +791,17 @@ function rebuildProvinceData(){
     const r=x<MW-1?S.provIdx[i+1]:-2, d=y<MH-1?S.provIdx[i+MW]:-2;
     const l=x>0?S.provIdx[i-1]:-2, u=y>0?S.provIdx[i-MW]:-2;
     if(r!==p||d!==p||l!==p||u!==p)S.borderPxOfProv[p].push(i);
-    if(r===-1||d===-1||l===-1||u===-1)S.provs[p].coastal=true;
-    if(r>=0&&r!==p){S.adj[p].add(r);S.adj[r].add(p)}
-    if(d>=0&&d!==p){S.adj[p].add(d);S.adj[d].add(p)}
+    const mio=isSea(S.provs[p]);
+    // COSTERA = toca una provincia de MAR. Antes era "toca la nada", y con el mar teselado esa
+    // pregunta la contestarían que NO todas: se caía el bonus costero de población, la pesca, los
+    // puertos, la vega del Magreb y, peor, la regla del páramo (`!p.coastal`) habría convertido en
+    // páramo medio Sáhara y la costa subártica. Nada de eso da error: el mapa cambia en silencio.
+    // Los agujeros (-1: Caspio, Mar Blanco, lagos) NO hacen costera a nadie: no son navegables.
+    for(const q of (mio?[]:[r,d,l,u])){
+      if(q>=0&&isSea(S.provs[q])){S.provs[p].coastal=true;break}
+    }
+    if(r>=0&&r!==p&&isSea(S.provs[r])===mio){S.adj[p].add(r);S.adj[r].add(p)}
+    if(d>=0&&d!==p&&isSea(S.provs[d])===mio){S.adj[p].add(d);S.adj[d].add(p)}
   }
   // centro visual de cada provincia = POLO DE INACCESIBILIDAD (el píxel interior más alejado de
   // cualquier borde). La semilla del Voronoi suele quedar descentrada o pegada a un borde; este
@@ -827,7 +846,11 @@ function rebuildProvinceData(){
     for(let s=1;s<steps&&ok;s++){
       const x=Math.round(a.x+dx*s/steps),y=Math.round(a.y+dy*s/steps);
       const pid=S.provIdx[y*MW+x];
-      if(pid===-1){sea++;continue}
+      // "hay mar por medio": antes se preguntaba por el -1, que era TODO el océano. Ahora el -1 solo
+      // son los agujeros (Caspio, lagos) y el mar de verdad son provincias, así que sin esto `sea`
+      // se quedaba en 0, no se cumplía `sea>=1` y S.seaAdj salía VACÍO: adiós convoyes, rutas de
+      // mercado por mar, alcance naval de la IA y marcha marítima de los ejércitos.
+      if(pid<0||isSea(S.provs[pid])){sea++;continue}
       if(pid!==a.id&&pid!==b.id)ok=false;
     }
     if(ok&&sea>=1){S.seaAdj[a.id].add(b.id);S.seaAdj[b.id].add(a.id)}
@@ -842,10 +865,12 @@ function rebuildProvinceData(){
 function buildDuchies(){
   const TARGET=4,MAXMERGE=5; // 3-4 por ducado; al fusionar fragmentos no pasar de 5
   for(const p of S.provs){p.duchy=-1;if(p.occupier==null)p.occupier=-1}
-  // provincias agrupadas por dueño de iure (owner0); el páramo queda fuera
+  // provincias agrupadas por dueño de iure (owner0); el páramo y el MAR quedan fuera
+  // (sin el filtro del mar, las 344 teselas comparten owner0=NEUTRAL y se agruparían en "ducados"
+  // de océano: asediables, reclamables por la diplomacia y con warscore. No.)
   const byHome=new Map();
   for(const p of S.provs){
-    if(p.wasteland)continue;
+    if(p.wasteland||isSea(p))continue;
     if(!byHome.has(p.owner0))byHome.set(p.owner0,[]);
     byHome.get(p.owner0).push(p.id);
   }
@@ -1021,7 +1046,7 @@ function seedCities(){
     const pid=S.provIdx[y*MW+x];
     if(pid<0)return;
     const p=S.provs[pid];
-    if(p.wasteland)return;
+    if(p.wasteland||isSea(p))return;        // no se fundan ciudades en el mar
     p.urban=true;
     // varias ciudades reales caen en la MISMA provincia (son grandes, ~85 km): manda la MÁS POBLADA
     if(pop>(p.cityPop||0)){p.cityPop=pop;p.cityName=name}

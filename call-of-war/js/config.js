@@ -289,8 +289,17 @@ const TERRAINS={
   // los nuevos van al final: los índices guardados en instantáneas no deben moverse
   pradera:{label:"Pradera",mov:1.05,def:0.95,prod:1.1,color:"#8fbc62"},
   vega:{label:"Vega fértil",mov:1,def:0.85,prod:1.35,color:"#63a83e"},
-  tundra:{label:"Tundra",mov:0.65,def:1.1,prod:0.45,color:"#c6d3d6"}
+  tundra:{label:"Tundra",mov:0.65,def:1.1,prod:0.45,color:"#c6d3d6"},
+  // EL MAR ES UN TERRENO. Antes el océano era el hueco donde NO había provincia (provIdx=-1); ahora
+  // está teselado en 344 hexágonos que son provincias de pleno derecho: sin dueño, pero con área,
+  // vecinas y grafo. Eso es lo que permite mover tropas por mar, rutas de comercio y, el día que
+  // los haya, barcos. Se modela como terreno —y no como un campo nuevo en la tupla— porque el
+  // formato ya lo lleva y porque `isSea(p)` sale gratis de ahí.
+  // prod 0 y def/mov neutros: nada se produce ni se defiende en el agua (de momento).
+  mar:{label:"Mar",mov:1,def:1,prod:0,color:"#2a3a72"}
 };
+const SEA_TERRAIN="mar";
+const isSea=p=>p&&p.terrain===SEA_TERRAIN;
 const TERRAIN_KEYS=Object.keys(TERRAINS);
 function terrainFx(t){
   const T=TERRAINS[t],fx=[];
@@ -342,6 +351,6 @@ const STRATA_SEED={
 export {
   GH_PER_SEC, START_DATE, MESES, WAR_LOCK_HOURS, LOOT_FRAC, GOLD_PER_WS, WS_DUCHY_BASE, WS_DUCHY_PER, WS_BATTLE,
   LEVY_RAISE_HOURS, SIEGE_BASE_H, GARR_MIN, GARR_FORT, GARR_CITADEL,
-  MW, MH, NATIONS, NPLAY, NEUTRAL, RES_KEYS, RES_STRAT, RES_TRADE, RES_LABEL, RES_SHORT, RES_ICON, RES_DESC, START_STOCK, BUILDINGS, BUILD_JOBS, BUILD_CATS, RES_BUILDING, newBuildings, UNITS, TERRAINS, TERRAIN_KEYS, terrainFx,
+  MW, MH, NATIONS, NPLAY, NEUTRAL, RES_KEYS, RES_STRAT, RES_TRADE, RES_LABEL, RES_SHORT, RES_ICON, RES_DESC, START_STOCK, BUILDINGS, BUILD_JOBS, BUILD_CATS, RES_BUILDING, newBuildings, UNITS, TERRAINS, TERRAIN_KEYS, terrainFx, SEA_TERRAIN, isSea,
   STRATA, STRATA_INFO, STRATA_SEED, RES_ART, EXTRA_GOODS, RES_CAT, RES_RAW_CATS
 };

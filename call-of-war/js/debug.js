@@ -94,6 +94,9 @@ const dbg={
     return rows;
   }
 };
+// El estado crudo, para poder auditar el mapa desde fuera (arnes de verificacion por CDP). No
+// afecta al juego: debug.js ya es solo observacion.
+dbg.S=S;
 window.dbg=dbg;
 console.log("%c[dbg] Depuración POP lista. Prueba dbg.run(10), dbg.prov(\"Toledo\"), dbg.nation(\"Castilla\"), dbg.top(\"pop\").","color:#9fb878");
 export { dbg };

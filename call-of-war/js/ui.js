@@ -1375,7 +1375,7 @@ function showNationPicker(){
       "<b>▶ Continuar partida</b><span>"+NATIONS[sv.player].name+" · "+d.getUTCDate()+" "+MESES[d.getUTCMonth()]+" "+d.getUTCFullYear()+"</span></div>";
   }
   h+="<div class='ncard' id='observerCard' style='grid-column:1/-1;border-color:#7f9bbf'>"+
-    "<b>👁 Modo observador</b><span>Mira evolucionar la partida sin atarte a ningún país: los 60 reinos actúan por IA. Toma el mando de cualquiera desde el Registro cuando quieras revisar sus estadísticas, y suéltalo al terminar.</span></div>";
+    "<b>👁 Modo observador</b><span>Mira evolucionar la partida sin atarte a ningún país: los 193 reinos actúan por IA. Toma el mando de cualquiera desde el Registro cuando quieras revisar sus estadísticas, y suéltalo al terminar.</span></div>";
   for(let n=0;n<NPLAY;n++){
     h+="<div class='ncard' data-n='"+n+"'><span class='chip' style='background:"+NATIONS[n].color+"'></span>"+
       "<b>"+NATIONS[n].name+"</b><span>"+nationProvCount(n)+" provincias</span></div>";
@@ -1392,7 +1392,7 @@ function showNationPicker(){
       document.getElementById("startOverlay").style.display="none";
       S.player=-1;S.started=true;S.selProv=-1;
       refreshTop();refreshSide();
-      log("Modo observador: las 60 naciones actúan por IA. Abre el Registro para tomar el mando de una y revisar sus estadísticas.");
+      log("Modo observador: las 193 naciones actúan por IA. Abre el Registro para tomar el mando de una y revisar sus estadísticas.");
       return;
     }
     if(sv&&!confirm("Empezar una partida nueva descartará la guardada. ¿Continuar?"))return;

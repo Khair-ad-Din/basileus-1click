@@ -1,5 +1,5 @@
 // render.js
-import { MW, MH, NATIONS, TERRAINS, TERRAIN_KEYS, UNITS } from "./config.js";
+import { MW, MH, NATIONS, TERRAINS, TERRAIN_KEYS, UNITS, isSea } from "./config.js";
 import { S } from "./state.js";
 import { hashN, roadKey, hasRoad, kmBetween } from "./mapgen.js";
 import { armyCount, armyPops, recruitable, soldAvail, canAfford } from "./economy.js";
@@ -143,6 +143,11 @@ function provColor(p){
   if(S.resView)return resColor(p);
   if(S.mktView)return mktColor(p);
   if(S.terrainView)return TCOL[S.provs[p].terrain];
+  // EL MAR ANTES DE NADA. Sin esto reventaba el mapa entero: una tesela de mar tiene owner=NEUTRAL,
+  // que vale NPLAY (193) y está FUERA de NCOL (0..192) -> undefined -> `c[0]*s` peta en paintAll y
+  // la pantalla sale en blanco. Hoy no ocurría de milagro: todo NEUTRAL era además páramo y el
+  // ternario cortaba antes de llegar a NCOL.
+  if(isSea(S.provs[p]))return TCOL.mar;
   return S.provs[p].wasteland?WASTECOL:NCOL[S.provs[p].owner];
 }
 function paintAll(){
@@ -170,12 +175,17 @@ const borderCtx=borderC.getContext("2d");
 let bordersDirty=false;                 // la conquista/ocupación cambió un dueño: rehornear al dibujar
 const NODEW=MW+1;                        // retícula de esquinas: id de nodo = ny*NODEW + nx
 const rgba=c=>"rgba("+c[0]+","+c[1]+","+c[2]+","+(c[3]/255).toFixed(3)+")";
-// Tier de la frontera entre dos provincias (id, o -1 = mar). Reproduce la jerarquía anterior
+// Tier de la frontera entre dos provincias (id, o -1 = agujero). Reproduce la jerarquía anterior
 // pero por ARISTA (no por píxel): 0 ninguna · 1 provincia · 2 ducado · 3 nación · 4 páramo · 5 costa.
+// El mar ya es provincia, así que "-1" solo son los AGUJEROS (Caspio, lagos) y hay que preguntar por
+// isSea explícitamente. Sin esto, la línea de costa dejaba de dibujarse COMO COSTA y salía como
+// frontera de NACIÓN (tierra tiene dueño, mar es NEUTRAL: dueños distintos -> tier 3), y entre
+// teselas de mar aparecían fronteras de provincia: el panal marcado a lápiz por todo el océano.
 function borderTier(a,b){
   if(a===b)return 0;
-  if(a<0&&b<0)return 0;                                   // mar-mar
-  if(a<0||b<0)return S.provs[a<0?b:a].wasteland?4:5;      // tierra contra mar
+  const sa=a<0||isSea(S.provs[a]), sb=b<0||isSea(S.provs[b]);
+  if(sa&&sb)return 0;                                     // agua contra agua: sin línea
+  if(sa||sb)return S.provs[sa?b:a].wasteland?4:5;         // tierra contra agua: COSTA
   const wa=S.provs[a].wasteland,wb=S.provs[b].wasteland;
   if(wa&&wb)return 0;                                     // interior de páramo: sin divisiones
   if(wa||wb)return 4;                                     // borde de páramo
@@ -385,9 +395,13 @@ function roadCurve(c,a,b){
   const nx=-dy/L,ny=dx/L; // perpendicular al tramo
   const h1=hashN(a*7+1,b*13+3)-0.5, h2=hashN(a*11+5,b*17+7)-0.5;
   const w=Math.min(34,L*0.3);
+  // "es tierra" ya no es "hay provincia": ahora el mar TAMBIÉN es provincia. Sin el isSea, todo
+  // píxel pasaba por tierra y los caminos se dibujaban cruzando el Mediterráneo en línea recta.
   const isLand=(x,y)=>{
     const ix=x|0,iy=y|0;
-    return ix>=0&&iy>=0&&ix<MW&&iy<MH&&S.provIdx[iy*MW+ix]>=0;
+    if(!(ix>=0&&iy>=0&&ix<MW&&iy<MH))return false;
+    const q=S.provIdx[iy*MW+ix];
+    return q>=0&&!isSea(S.provs[q]);
   };
   // probar curvaturas cada vez más suaves (y espejadas) hasta que el trazo no pise el mar
   for(const k of[1,-1,0.5,-0.5,0.25,-0.25,0]){

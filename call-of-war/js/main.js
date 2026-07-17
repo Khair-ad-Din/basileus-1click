@@ -702,7 +702,7 @@ window.importMapFile=function(input){
   rd.onload=()=>{
     try{
       const snap=JSON.parse(rd.result);
-      if(!snap||snap.v!==1||snap.W!==MW||snap.H!==MH)throw new Error("formato no válido");
+      if(!snap||snap.v!==2||snap.W!==MW||snap.H!==MH)throw new Error("formato no válido (¿mapa v1, de antes de que el mar fuera provincia?)");
       localStorage.setItem("basileus_provmap",JSON.stringify(snap));
       regenerateWorld();
     }catch(e){alert("No se pudo importar el mapa: "+e.message)}

@@ -24,7 +24,12 @@ function buildSnapshot(){
     else{rle.push(cur,run);cur=S.provIdx[i];run=1}
   }
   rle.push(cur,run);
-  return{v:1,W:MW,H:MH,rle,roads:[...S.roads],
+  // v2: EL MAR YA ES PROVINCIA. La semántica del formato cambió (antes -1 era todo el océano; ahora
+  // solo los agujeros: Caspio, Mar Blanco y lagos) y los ids son otros. Una instantánea v1 guardada
+  // en el navegador cargaría SIN ERROR contra el código nuevo y taparía en silencio el mapa oficial
+  // —la precedencia es localStorage > OFFICIAL_MAP (main.js:565)—, así que el gate de abajo la
+  // rechaza y el mapa nuevo entra solo. No hay que borrarle nada a mano a nadie.
+  return{v:2,W:MW,H:MH,rle,roads:[...S.roads],
     provs:S.provs.map(p=>[p.name,p.x,p.y,p.owner0,p.named?1:0,p.urban?1:0,p.capital?1:0,TERRAIN_KEYS.indexOf(p.terrain),p.wasteland?1:0,p.pop!=null?Math.round(p.pop):null])};
 }
 function saveProvMap(){
@@ -36,7 +41,7 @@ function loadProvMapSnapshot(){
     const s=localStorage.getItem("basileus_provmap");
     if(!s)return null;
     const snap=JSON.parse(s);
-    if(!snap||snap.v!==1||snap.W!==MW||snap.H!==MH||!Array.isArray(snap.rle)||!Array.isArray(snap.provs))return null;
+    if(!snap||snap.v!==2||snap.W!==MW||snap.H!==MH||!Array.isArray(snap.rle)||!Array.isArray(snap.provs))return null;
     let tot=0;
     for(let i=1;i<snap.rle.length;i+=2)tot+=snap.rle[i];
     if(tot!==MW*MH)return null;
