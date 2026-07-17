@@ -378,6 +378,9 @@ function bakeTerrainProvince(pid){
   terrainCtx.restore();
 }
 loadTerrainSprites();
+// el lienzo de sprites, para poder AUDITARLO desde fuera (arnes de verificacion)
+if(typeof window!=="undefined")window.__terr={c:terrainC,img:_terrImg,SPRITE:TERRAIN_SPRITE,
+  ready:()=>_terrReady+"/"+_terrTotal,bake:bakeTerrain,bake1:bakeTerrainProvince,BS};
 // Opacidad del tinte político sobre el terreno (0 = sin tinte, 1 = color pleno). Ajustable en vivo
 // por consola: setPolTint(0.4). El bucle de dibujo (rAF) lo aplica en el siguiente frame.
 let POL_TINT=0.35;
