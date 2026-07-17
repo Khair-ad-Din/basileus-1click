@@ -164,6 +164,61 @@ for n,pts in sorted(px_of.items()):
     pid+=k
 print(f"provincias creadas: {pid}")
 
+# ---------- ALISAR: fuera los dedos y las franjas ----------
+# El reparto por VENTAJA coloca los pixeles disputados los ULTIMOS, cuando sus centroides preferidos
+# ya han llenado el cupo: caen en uno lejano y dejan dedos rectangulares y tiras del color
+# equivocado. Es el bug 3b del LEEME, que nunca murio: solo bajo a un nivel que nadie miraba.
+# La holgura del cupo NO lo arregla (medido: 124/122/124/123 franjas con 1.08/1.20/1.35/1.50) y
+# encima descompensa los gajos (0.85 -> 0.76). La "una sola pieza" tampoco: un dedo esta PEGADO a
+# su provincia, no suelto.
+# QUE FORMA TIENE EL ARTEFACTO (Sergio me lo marco con cuadros rojos, tras 5 metricas mias ciegas):
+# son DEDOS de 2-3 px de ancho y varios de largo, no tiras de 1 px. Mi primera erosion exigia 3+
+# vecinos ajenos —la PUNTA de un dedo finisimo— y por eso solo tocaba 14 px: un dedo de 2 px de ancho
+# tiene la punta con 3 vecinos pero los FLANCOS con solo 2, asi que sobrevivia entero. Medido con el
+# detector bueno: 12 px en dedos de 1px, 774 en <=2px, 1.283 en <=3px.
+# REGLA BUENA: un pixel es DEDO de ancho w si por DOS LADOS OPUESTOS (a distancia <=w) topa con la
+# MISMA provincia ajena, y el hueco entre medias es todo suyo. Eso caza el flanco de un dedo de 2-3,
+# no solo la punta. Se rellena con esa provincia que lo abraza por los dos lados.
+# CRUZA FRONTERAS DE DUCADO (decision de Sergio): medido, casi todos los dedos que marco estan en la
+# costura ENTRE dos ducados, no dentro de uno (el dedo de (1028,5) era prov 206 del ducado 36 metida
+# en la 114 del ducado 33). La guarda "mismo ducado" era justo lo que los protegia. No mueve una
+# frontera de verdad porque solo toca pixeles ABRAZADOS POR LOS DOS LADOS a <=3 px: eso solo pasa
+# donde el borde YA esta dentado, nunca en un tramo recto. Al limar el diente, la frontera del ducado
+# se endereza uno o dos px — que es lo que se quiere.
+# Sin tocar provincias pequenas (bug 5: "se comio 167 ducados"). Hasta converger: cada vuelta afina
+# el borde una capa. El ducado de cada pixel se recalcula al vuelo porque puede cambiar al limar.
+DEDO_MAX=3
+MIN_INTOCABLE=120
+tot=0
+for vuelta in range(40):
+    area=Counter()
+    for y in range(MH):
+        for x in range(MW):
+            if prov[y][x]: area[prov[y][x]]+=1
+    cambio=[]
+    for y in range(1,MH-1):
+        for x in range(1,MW-1):
+            q=prov[y][x]
+            if not q or area[q]<=MIN_INTOCABLE: continue
+            o=None
+            for w in range(1,DEDO_MAX+1):                   # dedo HORIZONTAL
+                if y-1<1 or y+w>=MH: break
+                a=prov[y-1][x]; b=prov[y+w][x]
+                if a and a==b and a!=q and all(prov[y+t][x]==q for t in range(w)):
+                    o=a; break
+            if o is None:                                   # dedo VERTICAL
+                for w in range(1,DEDO_MAX+1):
+                    if x-1<1 or x+w>=MW: break
+                    a=prov[y][x-1]; b=prov[y][x+w]
+                    if a and a==b and a!=q and all(prov[y][x+t]==q for t in range(w)):
+                        o=a; break
+            if o is not None: cambio.append((x,y,o))
+    if not cambio: break
+    for x,y,o in cambio: prov[y][x]=o
+    tot+=len(cambio)
+    print(f"  alisado: vuelta {vuelta+1} · {len(cambio):,} px de dedo absorbidos por su vecina")
+if tot: print(f"  total alisado: {tot:,} px  (provincias de <={MIN_INTOCABLE} px intactas)")
+
 # ---- LA PRUEBA QUE IMPORTA: la 2a provincia frente a la 1a, dentro de cada ducado ----
 pd=defaultdict(Counter)
 for y in range(MH):

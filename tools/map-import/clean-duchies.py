@@ -145,7 +145,13 @@ for vuelta in range(6):
 # adelgaza un cuerpo, y se niega a tocar un ducado que ya sea pequeno.
 MIN_INTOCABLE=120        # por debajo de esto, ni un pixel: son islotes que no pueden permitirse perder
 tot=0
-for vuelta in range(4):
+# HASTA CONVERGER, no 4 vueltas. La erosion solo come pixeles con 3+ vecinos del MISMO vecino,
+# o sea LA PUNTA del dedo: cada vuelta pela una fila, y un dedo de 6 px necesita 6 vueltas.
+# Capado en 4, los dedos sobrevivian a medio pelar — y yo lei el '128 px por vuelta' como
+# desbocamiento (bug 5) cuando era justo lo contrario: trabajo sin terminar.
+# No puede comerse el mapa: en un borde solido ningun pixel tiene 3 vecinos del mismo ajeno,
+# asi que se para sola. El tope es solo un cinturon de seguridad.
+for vuelta in range(40):
     area=Counter()
     for y in range(MH):
         for x in range(MW):
