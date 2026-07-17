@@ -296,7 +296,12 @@ const TERRAINS={
   // los haya, barcos. Se modela como terreno —y no como un campo nuevo en la tupla— porque el
   // formato ya lo lleva y porque `isSea(p)` sale gratis de ahí.
   // prod 0 y def/mov neutros: nada se produce ni se defiende en el agua (de momento).
-  mar:{label:"Mar",mov:1,def:1,prod:0,color:"#2a3a72"}
+  mar:{label:"Mar",mov:1,def:1,prod:0,color:"#2a3a72"},
+  // MESETA/ALTIPLANO: el tipo nuevo del volcado de orografía de EU4 (drylands+highlands: meseta
+  // ibérica, altiplano anatolio, Atlas, Levante interior — 140 ducados, 14% del mapa). Va AL FINAL
+  // para no mover ningún índice guardado. Stats PROVISIONALES (entre colinas y estepa): se revisarán
+  // junto al resto de terrenos con el consejo + investigación histórica. Sin sprite → color pelado.
+  meseta:{label:"Meseta",mov:1,def:1.1,prod:0.8,color:"#c9a86a"}
 };
 const SEA_TERRAIN="mar";
 const isSea=p=>p&&p.terrain===SEA_TERRAIN;

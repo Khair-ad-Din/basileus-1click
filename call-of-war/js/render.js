@@ -309,11 +309,12 @@ function buildSelPath(pid,scale=1){
 // su contorno vectorial. Se hornea una vez en terrainC (a BS×) y se vuelca escalado. Experimental:
 // si no convence, se revierte quitando la llamada en el bucle de dibujo y este bloque.
 const TERRAIN_SPRITE={montana:"mountain",colinas:"hills",bosque:"forest",pantano:"swamp",
-  vega:"farmland",pradera:"meadow",llanura:"grass_dry",estepa:"grass_dry"};
+  vega:"farmland",pradera:"meadow",llanura:"grass_dry",estepa:"grass_dry",
+  meseta:"meseta",tundra:"tundra",desierto:"desierto"};   // sprites nuevos (suelos1.png + Recursos5.png)
 // Color medio de cada sprite: se pinta bajo el sprite para que los huecos del blob (esquinas
 // transparentes del dibujo) se vean del color del terreno en vez del color político de debajo.
-const TERRAIN_FILL={grass_dry:"#987f1e",farmland:"#675517",hills:"#7d6e1e",mountain:"#6f603e",
-  forest:"#4b4b18",meadow:"#72701a",swamp:"#6b6733"};
+const TERRAIN_FILL={grass_dry:"#987f1e",farmland:"#695918",hills:"#7d6e1e",mountain:"#6f603e",
+  forest:"#4b4b18",meadow:"#72701a",swamp:"#6b6733",meseta:"#a0812b",tundra:"#cdd0cf",desierto:"#cc9c41"};
 const _terrImg={};let _terrReady=0,_terrTotal=0;
 const terrainC=Object.assign(document.createElement("canvas"),{width:MW*BS,height:MH*BS});
 const terrainCtx=terrainC.getContext("2d");

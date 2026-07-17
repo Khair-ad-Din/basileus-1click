@@ -702,7 +702,7 @@ function regionDensity(lon,lat){
   return lat<40?12:lat<50?15:lat<58?7:3; // fallback por latitud
 }
 const POP_TERR_FERT={vega:1.5,pradera:1.25,llanura:1.1,bosque:0.7,colinas:0.85,
-  pantano:0.55,estepa:0.5,montana:0.35,desierto:0.15,tundra:0.1};
+  pantano:0.55,meseta:0.6,estepa:0.5,montana:0.35,desierto:0.15,tundra:0.1};
 // Grandes urbes con población histórica aproximada de mediados del s.XV (clave sin acentos).
 // Las que no estén en la tabla se modelan por región. Cubre las que existen en el mapa.
 const CITY_POP_RAW={
@@ -1185,6 +1185,32 @@ function kmBetween(a,b){
   return 2*R*Math.asin(Math.sqrt(h));
 }
 
+// ================== SALPICADO (variante B de la orografía de EU4) ==================
+// EU4 da UN terreno por provincia = por ducado, así que las ~6 provincias del ducado salen iguales
+// (homogéneo). Esta función rompe esa homogeneidad de forma OPCIONAL y determinista: cachea la base
+// congelada de EU4 (p.terrainEU4) y, con probabilidad SPRINKLE_P, cambia cada provincia a un terreno
+// "de la misma familia" (montaña→colinas, meseta→colinas/estepa, llanura→bosque/colinas...). Nunca
+// mete desierto donde no lo había (no resucita el Sáhara falso). Es un TOGGLE de comparación
+// (window.setSprinkle): la base congelada sigue siendo EU4 puro; esto es un overlay que Sergio
+// adopta o no. Si lo adopta, se hornea en la fase 5 (mapa estático).
+const SPRINKLE_P = 0.35;
+const SPRINKLE_POOL = {
+  montana: ["colinas"], colinas: ["montana", "llanura"], meseta: ["colinas", "estepa"],
+  estepa: ["meseta", "llanura"], llanura: ["bosque", "colinas"], bosque: ["llanura", "colinas"],
+  vega: ["llanura"], pantano: ["llanura"], tundra: ["montana"], desierto: ["estepa"],
+};
+function sprinkleTerrain(on) {
+  for (const p of S.provs) {
+    if (isSea(p) || p.wasteland) continue;
+    if (p.terrainEU4 === undefined) p.terrainEU4 = p.terrain;   // cachea la base de EU4 la 1ª vez
+    if (!on || p.terrainEU4 == null) { p.terrain = p.terrainEU4; continue }
+    const pool = SPRINKLE_POOL[p.terrainEU4];
+    if (!pool) { p.terrain = p.terrainEU4; continue }
+    const h = hashN(p.id, 7);                                    // determinista por provincia
+    p.terrain = h < SPRINKLE_P ? pool[(h * 1e6 | 0) % pool.length] : p.terrainEU4;
+  }
+}
+
 export {
-  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, seedStrata, rebuildProvinceData, buildDuchies, isDuchyCap, seedCities, renameProvincesHistorical, buildMarketEdges, assignMarkets, ensureMarketTopology, MKT_LINK_KM, kmBetween, roadKey, hasRoad, roadLvl, landPath, generateRoads
+  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, seedStrata, rebuildProvinceData, buildDuchies, isDuchyCap, seedCities, renameProvincesHistorical, buildMarketEdges, assignMarkets, ensureMarketTopology, MKT_LINK_KM, kmBetween, roadKey, hasRoad, roadLvl, landPath, generateRoads, sprinkleTerrain
 };

@@ -22,7 +22,7 @@ import {
   canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, armyCount, armyFood, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, recruitable, resetTsyLedger
 } from "./economy.js";
 import {
-  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, rebuildProvinceData, seedCities, renameProvincesHistorical, ensureMarketTopology, kmBetween, roadKey, hasRoad, landPath, generateRoads
+  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, rebuildProvinceData, seedCities, renameProvincesHistorical, ensureMarketTopology, kmBetween, roadKey, hasRoad, landPath, generateRoads, sprinkleTerrain
 } from "./mapgen.js";
 import { S } from "./state.js";
 import "./debug.js"; // registra window.dbg (herramientas de observación por consola)
@@ -116,6 +116,9 @@ window.addEventListener("resize",fitCanvas);
 // línea de coste con iconos; marca en rojo lo que no puedes pagar
 
 // categoría de edificios seleccionada en el índice de la barra inferior
+// COMPARAR ORAGRAFÍA: setSprinkle(true) rompe la homogeneidad de EU4 (variante B), setSprinkle(false)
+// vuelve a EU4 puro (variante A). Recarga la capa de terreno. Para elegir entre las dos variantes.
+window.setSprinkle=function(on=true){sprinkleTerrain(on);paintAll();return`salpicado ${on?"ON (variante B)":"OFF (variante A, EU4 puro)"}`};
 window.setBuildCat=function(k){S.buildFilter=k;refreshBuildBar()};
 
 // barra inferior de edificios (estilo EU4): resumen de la provincia + tarjetas por categoría

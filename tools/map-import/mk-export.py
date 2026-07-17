@@ -31,6 +31,9 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 E = json.load(open(SP+"eu4.json", encoding="utf8"))["duchy"]
 pd = json.load(open(SP+"prov_duchy.json", encoding="utf8"))
+# TERRENO DE EU4 (fase 0): mk-terrain.py -> {ducado: [tipo, paramo]}. Si un ducado no está (los ~6
+# sin resolver tipo Central_Sahara), su terreno queda None y lo calcula el juego al cargar.
+TER = json.load(open(SP+"terrain.json", encoding="utf8"))
 NAT = json.load(open(AQUI+"/nations.json", encoding="utf8"))
 tag2idx = NAT["tag2idx"]; NPLAY = len(NAT["nations"]); NEUTRAL = NPLAY
 # el indice del terreno "mar": tiene que coincidir con TERRAIN_KEYS de config.js
@@ -153,12 +156,19 @@ for n in ordL:
     tag = v["tag"] if v else None
     own = tag2idx[tag] if (tag and tag in tag2idx) else NEUTRAL
     cx, cy = cent[n]
-    # terreno/paramo/pop a null: los calcula el juego al cargar. `capital` solo si es la de su nacion.
+    # TERRENO Y PÁRAMO congelados desde EU4 (fase 0). El [7] es el índice en TERRAIN_KEYS; el [8] es
+    # 1 SOLO si EU4 lo marca `impassable` (los 19 páramos), 0 en el resto. Fijar el [8] explícito
+    # DESACTIVA la heurística vieja `desierto->páramo` de save.js (que dejaba sin dueño 44 desiertos
+    # reales de EU4 y ~479 falsos del Sáhara). Los ~6 ducados sin dato quedan a null -> los computa el
+    # juego. pop sigue a null: lo calcula assignPopulation (fase 4 lo reequilibra).
+    t = TER.get(str(d))
+    terr = TERRAIN_KEYS.index(t[0]) if t else None
+    param = t[1] if t else None
     # El [10] es EL DUCADO, y es el motivo de que exista este campo: sin el, buildDuchies() se los
     # INVENTA al arrancar (cumulos de 3-4 provincias del mismo dueno, "Ducado de <su capital>") y los
     # 974 ducados historicos de EU4 —que son el 90% del trabajo de este pipeline— se tiran a la
     # basura. Lo canto Sergio mirando el mapa: "juraria que los ducados son otra vez inventados".
-    provs[i] = [nom, int(cx), int(cy), own, 0, 0, 1 if capitales.get(n) == own else 0, None, None, None,
+    provs[i] = [nom, int(cx), int(cy), own, 0, 0, 1 if capitales.get(n) == own else 0, terr, param, None,
                 ducIdx[d]]
 for n in ordS:
     i = new[("S", n)]
