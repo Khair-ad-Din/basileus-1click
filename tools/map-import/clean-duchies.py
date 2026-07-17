@@ -133,6 +133,41 @@ for vuelta in range(6):
             if c in ren: g[y][x]=ren[c]; n+=1
     print(f"vuelta {vuelta+1}: {len(ren)} fragmentos sueltos ({n:,} px) devueltos a quien los rodea"
           + (f"  ·  de ellos {fant} FANTASMAS ({fantPx} px) a mas de {LEJOS_KM:.0f} km de su cuerpo" if fant else ""))
+# ---------- LOS TENTACULOS DE 1 PIXEL ----------
+# Medido: duchies.png traia 138 franjas de 1 px (812 px) y provs.png sacaba 124 (732) EN LAS MISMAS
+# COORDENADAS. Las provincias no generan las franjas: las HEREDAN. Por eso la holgura del cupo no
+# movia la aguja (124/122/124/123 con 1.08/1.20/1.35/1.50) — el LEEME apuntaba al cupo porque ahi
+# estuvo la causa la PRIMERA vez, no esta.
+# Un tentaculo es un pixel con 3+ vecinos del MISMO ducado ajeno: no hay forma de que eso sea
+# frontera de verdad, es el rastro de dos frentes de relleno que se cruzaron.
+# CON CUIDADO (bug 5 del LEEME: "el filtro de mayoria erosiona los ducados pequenos, se comio 167"):
+# esto NO es un filtro de mayoria. Solo toca pixeles rodeados por 3+ lados del MISMO vecino, nunca
+# adelgaza un cuerpo, y se niega a tocar un ducado que ya sea pequeno.
+MIN_INTOCABLE=120        # por debajo de esto, ni un pixel: son islotes que no pueden permitirse perder
+tot=0
+for vuelta in range(4):
+    area=Counter()
+    for y in range(MH):
+        for x in range(MW):
+            if g[y][x]: area[g[y][x]]+=1
+    cambio=[]
+    for y in range(1,MH-1):
+        for x in range(1,MW-1):
+            d=g[y][x]
+            if not d or area[d]<=MIN_INTOCABLE: continue
+            v=Counter()
+            for dx,dy in ((1,0),(-1,0),(0,1),(0,-1)):
+                o=g[y+dy][x+dx]
+                if o and o!=d: v[o]+=1
+            if not v: continue
+            o,k=v.most_common(1)[0]
+            if k>=3: cambio.append((x,y,o))     # rodeado por 3+ lados del mismo: es un tentaculo
+    if not cambio: break
+    for x,y,o in cambio: g[y][x]=o
+    tot+=len(cambio)
+    print(f"tentaculos: vuelta {vuelta+1} · {len(cambio):,} px de 1 px de ancho absorbidos por quien los rodea")
+if tot: print(f"   total {tot:,} px  (los ducados de <={MIN_INTOCABLE} px no se tocan)")
+
 area=Counter()
 for y in range(MH):
     for x in range(MW):

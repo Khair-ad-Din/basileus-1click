@@ -16,6 +16,13 @@ from PIL import Image
 Image.MAX_IMAGE_PIXELS=None
 SP="C:/Users/sergi/AppData/Local/Temp/claude/c--Users-sergi-OneDrive-Documentos-Basileus-1-click/c21bac07-d2c6-42b3-aefa-d92e590eb691/scratchpad/"
 TARGET=int(sys.argv[1]) if len(sys.argv)>1 else 390
+# HOLGURA DEL CUPO: el mando entre las FRANJAS y el equilibrio de los gajos (bug 3b del LEEME).
+# Con el cupo justo, los pixeles disputados —los del borde, los que se colocan los ULTIMOS— no
+# tienen donde caer y acaban en un centroide lejano: dejan una tira de 1 px del color equivocado
+# incrustada en la vecina. Con mas holgura caben en el suyo.
+# Medido: al cambiar los ducados (matar los fantasmas) las franjas pasaron de 39 a 757 px con 1.08.
+HOLGURA=float(sys.argv[2]) if len(sys.argv)>2 else 1.08
+SUF=sys.argv[3] if len(sys.argv)>3 else ""
 MIN_PX=70          # la provincia mas pequena del mapa actual son 71 px
 KMAX_BAL=14        # por encima de esto (Sahara, Rusia) la capacidad es lenta y alli no se nota
 
@@ -66,7 +73,7 @@ def particion(pts,k):
             # alineados con los ejes en los ducados pequenos (Italia).
             # Ahora manda la VENTAJA que el mejor centroide le saca al segundo: primero se colocan
             # los pixeles con dueno claro y los disputados se reparten al final. Fronteras rectas.
-            cap=int(n/k*1.08)+1     # holgura: con el cupo justo, los ultimos pixeles
+            cap=int(n/k*HOLGURA)+1  # holgura: con el cupo justo, los ultimos pixeles
             orden=[]              # (los del borde) no tienen donde caer y acaban en un centroide lejano
             for i,p in enumerate(pts):
                 ds=sorted(((p[0]-c[0])**2+(p[1]-c[1])**2, j) for j,c in enumerate(cent))
@@ -182,6 +189,6 @@ out=Image.new("RGB",(MW,MH)); op=out.load()
 for y in range(MH):
     for x in range(MW):
         n=prov[y][x]; op[x,y]=(n&255,(n>>8)&255,(n>>16)&255)
-out.save(SP+"provs.png")
-json.dump({str(k):v for k,v in duc.items()}, open(SP+"prov_duchy.json","w",encoding="utf8"))
+out.save(SP+f"provs{SUF}.png")
+json.dump({str(k):v for k,v in duc.items()}, open(SP+f"prov_duchy{SUF}.json","w",encoding="utf8"))
 print("-> provs.png + prov_duchy.json")
