@@ -334,6 +334,21 @@ const GARR_MIN=2;              // guarnición mínima (milicianos-equiv) de TODA
 const GARR_FORT=2;             // guarnición extra por nivel de Castillo
 const GARR_CITADEL=3;          // guarnición extra de la Ciudadela
 
+// ---- Rutas marítimas: grafo único tierra+mar (fase 1 del mapa nuevo) ----
+// El mar es transitable por NODOS (las 344 teselas). El enrutado —mercado y marcha del ejército—
+// corre sobre el grafo unificado (S.adj tierra↔tierra y mar↔mar, S.seaAdj el cruce costera↔tesela)
+// en km reales; el tramo de mar lleva DESCUENTO de velocidad porque el barco es más rápido que la
+// carreta (cabotaje ~90 km/día vs. carreta ~30). Con esto el mercado y la marcha eligen la ruta
+// más rápida entre "por tierra siguiendo la costa" y "por mar". Knobs a calibrar en vivo.
+const SEA_KM_MULT=0.45;   // coste de mercado del km por mar = 45% del km por tierra
+const NAV_KM=350;         // alcance de "vecino por mar" (S.navAdj) para los heurísticos de IA
+// TIEMPO DE EMBARQUE: coste fijo (horas) que se paga UNA vez al embarcar (tierra→mar). El barco es
+// mucho más rápido por km que la marcha, así que sin esto cualquier salto —aunque las dos provincias
+// estén pegadas por tierra— preferiría meterse en el mar. Este peaje hace que para moverse "un par de
+// provincias" compense ir directo por tierra, y solo las travesías largas o sin ruta terrestre usen el
+// mar. Se paga en el pathfinding (elige ruta) y en la duración real de la pierna. Knob a calibrar.
+const EMBARK_HOURS=96;    // ~4 días de preparar el embarque
+
 // ---- Estratos sociales (Fase A: tipos de pop) ----
 // Cada provincia reparte su población en estos estratos (p.pops[k]) y cada estrato tiene su propia
 // riqueza (p.wealth[k], dinero del estrato). Campesinos y burgueses trabajan/comercian; clero y
@@ -355,7 +370,7 @@ const STRATA_SEED={
 
 export {
   GH_PER_SEC, START_DATE, MESES, WAR_LOCK_HOURS, LOOT_FRAC, GOLD_PER_WS, WS_DUCHY_BASE, WS_DUCHY_PER, WS_BATTLE,
-  LEVY_RAISE_HOURS, SIEGE_BASE_H, GARR_MIN, GARR_FORT, GARR_CITADEL,
+  LEVY_RAISE_HOURS, SIEGE_BASE_H, GARR_MIN, GARR_FORT, GARR_CITADEL, SEA_KM_MULT, NAV_KM, EMBARK_HOURS,
   MW, MH, NATIONS, NPLAY, NEUTRAL, RES_KEYS, RES_STRAT, RES_TRADE, RES_LABEL, RES_SHORT, RES_ICON, RES_DESC, START_STOCK, BUILDINGS, BUILD_JOBS, BUILD_CATS, RES_BUILDING, newBuildings, UNITS, TERRAINS, TERRAIN_KEYS, terrainFx, SEA_TERRAIN, isSea,
   STRATA, STRATA_INFO, STRATA_SEED, RES_ART, EXTRA_GOODS, RES_CAT, RES_RAW_CATS
 };

@@ -4,7 +4,7 @@
 // no bindings, asi que se comparten sin problema entre modulos ES).
 export const S = {
   rand: null,
-  provs: [], provIdx: null, pixOfProv: [], borderPxOfProv: [], adj: [], seaAdj: [],
+  provs: [], provIdx: null, pixOfProv: [], borderPxOfProv: [], adj: [], seaAdj: [], navAdj: [],
   nations: [], armies: [], wars: new Map(), truces: new Map(), armyIdSeq: 1,
   duchies: [], reports: [],
   rel: new Map(), relMonthKey: -1, // diplomacia: campo compartido Tensión↔Concordia por par "a|b" (−100..+100); mes del último tick de deriva

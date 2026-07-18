@@ -1,5 +1,5 @@
 // sim.js
-import { BUILDINGS, GARR_CITADEL, GARR_FORT, GARR_MIN, GOLD_PER_WS, LEVY_RAISE_HOURS, NATIONS, NEUTRAL, NPLAY, RES_BUILDING, RES_KEYS, SIEGE_BASE_H, START_STOCK, TERRAINS, UNITS, WAR_LOCK_HOURS, WS_BATTLE, WS_DUCHY_BASE, WS_DUCHY_PER } from "./config.js";
+import { BUILDINGS, GARR_CITADEL, GARR_FORT, GARR_MIN, GOLD_PER_WS, LEVY_RAISE_HOURS, NATIONS, NEUTRAL, NPLAY, RES_BUILDING, RES_KEYS, SIEGE_BASE_H, START_STOCK, TERRAINS, UNITS, WAR_LOCK_HOURS, WS_BATTLE, WS_DUCHY_BASE, WS_DUCHY_PER, isSea, EMBARK_HOURS } from "./config.js";
 import { S } from "./state.js";
 import { armyAtk, armyCount, armyDef, armyHp, armySpd, bOwnerOf, buildBlock, buildJobs, buildMax, buildSlots, canAfford, canStaffIndustry, costFor, economyTick, ESTATES_BUILD, foodFill, storeCap, SUBS_BASICS, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor, usedSlots, seedStrataWealth, tsyTick, recFlow, specialistCap, jobsOf, prosperityTick, degradeBuildings, buildingProfit, buildingOutput, sourceableSet, inputsSourceable } from "./economy.js";
 import { relTick, getRel, THRESH, conquestFanout, insult, fabricateClaim, hasClaim, duchyOwner, sameLeague,
@@ -335,34 +335,59 @@ function underTruce(a,b){
   return t!==undefined&&S.hour<t;
 }
 function armiesIn(pid){return S.armies.filter(a=>a.prov===pid&&a.path.length===0)}
+// VECINO NAVEGABLE del grafo UNIFICADO: S.adj mueve dentro de un medio (tierra↔tierra, mar↔mar) y
+// S.seaAdj cruza costera↔tesela de mar. Así una carrera de teselas de mar es transitable de verdad.
 function nbrs(c){return[...S.adj[c],...S.seaAdj[c]].filter(p=>!S.provs[p].wasteland)}
-function bfsPath(from,to,passable){
+// Coste de una arista en HORAS de marcha: por tierra = km/(velocidad·terreno·camino); por mar (arista
+// que toca una tesela) = cabotaje ~90 km/día. Sin esto el ejército, al ser el mar nodos, tomaría el
+// barco por tener MENOS saltos aunque andar fuese más rápido. Con el coste, elige la ruta más rápida.
+// EMBARCAR (tierra→mar) añade un peaje fijo (EMBARK_HOURS): así un salto corto no prefiere el mar solo
+// por ser el barco más veloz — solo compensa en travesías largas o sin ruta terrestre.
+function edgeHours(a,from,to){
+  const F=S.provs[from],T=S.provs[to],km=kmBetween(F,T);
+  if(isSea(F)||isSea(T)){
+    const embark=(!isSea(F)&&isSea(T))?EMBARK_HOURS:0;    // solo al subir a bordo, no al desembarcar
+    return embark+km/90*24;                               // travesía marítima (cabotaje)
+  }
+  const terr=(TERRAINS[F.terrain].mov+TERRAINS[T.terrain].mov)/2;
+  const road=1+0.1*roadLvl(from,to);
+  return km/(armySpd(a)*terr*road)*24;
+}
+// DIJKSTRA por tiempo sobre el grafo unificado. Devuelve la lista de nodos desde el 1er paso hasta
+// `to` (sin `from`), o null. Las teselas de mar son TRÁNSITO puro: nunca las corta el filtro
+// `passable` (para poder embarcar sobre agua neutral). `a` es el ejército (velocidad/caminos).
+function bfsPath(from,to,passable,a){
   if(from===to)return[];
-  const prev=new Map([[from,-1]]);
-  const q=[from];
-  while(q.length){
-    const c=q.shift();
-    for(const a of nbrs(c)){
-      if(prev.has(a))continue;
-      if(passable&&a!==to&&!passable(a))continue;
-      prev.set(a,c);
-      if(a===to){
-        const path=[a];let cur=c;
-        while(cur!==from){path.unshift(cur);cur=prev.get(cur)}
-        return path;
-      }
-      q.push(a);
+  const dist=new Map([[from,0]]),prev=new Map([[from,-1]]);
+  const h=[];
+  const hp=(d,i)=>{h.push([d,i]);let c=h.length-1;while(c>0){const p=(c-1)>>1;if(h[p][0]<=h[c][0])break;[h[p],h[c]]=[h[c],h[p]];c=p}};
+  const hpop=()=>{const top=h[0],last=h.pop();if(h.length){h[0]=last;let c=0;for(;;){const l=2*c+1,r=l+1;let m=c;if(l<h.length&&h[l][0]<h[m][0])m=l;if(r<h.length&&h[r][0]<h[m][0])m=r;if(m===c)break;[h[m],h[c]]=[h[c],h[m]];c=m}}return top};
+  hp(0,from);
+  while(h.length){
+    const[d,c]=hpop();
+    if(d>(dist.get(c)??Infinity))continue;                // entrada rancia
+    if(c===to)break;
+    for(const nb of nbrs(c)){
+      if(passable&&nb!==to&&!isSea(S.provs[nb])&&!passable(nb))continue; // el mar no lo bloquea el filtro
+      const nd=d+edgeHours(a,c,nb);
+      if(nd<(dist.get(nb)??Infinity)){dist.set(nb,nd);prev.set(nb,c);hp(nd,nb)}
     }
   }
-  return null;
+  if(!prev.has(to))return null;
+  const path=[];let cur=to;
+  while(cur!==from){path.unshift(cur);cur=prev.get(cur)}
+  return path;
 }
+// Arranca la siguiente pierna: UN salto a la provincia `a.path[0]` (tesela a tesela, también por mar,
+// para que el ejército pueda estar y detenerse EN el mar). Duración por tierra = km/(vel·terreno·
+// camino); por mar = cabotaje ~90 km/día, con el peaje de EMBARQUE al subir a bordo (tierra→mar).
 function startLeg(a){
   if(!a.path.length){a.legDone=0;a.legTotal=0;return}
   const from=S.provs[a.prov],to=S.provs[a.path[0]];
   const km=kmBetween(from,to);
-  if(!S.adj[a.prov].has(a.path[0])){
-    // travesía marítima embarcada: ~90 km/día de cabotaje, mínimo 1 día de embarque
-    a.legTotal=Math.max(24,km/90*24);
+  if(isSea(from)||isSea(to)){
+    const embark=(!isSea(from)&&isSea(to))?EMBARK_HOURS:0;       // el peaje se paga solo al embarcar
+    a.legTotal=Math.max(24,embark+km/90*24);
   }else{
     const terr=(TERRAINS[from.terrain].mov+TERRAINS[to.terrain].mov)/2;
     const road=1+0.1*roadLvl(a.prov,a.path[0]); // los caminos aceleran la marcha un 10% por nivel (máx +30%)
@@ -370,15 +395,30 @@ function startLeg(a){
   }
   a.legDone=0;
 }
+// suma el tiempo (horas) de recorrer `path` (lista de nodos) partiendo de `from`
+function pathHours(a,from,path){let t=0,prev=from;for(const nb of path){t+=edgeHours(a,prev,nb);prev=nb}return t;}
 function orderMove(a,target,passable){
-  const origin=(a.path.length&&a.legDone>0)?a.path[0]:a.prov;
-  let rest=bfsPath(origin,target,passable);
-  if(rest===null&&passable)rest=bfsPath(origin,target); // sin ruta limpia, cualquier ruta
-  if(rest===null)return false;
-  if(a.path.length&&a.legDone>0){
-    a.path=[a.path[0],...rest];
-  }else{
+  const plan=(from)=>{let r=bfsPath(from,target,passable,a);if(r===null&&passable)r=bfsPath(from,target,null,a);return r;};
+  if(!(a.path.length&&a.legDone>0)){        // parado o pierna recién arrancada: replanificar desde donde está
+    const rest=plan(a.prov);
+    if(rest===null)return false;
     a.path=rest;startLeg(a);
+    return true;
+  }
+  // A MITAD DE SALTO entre A(prov) y B(path[0]): elegir CONTINUAR a B o DARSE LA VUELTA a A, lo que
+  // llegue ANTES al destino contando el tramo ya recorrido. Así, si la nueva ruta pasa por A, se da la
+  // vuelta al instante en vez de tocar B primero (feedback de Sergio); y si B queda de paso, sigue.
+  const A0=a.prov,B0=a.path[0];
+  const pB=plan(B0),pA=plan(A0);
+  const tB=pB?(a.legTotal-a.legDone)+pathHours(a,B0,pB):Infinity; // seguir hasta B y desde allí
+  const tA=pA?a.legDone+pathHours(a,A0,pA):Infinity;             // volver a A (cuesta lo ya andado) y desde allí
+  if(!isFinite(tA)&&!isFinite(tB))return false;
+  if(tA<tB){                                // darse la vuelta: espejar el tramo para regresar a A0
+    const f=a.legDone/a.legTotal;
+    a.prov=B0;a.path=[A0,...pA];startLeg(a); // ahora la pierna es B0→A0…
+    a.legDone=Math.min(a.legTotal,(1-f)*a.legTotal); // …con el progreso espejado: seguimos en el mismo punto
+  }else{                                     // continuar a B0 (se conserva el progreso del salto actual)
+    a.path=[B0,...pB];
   }
   return true;
 }
@@ -617,8 +657,9 @@ function hourTick(){
     if(a.legDone>=a.legTotal){
       // controlador del tile destino: quien lo ocupa, o su dueño de iure si no está ocupado
       const np=S.provs[a.path[0]],nc=np.occupier>=0?np.occupier:np.owner;
-      // conquista congelada los primeros 4 años: el ejército no entra en territorio ajeno
-      if(S.hour<WAR_LOCK_HOURS&&nc!==a.nation){
+      // conquista congelada los primeros años: no se entra en TIERRA ajena (el mar es neutral y
+      // transitable: no se bloquea, o no se podría cruzar para invadir una isla durante la tregua).
+      if(S.hour<WAR_LOCK_HOURS&&!isSea(np)&&nc!==a.nation){
         a.path=[];a.legDone=0;a.legTotal=0;continue;
       }
       a.prov=a.path.shift();
@@ -943,7 +984,7 @@ function aiTurn(n){
       };
       for(const p of owned){
         for(const a of S.adj[p.id])register(a,1);
-        for(const a of S.seaAdj[p.id])register(a,0.4); // el mar cuenta menos
+        for(const a of S.navAdj[p.id])register(a,0.4); // vecino por mar (navAdj); el mar cuenta menos
       }
       let best=-1,bs=-1;
       for(const[m,e]of contact){
@@ -1012,7 +1053,7 @@ function aiTurn(n){
       let home=-1,hd=1e18;
       for(const p of S.provs)if(p.owner===n&&!p.wasteland&&!isOccupied(p)){const d=(p.x-here.x)**2+(p.y-here.y)**2;if(d<hd){hd=d;home=p.id}}
       if(home>=0){
-        const path=bfsPath(a.prov,home,pass);
+        const path=bfsPath(a.prov,home,pass,a);
         if(path){a.path=path;startLeg(a)}                          // marcha a casa por ruta limpia
         else{a.prov=home;a.path=[];a.legDone=0;a.legTotal=0}       // atrapado: repliegue directo
       }
@@ -1049,7 +1090,7 @@ function bestDuchyToTake(n,list){
   for(const d of list){
     let adj=0;
     for(const pid of d.provs){for(const a of S.adj[pid])if(S.provs[a].owner===n){adj=2;break}if(adj)break}
-    if(!adj)for(const pid of d.provs){for(const a of S.seaAdj[pid])if(S.provs[a].owner===n){adj=1;break}if(adj)break}
+    if(!adj)for(const pid of d.provs){for(const a of S.navAdj[pid])if(S.provs[a].owner===n){adj=1;break}if(adj)break}
     const dp=S.provs[d.cap],dist=cap?Math.hypot(dp.x-cap.x,dp.y-cap.y):0;
     const s=adj*1e4-dist;
     if(s>bs){bs=s;best=d}
@@ -1115,7 +1156,7 @@ function findTarget(from,n,enemies,wantNeutral,myPower,garrison){
         if(s>bs){bs=s;best=a}
       };
       for(const a of S.adj[c])step(a,dc+1);
-      for(const a of S.seaAdj[c])step(a,dc+2.2);
+      for(const a of S.navAdj[c])step(a,dc+2.2); // salto por mar (navAdj: costeras a un salto corto)
     }
     ring=next;
   }

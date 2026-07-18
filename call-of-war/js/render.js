@@ -640,8 +640,10 @@ function draw(){
   // (los marcadores de capital se dibujan como fondo, más arriba, bajo la malla de conexiones)
   // flecha de orden del ejército seleccionado
   if(S.selArmy&&S.selArmy.path.length){
-    const pos=armyPos(S.selArmy);
-    ctx.beginPath();ctx.moveTo(pos.x,pos.y);
+    // el trazo se ancla al CENTRO de la provincia de origen (no a la tropa, que se mueve): así la línea
+    // queda fija a los nodos y el marcador se desliza sobre el primer tramo (interpola prov→path[0]).
+    const o=S.provs[S.selArmy.prov];
+    ctx.beginPath();ctx.moveTo(o.x,o.y);
     for(const pid of S.selArmy.path)ctx.lineTo(S.provs[pid].x,S.provs[pid].y);
     ctx.strokeStyle="rgba(255,255,255,.65)";ctx.lineWidth=2/S.zoom;
     ctx.setLineDash([6/S.zoom,4/S.zoom]);ctx.stroke();ctx.setLineDash([]);

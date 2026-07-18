@@ -1,5 +1,5 @@
 // mapgen.js
-import { MW, MH, NATIONS, NPLAY, NEUTRAL, TERRAINS, TERRAIN_KEYS, newBuildings, STRATA, STRATA_SEED, isSea } from "./config.js";
+import { MW, MH, NATIONS, NPLAY, NEUTRAL, TERRAINS, TERRAIN_KEYS, newBuildings, STRATA, STRATA_SEED, isSea, SEA_KM_MULT, NAV_KM } from "./config.js";
 import { S } from "./state.js";
 
 function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
@@ -463,7 +463,9 @@ function isolateWastePockets(){
     while(st.length){
       const k=st.pop();comp.push(k);
       for(const b of S.adj[k])if(!S.provs[b].wasteland&&!isSea(S.provs[b])&&!seen.has(b)){seen.add(b);st.push(b)}
-      for(const b of S.seaAdj[k])if(!S.provs[b].wasteland&&!isSea(S.provs[b])&&!seen.has(b)){seen.add(b);st.push(b)}
+      // el salto de mar que engancha las islas (Britania, Sicilia…) al continente va por navAdj
+      // (costera↔costera): S.seaAdj ahora apunta a las TESELAS de mar, que este flood excluye.
+      for(const b of S.navAdj[k])if(!S.provs[b].wasteland&&!isSea(S.provs[b])&&!seen.has(b)){seen.add(b);st.push(b)}
     }
     comps.push(comp);
   }
@@ -773,6 +775,7 @@ function rebuildProvinceData(){
   S.mktDirty=true;      // el mundo cambia (carga, editor, generación): la topología del mercado caduca
   S.adj=S.provs.map(()=>new Set());
   S.seaAdj=S.provs.map(()=>new Set());
+  S.navAdj=S.provs.map(()=>new Set());
   S.pixOfProv=S.provs.map(()=>[]);
   S.borderPxOfProv=S.provs.map(()=>[]);
   for(const p of S.provs)p.coastal=false;
@@ -797,8 +800,12 @@ function rebuildProvinceData(){
     // puertos, la vega del Magreb y, peor, la regla del páramo (`!p.coastal`) habría convertido en
     // páramo medio Sáhara y la costa subártica. Nada de eso da error: el mapa cambia en silencio.
     // Los agujeros (-1: Caspio, Mar Blanco, lagos) NO hacen costera a nadie: no son navegables.
+    // CRUCE ENTRE MEDIOS (fase 1): la costera se une en `S.seaAdj` a CADA tesela de mar que toca su
+    // playa (y viceversa). Es la arista embarque/desembarque del grafo unificado: `S.adj` mueve
+    // dentro de un medio (tierra↔tierra, mar↔mar) y `S.seaAdj` cruza de tierra a mar. Antes esto era
+    // un enlace costera↔costera por recta; ahora el enrutado naval camina de verdad por los nodos.
     for(const q of (mio?[]:[r,d,l,u])){
-      if(q>=0&&isSea(S.provs[q])){S.provs[p].coastal=true;break}
+      if(q>=0&&isSea(S.provs[q])){S.provs[p].coastal=true;S.seaAdj[p].add(q);S.seaAdj[q].add(p)}
     }
     if(r>=0&&r!==p&&isSea(S.provs[r])===mio){S.adj[p].add(r);S.adj[r].add(p)}
     if(d>=0&&d!==p&&isSea(S.provs[d])===mio){S.adj[p].add(d);S.adj[d].add(p)}
@@ -856,26 +863,32 @@ function rebuildProvinceData(){
     }
     for(const p of S.provs)if(isSea(p)&&!isFinite(p.depth))p.depth=0;   // mares cerrados (Mármara)
   }
-  // rutas marítimas (convoyes) entre provincias costeras cercanas
-  const coast=S.provs.filter(p=>p.coastal);
-  for(let i=0;i<coast.length;i++)for(let j=i+1;j<coast.length;j++){
-    const a=coast[i],b=coast[j];
-    if(S.adj[a.id].has(b.id))continue;
-    const dx=b.x-a.x,dy=b.y-a.y,dd=Math.hypot(dx,dy);
-    if(dd>220)continue;
-    const steps=Math.max(8,(dd/12)|0);
-    let ok=true,sea=0;
-    for(let s=1;s<steps&&ok;s++){
-      const x=Math.round(a.x+dx*s/steps),y=Math.round(a.y+dy*s/steps);
-      const pid=S.provIdx[y*MW+x];
-      // "hay mar por medio": antes se preguntaba por el -1, que era TODO el océano. Ahora el -1 solo
-      // son los agujeros (Caspio, lagos) y el mar de verdad son provincias, así que sin esto `sea`
-      // se quedaba en 0, no se cumplía `sea>=1` y S.seaAdj salía VACÍO: adiós convoyes, rutas de
-      // mercado por mar, alcance naval de la IA y marcha marítima de los ejércitos.
-      if(pid<0||isSea(S.provs[pid])){sea++;continue}
-      if(pid!==a.id&&pid!==b.id)ok=false;
+  // NAVADJ — "vecino por mar" costera↔costera, ACOTADO (fase 1). Es lo que preguntan los heurísticos
+  // de IA ("¿a qué costas llego de un salto de mar corto?": elegir enemigo, ducado a exigir, objetivo
+  // militar) y el grafo ralo de plazas del mercado. Antes esto era `S.seaAdj` calculado por RECTA
+  // (< 220 px); ahora `S.seaAdj` es el cruce a las teselas y navAdj se DERIVA del grafo de nodos:
+  // BFS en km por las teselas de mar desde las que tocan la playa de cada costera, hasta NAV_KM. Así
+  // una costa se une a la de enfrente del estrecho (Sicilia↔Túnez, Dover↔Calais) rodeando de verdad,
+  // pero no al otro extremo del mar. (El enrutado LARGO —Valencia→Venecia, mercado por mar— no usa
+  // esto: va por Dijkstra sobre el grafo unificado, sin tope.)
+  {
+    const coast=S.provs.filter(p=>p.coastal&&!isSea(p)&&!p.wasteland);
+    for(const p of coast){
+      const km=new Map(),h=[];               // tesela de mar -> km desde p; frontera [km,tesela]
+      for(const t of S.seaAdj[p.id]){if(!km.has(t)){km.set(t,0);h.push([0,t])}}  // sembrar en su playa
+      const reached=new Set();
+      while(h.length){
+        let bi=0;for(let k=1;k<h.length;k++)if(h[k][0]<h[bi][0])bi=k;   // frontera pequeña: scan lineal
+        const[d,t]=h.splice(bi,1)[0];
+        if(d>km.get(t))continue;
+        for(const c of S.seaAdj[t])if(c!==p.id&&!isSea(S.provs[c])&&!S.provs[c].wasteland)reached.add(c);
+        for(const nb of S.adj[t]){             // S.adj de una tesela = sólo teselas de mar (mismo medio)
+          const nd=d+kmBetween(S.provs[t],S.provs[nb]);
+          if(nd<=NAV_KM&&nd<(km.has(nb)?km.get(nb):Infinity)){km.set(nb,nd);h.push([nd,nb])}
+        }
+      }
+      for(const c of reached){S.navAdj[p.id].add(c);S.navAdj[c].add(p.id)}
     }
-    if(ok&&sea>=1){S.seaAdj[a.id].add(b.id);S.seaAdj[b.id].add(a.id)}
   }
 }
 // ============================= Ducados =============================
@@ -1062,8 +1075,8 @@ function buildMarketEdges(){
   for(const p of plazas)g.set(p.id,new Set());
   const link=(a,b)=>{g.get(a).add(b);g.get(b).add(a)};
   for(const p of plazas){
-    for(const q of S.adj[p.id])if(g.has(q))link(p.id,q);
-    for(const q of S.seaAdj[p.id])if(g.has(q))link(p.id,q);
+    for(const q of S.adj[p.id])if(g.has(q))link(p.id,q);        // vecina por tierra
+    for(const q of S.navAdj[p.id])if(g.has(q))link(p.id,q);     // plaza a un salto de mar corto (navAdj, no las teselas)
   }
   const byOwner=new Map();
   for(const p of plazas){if(!byOwner.has(p.owner))byOwner.set(p.owner,[]);byOwner.get(p.owner).push(p)}
@@ -1158,10 +1171,15 @@ function assignMarkets(){
     const[d,c]=pop();
     if(d>km[c])continue;                                  // entrada rancia
     const P=S.provs[c];
+    // El grafo es UNIFICADO: S.adj mueve dentro de un medio, S.seaAdj cruza a las teselas de mar. Una
+    // tesela de mar es TRÁNSITO (no plaza, no pop): reparte la fuente `marketOf` que le llega pero
+    // ninguna aldea "pertenece" a ella. El km por mar va con DESCUENTO (SEA_KM_MULT: el barco es más
+    // rápido) → una aldea compara su plaza terrestre con una de ultramar y va a la MÁS BARATA.
     for(const nb of [...S.adj[c],...S.seaAdj[c]]){
       const Q=S.provs[nb];
       if(Q.wasteland)continue;
-      const nd=d+kmBetween(P,Q);
+      const w=(isSea(P)||isSea(Q))?SEA_KM_MULT:1;            // arista que toca el mar = cabotaje
+      const nd=d+kmBetween(P,Q)*w;
       if(nd<km[nb]-1e-9){km[nb]=nd;Q.marketOf=P.marketOf;Q.marketKm=nd;push(nd,nb)}
       else if(Math.abs(nd-km[nb])<1e-9&&P.marketOf<Q.marketOf)Q.marketOf=P.marketOf; // empate exacto: id menor
     }

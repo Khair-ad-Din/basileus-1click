@@ -120,30 +120,88 @@ AMBAS variantes** (EU4 puro vs. EU4 + salpicado procedural) para que Sergio comp
 
 ---
 
-## Fase 1 — Conexión marítima por nodos (código en `mapgen.js`, no toca datos)
+## Fase 1 — Conexión marítima por nodos ✅ HECHA (2026-07-18, sin commitear)
 
-**Qué (punto 3 de Sergio, importante):** hoy dos provincias costeras se enlazan **directamente**
-por mar si hay línea recta de mar < 220 px entre ellas ([mapgen.js:859-879](../call-of-war/js/mapgen.js#L859-L879)):
-España toca Marruecos saltándose los nodos de mar. Queremos lo contrario: **cada provincia
-costera se conecta al/los nodo(s) de mar que bordean su playa, y toda conexión marítima va por
-el grafo de nodos de mar.**
+**Implementado y verificado en el juego vivo (arneses en `tools/verify/sea-*-verify.js`, 0 errores):**
+- Grafo: `S.seaAdj` = cruce costera↔tesela de mar (ráster); `S.navAdj` = costera↔costera acotado por
+  `NAV_KM`=350 (BFS por el grafo de mar). Medido: **786/786 costeras con navAdj**, 100% de las aristas
+  de `seaAdj` apuntan a teselas, islas preservadas (`isolateWastePockets` ahora usa navAdj).
+- Mercado: `assignMarkets` enruta por el grafo unificado con `SEA_KM_MULT`=0.45 (cabotaje); las teselas
+  son tránsito (no reciben plaza). Medido: **5445/5445 provincias de tierra con plaza, 0 huérfanas**,
+  las 344 teselas transportan fuente. `buildMarketEdges` une plazas por navAdj.
+- Ejército (`sim.js`): `bfsPath` pasó a **Dijkstra por tiempo** (antes BFS por saltos: con el mar como
+  nodos habría preferido el barco por tener menos saltos). El movimiento es **tesela a tesela** (el
+  ejército puede estar y detenerse EN el mar, por petición de Sergio); una travesía es embarcar→navegar
+  nodo a nodo→desembarcar. **TIEMPO DE EMBARQUE** (`EMBARK_HOURS`=96, peaje fijo al subir a bordo) para
+  que un salto corto entre dos provincias cercanas por tierra NO prefiera el mar solo por ser el barco
+  más veloz. Heurísticos de IA (foe-pick, ducado a exigir, findTarget) movidos a navAdj.
+  **Bugs arreglados**: (a) repliegue `bfsPath(...,a)` no pasaba el ejército → petaba en `armySpd`;
+  (b, feedback de Sergio) el colapso de la travesía en una pierna causaba trazo enganchado a la tropa,
+  impedía quedarse en el mar y teletransportaba al recalcular → revertido a tesela-a-tesela; el trazo de
+  ruta se ancla al centro de la provincia de origen (`render.js`), no a la posición viva de la tropa.
+  Verificado en vivo: costeras pegadas por tierra van por tierra (peaje), Valencia→Venecia cruza por
+  mar estando en las teselas, se puede parar en el mar, y recalcular desde el mar no teletransporta.
+- **Reversión a mitad de salto** (feedback de Sergio): al reordenar entre A y B, `orderMove` compara
+  CONTINUAR a B vs DARSE LA VUELTA a A por tiempo total al destino (`pathHours`) y elige lo más rápido;
+  si la nueva ruta pasa por A, se vuelve al instante (espeja el tramo) en vez de tocar B primero.
+- Rendimiento: pathfind corto por tierra 0,017 ms, largo por mar 1,3 ms (raro) → **no domina** el tick;
+  los ~29 ms/tick son la economía de 6.131 provincias × 190 naciones (asunto de rendimiento aparte).
+- Knobs a calibrar / revisión del consejo (mercader) del realismo del descuento naval antes de congelar.
 
-**Cómo:** el grafo de mar ya existe (344 teselas hexagonales, `S.adj` entre teselas de mar,
-estrechos como aristas). El cambio:
-- Reescribir `S.seaAdj`: en vez de costera↔costera, **costera↔nodo de mar adyacente** (por ráster).
-- El enrutado naval (convoyes, marcha marítima de ejércitos, alcance de la IA) pasa a ser
-  costera → nodo → grafo de mar → nodo → costera.
+Archivos: `config.js` (SEA_KM_MULT, NAV_KM), `state.js` (navAdj), `mapgen.js` (grafo, navAdj, mercado,
+isolateWastePockets), `sim.js` (pathfinder, piernas, heurísticos), `render.js` (armyPos/seaPoly),
+`save.js` (persistir legNodes/legKind/seaPoly), `debug.js` (exposiciones para arneses).
 
-**Ojo — consumidores de `S.seaAdj` que hay que reenganchar al grafo de nodos:**
-- **Mercado por mar**: [mapgen.js:1066](../call-of-war/js/mapgen.js#L1066) une plazas por `S.seaAdj`.
-  Afecta a la topología del mercado (piedra angular, ADR 0001) → recalcular por el grafo de nodos.
-- Convoyes / rutas comerciales por mar, alcance naval de la IA, marcha marítima de ejércitos.
+---
+
+## (referencia) Fase 1 — diseño original
+
+**Qué (punto 3 de Sergio, importante):** hoy dos provincias costeras se enlazaban
+**directamente** por mar si había línea recta de mar < 220 px entre ellas: mide a vuelo de
+pájaro, no sabe rodear un cabo y no usa el grafo de teselas de mar. Sergio lo quiere de verdad:
+que **Valencia→Venecia** funcione como *embarcar → navegar por los nodos de mar por la ruta más
+óptima → desembarcar*, y que el comercio entre dos plazas **evalúe ruta terrestre vs marítima y
+use la más rápida** (Valencia↔Provenza: por tierra siguiendo la costa o por mar, gana la corta).
+
+**DECISIÓN (2026-07-18, Sergio): opción B — grafo único tierra+mar.** No se conserva el
+costera↔costera; se unifica el grafo y el enrutado naval camina de verdad por los nodos.
+
+**El modelo de datos:**
+- `S.adj` sigue igual: vecino del MISMO medio (tierra↔tierra, mar↔mar). Las 344 teselas de mar
+  ya forman su propio grafo conexo aquí (estrechos = aristas).
+- `S.seaAdj` pasa a ser el **cruce entre medios**: costera↔tesela-de-mar y tesela↔costera, sacado
+  del ráster (una costera se une a las teselas que tocan su playa). Ya no es costera↔costera.
+- Así `[...S.adj[c], ...S.seaAdj[c]]` es **el grafo navegable unificado**: desde tierra puedes
+  embarcar a una tesela; desde una tesela navegas a teselas vecinas o desembarcas en una costera.
+- `S.navAdj` (NUEVO, derivado): costera↔costera **acotado** (BFS por el grafo de mar hasta
+  `NAV_KM`). Es el "vecino por mar" que necesitan los heurísticos de IA — conserva el sentido del
+  viejo `seaAdj` sin reintroducir la recta.
+
+**Coste / ruta más rápida:** todo el enrutado (mercado y ejército) corre sobre el grafo unificado
+con coste en **km reales** (`kmBetween`), y el tramo de mar lleva **descuento de velocidad**
+(`SEA_KM_MULT` < 1: el barco es más rápido que la carreta) → land-siguiendo-costa vs mar salen
+comparables y gana el corto, que es justo lo que pidió Sergio.
+
+**Consumidores reenganchados:**
+- **Mercado por mar** (piedra angular, ADR 0001):
+  - `assignMarkets` (Dijkstra en km sobre `S.adj`+`S.seaAdj`): ahora atraviesa teselas de mar como
+    tránsito (con `SEA_KM_MULT`); las teselas NO reciben `marketOf` de aldea (solo transportan la
+    fuente). La aldea va a su plaza por la ruta —tierra o mar— más barata.
+  - `buildMarketEdges` (grafo ralo plaza↔plaza): las plazas se unen por mar vía `S.navAdj`
+    (antes por el `seaAdj` costera↔costera). Nadie lo consume aún, pero es la osamenta de la fase 2.
+- **Heurísticos de IA** (`seaAdj`→`navAdj`): elegir enemigo (`aiTurn` foe-pick), ducado a exigir
+  (`bestDuchyToTake`), objetivo militar (`findTarget`), y el registro de contacto por mar.
+- **Marcha marítima del ejército** (`sim.js`): `startLeg`/stepper. Una **carrera de teselas de mar
+  se colapsa en UNA pierna embarcada** (el ejército no se planta en cada tesela): puerto de
+  embarque → poli-línea de nodos → puerto de desembarco, duración = km reales de la ruta / cabotaje
+  (~90 km/día). El render dibuja el marcador siguiendo la poli-línea (`armyPos` por `seaPoly`).
+
+**Detalle:** las teselas tienen `depth` (distancia a la costa), útil si algún día se penaliza el
+mar abierto; de momento no se usa. `NAV_KM` y `SEA_KM_MULT` son knobs a calibrar en vivo (y el
+consejo —mercader— puede revisar el realismo del descuento naval antes de congelar).
 
 **Por qué va antes de las fases 3–4:** cambia el grafo del mercado, del que dependen recursos
 (fase 3) y prosperidad/pops (fase 4). Debe estar cerrado antes.
-
-**Detalle de diseño (al implementar):** coste/distancia naval = saltos de nodo (o px por el
-grafo); las teselas tienen `depth`, útil para penalizar aguas profundas o no.
 
 ---
 
