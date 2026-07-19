@@ -18,6 +18,9 @@ function seedEstateBld(p,b,estate){ // E2: siembra 1 nivel de b propiedad de est
   if(lvlOf(p,b)>=1||usedSlots(p)>=buildSlots(p))return;
   p.buildings[b]=(p.buildings[b]||0)+1;(p.bOwner||(p.bOwner={}))[b]=estate;
 }
+// OVERRIDE de capital: reinos cuya ciudad-capital histórica NO cae en su ducado-capital de EU4 (o la
+// supera en pop una vecina), así que el ajuste por ducado no basta. Se fijan por NOMBRE. Ampliable.
+const CAPITAL_FIX={Mamelucos:"El Cairo",Polonia:"Cracovia","Milán":"Milán",Navarra:"Pamplona"};
 function setupNations(){
   S.nations=NATIONS.map((n,i)=>({idx:i,res:Object.fromEntries(RES_KEYS.map(k=>[k,START_STOCK[k]||0])),
     ai:true,capital:-1,alive:!n.neutral,lastAI:0,startProvs:0,
@@ -46,6 +49,19 @@ function setupNations(){
     let cap=-1;
     for(const p of S.provs)if(p.owner===n&&p.capital){cap=p.id;break}
     if(cap<0)for(const p of S.provs)if(p.owner===n){cap=p.id;p.capital=true;break}
+    // La capital de EU4 cae en el DUCADO correcto, pero en la sub-provincia donde quedó la coordenada
+    // (a menudo una aldea: "Arroyomolinos" por Toledo, "Suresnes" por París). Se mueve el flag a la
+    // CIUDAD principal de ese mismo ducado (urbana, más poblada) → la capital histórica de verdad.
+    if(cap>=0&&S.provs[cap].duchy0>=0){
+      const duc=S.provs[cap].duchy0;let best=cap,bp=-1;
+      for(const p of S.provs){if(p.owner!==n||p.wasteland||p.duchy0!==duc)continue;
+        const sc=(p.urban?1e7:0)+(p.cityPop||0)+(p.pop||0);if(sc>bp){bp=sc;best=p.id}}
+      if(best!==cap){S.provs[cap].capital=false;S.provs[best].capital=true;cap=best}
+    }
+    // override curado (por nombre) para las excepciones donde la ciudad-capital cae fuera del ducado
+    const ov=CAPITAL_FIX[NATIONS[n].name];
+    if(ov)for(const p of S.provs)if(p.owner===n&&!p.wasteland&&(p.canon===ov||p.name===ov)){
+      if(cap>=0&&cap!==p.id)S.provs[cap].capital=false;p.capital=true;cap=p.id;break;}
     S.nations[n].capital=cap;
     if(cap<0){S.nations[n].alive=false;continue}
     S.nations[n].startProvs=nationProvCount(n);

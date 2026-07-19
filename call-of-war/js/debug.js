@@ -8,7 +8,7 @@
 import { S } from "./state.js";
 import { NATIONS, NPLAY } from "./config.js";
 import { hourTick, spawnArmy, orderMove, bfsPath } from "./sim.js";
-import { pxToLonLat } from "./mapgen.js";
+import { pxToLonLat, renameProvincesHistorical, seedCities, assignPopulation, CITY_POP, popNormKey } from "./mapgen.js";
 import {
   nationEconomy, nationProvCount, nationStrength, armyCount,
   soldCap, soldAvail, foodCap, foodBalance, foodCons, foodFill, harvestMul, staffing, buildJobs, freeLabor, specialistCap, structPPF
@@ -98,8 +98,9 @@ const dbg={
 // El estado crudo, para poder auditar el mapa desde fuera (arnes de verificacion por CDP). No
 // afecta al juego: debug.js ya es solo observacion.
 dbg.S=S;
-dbg.NPLAY=NPLAY; dbg.pxToLonLat=pxToLonLat;   // constantes/proyección para arneses de verificación
+dbg.NPLAY=NPLAY; dbg.NATIONS=NATIONS; dbg.pxToLonLat=pxToLonLat;   // constantes/proyección para arneses de verificación
 dbg.spawnArmy=spawnArmy; dbg.orderMove=orderMove; dbg.hourTick=hourTick; dbg.bfsPath=bfsPath; // para arneses de movimiento
+dbg.renameProvincesHistorical=renameProvincesHistorical; dbg.seedCities=seedCities; dbg.assignPopulation=assignPopulation; dbg.CITY_POP=CITY_POP; dbg.popNormKey=popNormKey; // gazetteer
 window.dbg=dbg;
 console.log("%c[dbg] Depuración POP lista. Prueba dbg.run(10), dbg.prov(\"Toledo\"), dbg.nation(\"Castilla\"), dbg.top(\"pop\").","color:#9fb878");
 export { dbg };

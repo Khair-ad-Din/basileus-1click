@@ -626,7 +626,7 @@ window.renameProvince=function(){
   if(!v||v===S.provs[S.shapeSel].name)return;
   if(S.provs.some(p=>p.id!==S.shapeSel&&p.name===v)){alert("Ya existe una provincia con ese nombre.");return}
   pushUndo();
-  S.provs[S.shapeSel].name=v;S.provs[S.shapeSel].named=true;
+  S.provs[S.shapeSel].name=v;S.provs[S.shapeSel].canon=v;S.provs[S.shapeSel].named=true; // nombre a mano = canónico y mostrado
   refreshEditorPanel();
 };
 window.deselectShape=function(){S.shapeSel=-1;S.shapePoly=[];S.dragVi=-1;refreshEditorPanel()};

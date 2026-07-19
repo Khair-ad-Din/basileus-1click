@@ -1,7 +1,7 @@
 // save.js
 import { GH_PER_SEC, MH, MW, NATIONS, NEUTRAL, TERRAIN_KEYS, newBuildings } from "./config.js";
 import { S } from "./state.js";
-import { assignPopulation, assignResources, assignTerrain, isolateWastePockets, mulberry32, rebuildProvinceData, seedCities, seedStrata } from "./mapgen.js";
+import { assignPopulation, assignResources, assignTerrain, isolateWastePockets, mulberry32, rebuildProvinceData, seedCities, seedStrata, localize } from "./mapgen.js";
 import { canvas, clampPan, drawRoads, paintAll } from "./render.js";
 import { hourTick, syncDuchyOcc } from "./sim.js";
 import { resetTsyLedger } from "./economy.js";
@@ -33,7 +33,7 @@ function buildSnapshot(){
   // pulsa "Guardar cambios" (o se hace undo, que tambien pasa por aqui) los 944 ducados historicos
   // desaparecen del snapshot y buildDuchies() vuelve a inventarselos al recargar.
   return{v:2,W:MW,H:MH,rle,roads:[...S.roads],duchies:S.duchyNames?S.duchyNames.slice():null,
-    provs:S.provs.map(p=>[p.name,p.x,p.y,p.owner0,p.named?1:0,p.urban?1:0,p.capital?1:0,TERRAIN_KEYS.indexOf(p.terrain),p.wasteland?1:0,p.pop!=null?Math.round(p.pop):null,p.duchy0!=null?p.duchy0:-1])};
+    provs:S.provs.map(p=>[p.canon||p.name,p.x,p.y,p.owner0,p.named?1:0,p.urban?1:0,p.capital?1:0,TERRAIN_KEYS.indexOf(p.terrain),p.wasteland?1:0,p.pop!=null?Math.round(p.pop):null,p.duchy0!=null?p.duchy0:-1])};
 }
 function saveProvMap(){
   try{localStorage.setItem("basileus_provmap",JSON.stringify(buildSnapshot()))}
@@ -65,7 +65,8 @@ function loadProvMap(snap){
   // es de donde salió el corte de las propias provincias. Los mapas viejos no lo traen (a[10] es
   // undefined) y siguen funcionando exactamente igual.
   S.duchyNames=Array.isArray(snap.duchies)?snap.duchies.slice():null;
-  S.provs=snap.provs.map((a,i)=>({id:i,name:a[0],x:a[1],y:a[2],country:0,owner:a[3],owner0:a[3],
+  // a[0] es el nombre CANÓNICO (inglés). p.canon lo guarda; p.name muestra el LOCALIZADO (Basel->Basilea).
+  S.provs=snap.provs.map((a,i)=>({id:i,name:localize(a[0]),canon:a[0],x:a[1],y:a[2],country:0,owner:a[3],owner0:a[3],
     duchy0:a[10]!=null?a[10]:-1,
     named:!!a[4],coastal:false,morale:60,urban:!!a[5],resType:null,shade:0.85+S.rand()*0.3,capital:!!a[6],
     terrain:(a[7]!=null&&TERRAIN_KEYS[a[7]])||null,

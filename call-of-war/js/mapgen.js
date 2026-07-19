@@ -398,6 +398,8 @@ function renameProvincesHistorical(){
   }
   // CAPA 3 — el resto (rural): el gazetteer moderno de siempre. Respeta las ya nombradas.
   assignRealNames();
+  // LOCALIZACIÓN: guardar el nombre CANÓNICO en p.canon y mostrar el LOCALIZADO en p.name (Basel->Basilea).
+  for(const p of S.provs){p.canon=p.name;p.name=localize(p.name)}
 }
 // nombres reales de ciudad por cercanía: recorre el gazetteer PLACES (ordenado por
 // población desc) y cada ciudad reclama la provincia SIN nombre más cercana dentro de un
@@ -728,6 +730,11 @@ const CITY_POP_RAW={
 };
 function popNormKey(s){return(s||"").toLowerCase().normalize("NFD").replace(/[^a-z ]/g,"").trim()}
 const CITY_POP=(()=>{const m={};for(const k in CITY_POP_RAW)m[popNormKey(k)]=CITY_POP_RAW[k];return m})();
+// LOCALIZACIÓN de un nombre CANÓNICO (inglés/GeoNames) a su forma de ~1444 (español), con la tabla
+// EXONYMS (call-of-war/exonyms.js, global). Si no hay exónimo, se muestra el canónico tal cual. El mapa
+// guarda el canónico (p.canon) y muestra el localizado (p.name): misma provincia, "Basel" clave y
+// "Basilea" mostrado. Futuro i18n: EXONYMS[idioma][clave].
+function localize(name){return(typeof EXONYMS!=="undefined"&&EXONYMS[popNormKey(name)])||name;}
 // Rellena la población SOLO donde no hay valor (p.pop==null): siembra inicial en la
 // generación y red de seguridad al cargar. Los valores ya guardados o editados a mano se
 // respetan (el tope RURAL_CAP vive aquí, así que solo afecta a la siembra, nunca a tus ediciones).
@@ -749,8 +756,12 @@ function assignPopulation(){
     // núcleo urbano (solo ciudades reales, no los duplicados rurales del gazetteer):
     // tabla histórica para las grandes; el resto de urbes se modelan por región.
     if(p.urban){
-      const tabled=CITY_POP[popNormKey(p.name)];
-      if(tabled!=null)pop+=tabled;
+      // población del NÚCLEO urbano, por orden de fiabilidad: (1) tabla curada CITY_POP (217 ciudades,
+      // por nombre); (2) `p.cityPop`, la población HISTÓRICA de 1444 que seedCities ya guardó de las 319
+      // ciudades de CITIES1444 (Buringh/Bosker/Chandler); (3) modelo por región para el resto.
+      const tabled=CITY_POP[popNormKey(p.name)]??CITY_POP[popNormKey(p.canon||p.name)]; // por nombre localizado o canónico
+      const hist=tabled!=null?tabled:(p.cityPop>0?p.cityPop:null);
+      if(hist!=null)pop+=hist;
       else{
         const jit=0.7+0.6*hashN(p.x,p.y);       // determinista por posición
         const rd=regionDensity(lon,lat);
@@ -1230,5 +1241,5 @@ function sprinkleTerrain(on) {
 }
 
 export {
-  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, seedStrata, rebuildProvinceData, buildDuchies, isDuchyCap, seedCities, renameProvincesHistorical, buildMarketEdges, assignMarkets, ensureMarketTopology, MKT_LINK_KM, kmBetween, roadKey, hasRoad, roadLvl, landPath, generateRoads, sprinkleTerrain
+  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, seedStrata, rebuildProvinceData, buildDuchies, isDuchyCap, seedCities, renameProvincesHistorical, buildMarketEdges, assignMarkets, ensureMarketTopology, MKT_LINK_KM, kmBetween, roadKey, hasRoad, roadLvl, landPath, generateRoads, sprinkleTerrain, CITY_POP, popNormKey, localize
 };
