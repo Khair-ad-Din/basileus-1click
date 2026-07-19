@@ -383,7 +383,7 @@ function renameProvincesHistorical(){
       if(co&&p.owner===co.nation)p.capital=true;         // va aunque la provincia ya tenga nombre
     }
     if(p.named)continue;                                 // se la quedó una mayor
-    p.name=name;p.named=true;used.add(name);
+    p.name=name;p.named=true;used.add(popNormKey(name));
   }
   for(const[owner,pid] of capPrevia)                     // reinos sin ciudad curada: capital intacta
     if(!S.provs.some(p=>p.owner===owner&&p.capital))S.provs[pid].capital=true;
@@ -393,8 +393,8 @@ function renameProvincesHistorical(){
   // coinciden a 0-3 km con la suya, o sea en la misma provincia, que ya quedó nombrada en la capa 1.
   if(typeof CITIES1444!=="undefined")for(const[name,x,y,pop] of CITIES1444){
     const p=provAt(x,y);
-    if(!p||p.named||used.has(name))continue;
-    p.name=name;p.named=true;used.add(name);
+    if(!p||p.named||used.has(popNormKey(name)))continue;
+    p.name=name;p.named=true;used.add(popNormKey(name));
   }
   // CAPA 3 — el resto (rural): el gazetteer moderno de siempre. Respeta las ya nombradas.
   assignRealNames();
@@ -407,8 +407,10 @@ function renameProvincesHistorical(){
 // primero. Las que no tengan ciudad cerca (interiores despoblados) quedan con nombre por
 // sílabas. Se ignora si el gazetteer no está cargado (mantiene el comportamiento antiguo).
 function assignRealNames(){
+  // `used` NORMALIZADO (sin acentos ni mayúsculas): evita duplicados por variante gráfica —
+  // "Perigueux" no se coloca si "Périgueux" ya está usada (Écija/Ecija, Úbeda/Ubeda…).
   const used=new Set();
-  for(const p of S.provs)if(p.named&&p.name)used.add(p.name);
+  for(const p of S.provs)if(p.named&&p.name)used.add(popNormKey(p.name));
   if(typeof PLACES!=="undefined"&&PLACES){
     const CS=32,bw=Math.ceil(MW/CS),bh=Math.ceil(MH/CS);
     const claimed=new Uint8Array(S.provs.length);
@@ -418,7 +420,7 @@ function assignRealNames(){
     for(const p of S.provs)if(!p.named)provCell[((p.y/CS)|0)*bw+((p.x/CS)|0)].push(p.id);
     const R=44,R2=R*R,rc=Math.ceil(R/CS);
     for(const pl of PLACES){
-      const name=pl[0];if(used.has(name))continue;
+      const name=pl[0];if(used.has(popNormKey(name)))continue;
       const x=pl[1],y=pl[2],bx=(x/CS)|0,by=(y/CS)|0;
       let best=-1,bd=R2;
       for(let cy=Math.max(0,by-rc);cy<=Math.min(bh-1,by+rc);cy++)
@@ -428,7 +430,7 @@ function assignRealNames(){
             const p=S.provs[pid],dx=p.x-x,dy=p.y-y,d=dx*dx+dy*dy;
             if(d<bd){bd=d;best=pid}
           }
-      if(best>=0){S.provs[best].name=name;S.provs[best].named=true;claimed[best]=1;used.add(name)}
+      if(best>=0){S.provs[best].name=name;S.provs[best].named=true;claimed[best]=1;used.add(popNormKey(name))}
     }
     // pasada 2 (por provincia): las que sigan sin nombre toman la ciudad libre más cercana en
     // un radio amplio → recoge las provincias rurales lejos de cualquier urbe grande
@@ -442,11 +444,11 @@ function assignRealNames(){
       for(let cy=Math.max(0,by-rcb);cy<=Math.min(bh-1,by+rcb);cy++)
         for(let cx=Math.max(0,bx-rcb);cx<=Math.min(bw-1,bx+rcb);cx++)
           for(const pi of placeCell[cy*bw+cx]){
-            const pl=PLACES[pi];if(used.has(pl[0]))continue;
+            const pl=PLACES[pi];if(used.has(popNormKey(pl[0])))continue;
             const dx=pl[1]-p.x,dy=pl[2]-p.y,d=dx*dx+dy*dy;
             if(d<bd){bd=d;best=pi}
           }
-      if(best>=0){p.name=PLACES[best][0];p.named=true;used.add(PLACES[best][0])}
+      if(best>=0){p.name=PLACES[best][0];p.named=true;used.add(popNormKey(PLACES[best][0]))}
     }
   }
   // relleno: provincias sin ninguna ciudad real cerca toman nombre por sílabas (no "named")

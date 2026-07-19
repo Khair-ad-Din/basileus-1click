@@ -35,9 +35,16 @@ if [ -n "$TESTS" ]; then
     echo "$TESTS" | sed 's/^/   /'
 fi
 
-# Servidor local de Sergio
-if command -v curl >/dev/null 2>&1 && curl -s -o /dev/null -m 1 http://localhost:8123/ 2>/dev/null; then
-    echo "Servidor 8123: vivo -> http://localhost:8123/call-of-war/"
+# Servidor local (SIN CACHÉ: tools/serve.mjs manda no-store; nada de python -m http.server, que cachea
+# y hacía ver versiones viejas al recargar). Se arranca aqui si esta caido.
+if command -v curl >/dev/null 2>&1; then
+    if curl -s -o /dev/null -m 1 http://localhost:8123/ 2>/dev/null; then
+        echo "Servidor 8123: vivo -> http://localhost:8123/call-of-war/ (sin cache si es serve.mjs)"
+    elif command -v node >/dev/null 2>&1; then
+        PROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+        ( cd "$PROOT" && nohup node tools/serve.mjs . 8123 >/dev/null 2>&1 & ) 2>/dev/null
+        echo "Servidor 8123: arrancado sin cache (tools/serve.mjs) -> http://localhost:8123/call-of-war/"
+    fi
 fi
 
 echo "Consejo: /consejo (5 estamentos + arbitro) · /ux (director de UX) · /destilar (poso de sesion)"
