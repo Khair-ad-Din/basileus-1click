@@ -1445,5 +1445,7 @@ export {
   BASICS, TERRAIN_CAT, terrMul, terrCatMul, RES_RAW_CATS,
   MONTH_TICKS, resetTsyLedger, tsyTick, tsyAvail, tsyMonthBal, recFlow, BONUS_BIEN, PROSP_CHANNELS,
   bOff, bCond, effLvl, buildingProfit, buildingOutput, degradeBuildings, sourceableSet, inputsSourceable, inputCoverOf, marketAccess, provFlete,
-  prosperityTick, prospLevel, PROSP_LEVEL_PTS, PROSP_MAX_PTS, CHANNEL_GOODS, NAT_BONUS_PER_LEVEL
+  prosperityTick, prospLevel, PROSP_LEVEL_PTS, PROSP_MAX_PTS, CHANNEL_GOODS, NAT_BONUS_PER_LEVEL,
+  // exports para diagnóstico (tools/diag-paises.mjs): constantes y helpers de producción/consumo por bien
+  RESTYPE_RATE, LUX_NEED, isRawSpecialty, NEED_BASIC, YR_TICKS, TOOL_UP_JOB, alcoholSplit
 };
