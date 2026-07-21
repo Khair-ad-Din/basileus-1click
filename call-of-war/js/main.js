@@ -677,22 +677,32 @@ window.scaleProvPop=function(f){
   refreshEditorPanel();
 };
 function syncMapModeUI(){
-  const cur=S.terrainView?"Terreno":S.popView?"Población":S.resView?"Recursos":S.mktView?"Mercados":S.hubView?"Centros":"Político";
+  const cur=S.terrainView?"Terreno":S.popView?"Población":S.resView?"Recursos":S.mktView?"Mercados":S.hubView?"Centros":S.goodView?"Comercio":"Político";
   const mb=document.getElementById("mapBtn");
   if(mb){mb.textContent="🗺 "+cur;mb.classList.toggle("active",cur!=="Político");}
   const tl=document.getElementById("terrLegend");if(tl)tl.style.display=S.terrainView?"block":"none";
   const pl=document.getElementById("popLegend");if(pl)pl.style.display=S.popView?"block":"none";
   const rl=document.getElementById("resLegend");if(rl)rl.style.display=S.resView?"block":"none";
   const kl=document.getElementById("mktLegend");if(kl)kl.style.display=S.mktView?"block":"none";
+  if(window.refreshGoodLegend)window.refreshGoodLegend(); // leyenda-selector del mapa "Comercio de un bien"
 }
 // vista de mapa: político (null) o "terrain"/"pop"/"res"/"mkt" (excluyentes entre sí)
 window.setMapView=function(mode){
-  S.terrainView=mode==="terrain";S.popView=mode==="pop";S.resView=mode==="res";S.mktView=mode==="mkt";S.hubView=mode==="hub";
+  S.terrainView=mode==="terrain";S.popView=mode==="pop";S.resView=mode==="res";S.mktView=mode==="mkt";S.hubView=mode==="hub";S.goodView=mode==="good";
+  if(mode==="good"&&!S.mapGood)S.mapGood="lana"; // vista "Comercio de un bien": arranca con la lana
+  if(S.goodView&&window.computeGoodMap)window.computeGoodMap(S.mapGood); // precalcula los valores por nación que pinta render
   if(S.mktView||S.hubView)ensureMarketTopology(); // la vista consume p.marketOf/p.hubOf: hay que tenerlos al día
   paintAll();
   syncMapModeUI();
   if(S.editMode)refreshEditorPanel();
 };
+// Drill-down del panel de Mercado: pulsar un bien abre su ficha; la miga vuelve a la lista.
+window.openMktGood=function(g){S.mktGood=g;refreshMercado();};
+window.closeMktGood=function(){S.mktGood=null;refreshMercado();};
+// pinta el mapa por un BIEN y una MÉTRICA (producción / precio / déficit), y cierra el panel para verlo.
+window.showGoodMap=function(g,metric){S.mapGood=g;S.mapMetric=metric||"deficit";const ov=document.getElementById("mercadoOverlay");if(ov)ov.style.display="none";window.setMapView("good");};
+window.setGoodMetric=function(m){S.mapMetric=m;paintAll();syncMapModeUI();};
+window.setMapGood=function(g){S.mapGood=g;if(window.computeGoodMap)window.computeGoodMap(g);paintAll();syncMapModeUI();};
 // wrappers (el panel del editor usa toggleTerrainView para alternar terreno/político)
 window.toggleTerrainView=function(){window.setMapView(S.terrainView?null:"terrain")};
 window.togglePopView=function(){window.setMapView(S.popView?null:"pop")};
@@ -1011,7 +1021,7 @@ document.getElementById("ledgerBtn").addEventListener("click",()=>{refreshLedger
   if(mb&&ml){
     mb.addEventListener("click",e=>{
       e.stopPropagation();
-      if(S.terrainView||S.popView||S.resView||S.mktView||S.hubView){window.setMapView(null);ml.style.display="none";}
+      if(S.terrainView||S.popView||S.resView||S.mktView||S.hubView||S.goodView){window.setMapView(null);ml.style.display="none";}
       else ml.style.display=(ml.style.display==="none"?"block":"none");
     });
     ml.querySelectorAll("div").forEach(d=>d.addEventListener("click",e=>{

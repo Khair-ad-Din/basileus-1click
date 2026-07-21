@@ -1,7 +1,7 @@
 // ui.js
 import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, RES_DESC, RES_ICON, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, WAR_LOCK_HOURS, terrainFx, STRATA, STRATA_INFO, RES_ART, RES_CAT } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildingYield, buildJobs, buildMax, buildSlots, canAfford, costFor, employedIn, foodBalance, foodCap, foodCons, foodFill, harvestMul, subsProd, subsCons, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationEconomy, nationLedger, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, MKT_GOODS, MKT_TRADE, MKT_PRICE, BASICS, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, resetTsyLedger, tsyAvail, tsyMonthBal, BONUS_BIEN, PROSP_CHANNELS, prospLevel, PROSP_LEVEL_PTS, PROSP_MAX_PTS, CHANNEL_GOODS, NAT_BONUS_PER_LEVEL, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, buildingProfit, sourceableSet, inputsSourceable } from "./economy.js";
+import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildingYield, buildJobs, buildMax, buildSlots, canAfford, costFor, employedIn, foodBalance, foodCap, foodCons, foodFill, harvestMul, subsProd, subsCons, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationEconomy, nationLedger, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, MKT_GOODS, MKT_TRADE, MKT_PRICE, BASICS, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, resetTsyLedger, tsyAvail, tsyMonthBal, BONUS_BIEN, PROSP_CHANNELS, prospLevel, PROSP_LEVEL_PTS, PROSP_MAX_PTS, CHANNEL_GOODS, NAT_BONUS_PER_LEVEL, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, buildingProfit, sourceableSet, inputsSourceable, marketAccess, provFlete, inputCoverOf, isRawSpecialty, RESTYPE_RATE, buildingOutput, provProdMul, YR_TICKS, manorOf } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
 import { canvas, clampPan } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
@@ -404,6 +404,15 @@ function refreshProvPanel(){
     const dm=provDefMul(p);
     if(dm>1)s+="<div class='prow'><span>"+uiIcon('defensa')+" Defensa"+iInfo("Multiplicador de defensa en batalla y asedio, por castillo/ciudadela. El terreno multiplica aparte.")+"</span>"+
        statv("+"+Math.round((dm-1)*100)+"%",defBreak(p))+"</div>";
+    // Fase 2: comercio de la provincia — acceso al mercado, flete al centro, portazgo (todo tras la "i"/tooltip)
+    {const acc=Math.round(marketAccess(p)*100),flete=Math.round(provFlete(p)*100),toll=(p.tollIncome||0)*MONTH_TICKS;
+     const plaza=(p.marketOf>=0&&S.provs[p.marketOf])?S.provs[p.marketOf]:null,hub=(p.hubOf>=0&&S.provs[p.hubOf])?S.provs[p.hubOf]:null;
+     const mlab={realengo:"corona",abadengo:"clero",solariego:"noble"}[manorOf(p)]||"señor";
+     const tip="Plaza local: "+(plaza?plaza.name+" ("+Math.round(p.marketKm||0)+" km)":"—")+
+       "\nCentro de comercio: "+(hub?hub.name+" ("+Math.round(p.hubKm||0)+" km)":"—")+
+       "\nAcceso al mercado: "+acc+"%\nFlete al centro: "+flete+"%"+(toll>0.05?"\nPortazgo al "+mlab+": +"+n1(toll)+"🪙/mes":"");
+     s+="<div class='prow'><span>🏪 Comercio"+iInfo("Acceso al mercado: cuánto de lo que produce el campesino llega a venderse (baja con la distancia a la plaza). El flete es el coste de llevar el excedente al centro de comercio; el portazgo, la renta que el señor cobra de ese tránsito.")+"</span>"+
+       statv(acc+"%",tip)+"</div>";}
   }else{
     const blist=Object.keys(BUILDINGS).filter(b=>lvlOf(p,b)>0);
     if(blist.length){
@@ -477,10 +486,13 @@ function buildTilesHTML(p){
         else{const ep=Math.round(buildingProfit(p,b,lvl+1));
           hint="<div style='font-size:10px;color:"+(ep>=0?"#8aa478":"#c9776a")+"'>≈ "+(ep>=0?"+":"−")+fmt(Math.abs(ep))+"🪙/mes "+(lvl>0?"el sig. nivel":"si la construyes")+"</div>";}
       }
+      // Fase 2: cobertura de insumos de una fábrica CONSTRUIDA (por qué rinde menos de lo esperado)
+      let cover="";
+      if(B.inputs&&lvl>0){const cv=inputCoverOf(p,b);if(cv<0.98)cover="<div style='font-size:10px;color:"+(cv<0.6?"#c0563e":"#d0913a")+"'>🏭 insumo "+Math.round(cv*100)+"%</div>";}
       tiles+="<div class='"+cls+"'"+onclick+(off?" style='opacity:.62'":"")+" data-tip=\""+ta(B.desc)+"\">"+
         "<img class='bic' src='assets/buildings/"+b+".png' alt='"+B.label+"' title='"+B.label+"' onerror=\"this.replaceWith(bemoji('"+B.icon+"'))\">"+
         "<div class='th'><span class='nm'>"+B.label+"</span>"+lvBadge+"</div>"+
-        "<div class='ben'>"+benefitHTML(p,b)+jobsHtml+hint+"</div>"+ctrl+
+        "<div class='ben'>"+benefitHTML(p,b)+jobsHtml+hint+cover+"</div>"+ctrl+
         "<div class='foot2'>"+upStr+foot+"</div></div>";
     }
     cats+="<div class='bcat'><div class='lab'>"+label+"</div><div class='btiles'>"+tiles+"</div></div>";
@@ -1484,6 +1496,100 @@ function refreshEstates(){
   body.innerHTML=h;
 }
 // ---- Mercado del reino (ventana propia): comercio de bienes, precios, oferta/demanda interna y exterior ----
+// ---- Geografía de un bien: producción por nación (suma de lo provincial, ADR 0001) + demanda del mercado.
+// Se calcula al PULSAR un bien (O(provincias), no por tick). Equivalente en juego de tools/diag-paises.mjs. ----
+function goodGeography(g){
+  const prod=new Float64Array(NPLAY);
+  const isBasic=BASICS.indexOf(g)>=0, isSpec=isRawSpecialty(g);
+  for(const p of S.provs){const n=p.owner; if(n>=NPLAY||p.wasteland||isOccupied(p))continue;
+    if(isBasic)prod[n]+=subsProd(p,g)*YR_TICKS;
+    if(isSpec&&p.resType===g)prod[n]+=(p.pop||0)*RESTYPE_RATE*terrMul(p,g)*(p.morale/100);
+    for(const b in p.buildings){if(!lvlOf(p,b))continue;const o=buildingOutput(p,b);if(o.g===g&&o.q)prod[n]+=o.q*12;}
+  }
+  const rows=[];
+  for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(!N||!N.alive)continue;
+    const mi=(N.mktInfo&&N.mktInfo[g])||{};
+    rows.push({n,prod:prod[n],cons:(mi.dem||0)*12,net:prod[n]-(mi.dem||0)*12});}
+  return rows;
+}
+// Precalcula, por nación, los valores que el map mode "Comercio de un bien" pinta (render.js los lee de S.gm*):
+// producción, déficit neto y ratio de precio. Se llama al cambiar de bien (no por tick). Evita que render importe economy.
+window.computeGoodMap=function(g){
+  const geo=goodGeography(g);
+  const prodA=new Float64Array(NPLAY),netA=new Float64Array(NPLAY),prA=new Float64Array(NPLAY).fill(1);
+  const ref=MKT_PRICE[g]||1; let maxP=1,maxN=1;
+  for(const r of geo){prodA[r.n]=r.prod;netA[r.n]=r.net;if(r.prod>maxP)maxP=r.prod;if(Math.abs(r.net)>maxN)maxN=Math.abs(r.net);
+    const N=S.nations[r.n];prA[r.n]=((N&&N.mktPrice&&N.mktPrice[g])||ref)/ref;}
+  S.gmProd=prodA;S.gmNet=netA;S.gmPriceR=prA;S.gmMaxP=maxP;S.gmMaxN=maxN;
+};
+// Leyenda-selector del map mode "Comercio de un bien": nombre del bien + pestañas de métrica + picker de iconos.
+window.refreshGoodLegend=function(){
+  const el=document.getElementById("goodLegend"); if(!el)return;
+  if(!S.goodView){el.style.display="none";return;}
+  const g=S.mapGood||"lana", m=S.mapMetric||"deficit";
+  const mchip=(k,lab)=>"<span onclick=\"setGoodMetric('"+k+"')\" style='cursor:pointer;padding:1px 7px;border-radius:4px;font-size:11px;"+(m===k?"background:#3a4550;color:#fff":"color:#9aa3ad")+"'>"+lab+"</span>";
+  const picker=MKT_TRADE.map(x=>"<span onclick=\"setMapGood('"+x+"')\" data-tip=\""+ta(RES_LABEL[x])+"\" style='cursor:pointer;font-size:16px;opacity:"+(x===g?"1":".4")+"'>"+(RES_ICON[x]||"·")+"</span>").join(" ");
+  const scale=m==="prod"
+    ?"<span style='color:#7a828b'>poco</span> <span style='background:linear-gradient(90deg,#3a483a,#6cb05c);width:64px;height:8px;display:inline-block;border-radius:2px;vertical-align:middle'></span> <span style='color:#6cb05c'>mucho</span>"
+    :"<span style='color:var(--neg)'>"+(m==="price"?"caro":"déficit")+"</span> <span style='background:linear-gradient(90deg,#c4563e,#82888e,#6cb05c);width:74px;height:8px;display:inline-block;border-radius:2px;vertical-align:middle'></span> <span style='color:var(--pos)'>"+(m==="price"?"barato":"excedente")+"</span>";
+  el.innerHTML="<b style='font-size:12px'>"+(RES_ICON[g]||"")+" "+RES_LABEL[g]+iInfo("Colorea el mundo por un bien. Producción = cuánto produce cada reino (verde=mucho). Precio/Déficit = por reino (rojo escasea/caro, verde sobra/barato). Cambia el bien con los iconos, la métrica con las pestañas.")+"</b>"+
+    "<div style='margin:4px 0'>"+mchip("prod","Producción")+" "+mchip("price","Precio")+" "+mchip("deficit","Déficit")+"</div>"+
+    "<div style='font-size:10px;margin-bottom:5px'>"+scale+"</div>"+
+    "<div style='display:flex;flex-wrap:wrap;gap:4px;max-width:220px;line-height:1.7'>"+picker+"</div>";
+  el.style.display="block";
+};
+// cadena de producción de un bien (fábrica que lo hace → sus insumos). "" si es materia prima sin cadena.
+function chainStr(g){
+  for(const b in BUILDINGS){const B=BUILDINGS[b];if(B.fx&&B.fx.prodAdd&&B.fx.prodAdd[g]&&B.inputs)
+    return Object.keys(B.inputs).map(k=>(RES_ICON[k]||"")+RES_LABEL[k]).join(" + ")+" → "+(RES_ICON[g]||"")+RES_LABEL[g];}
+  return "";
+}
+// ---- ficha de UN bien: su balance en mi reino (con el PORQUÉ: cobertura) + su geografía mundial (el DÓNDE) ----
+function renderMktGood(body,N,NA,g,nf,n1v){
+  const info=(NA&&NA.mktInfo)||{},mkt=(NA&&NA.mkt)||{},mi=info[g]||{};
+  const price=mi.price!=null?mi.price:MKT_PRICE[g],ref=MKT_PRICE[g],dev=ref>0?Math.round((price/ref-1)*100):0;
+  const pcol=price>ref*1.05?"var(--neg)":(price<ref*0.95?"var(--pos)":"#9aa3ad");
+  const chain=chainStr(g);
+  let h="<div class='tcrumb'><span class='tccl' onclick='closeMktGood()'>🏪 Mercado</span> <span style='color:#5c636b'>▸</span> "+(RES_ICON[g]||"")+" <b>"+RES_LABEL[g]+"</b></div>";
+  // --- En mi reino ---
+  h+="<div class='bsec'>En "+N.name+"</div>";
+  const line=(lab,val,col)=>"<div class='prow'><span>"+lab+"</span><span class='statv' style='color:"+(col||"var(--txt)")+"'>"+val+"</span></div>";
+  h+=line("Precio",n1v(price)+"🪙 <span style='color:#7a828b'>("+(dev>=0?"+":"")+dev+"% vs ref "+ref+")</span>",pcol);
+  h+=line("Stock en el mercado",nf(mkt[g]||0));
+  h+=line("Demanda",nf(mi.dem||0)+" /mes");
+  h+=line("Vendido",nf(mi.sold||0)+" /mes"+(mi.short?" <span style='color:var(--neg)'>⚠ escasea</span>":""),mi.short?"var(--neg)":null);
+  if(mi.exp>1)h+=line("Exporta",nf(mi.exp)+" /mes ↗","var(--pos)");
+  if(mi.imp>1)h+=line("Importa",nf(mi.imp)+" /mes ↙","#d6a15a");
+  // el PORQUÉ: cobertura de insumos (si g lo consumen fábricas de este reino)
+  const cov=NA&&NA.inputCover&&NA.inputCover[g];
+  if(cov!=null){const pc=Math.round(cov*100),cc=cov<0.6?"var(--neg)":cov<0.9?"#d6a15a":"var(--pos)";
+    h+="<div class='prow'><span>Cobertura para las fábricas"+iInfo("Cuánta de la materia prima que las fábricas de tu reino DEMANDAN llega a comprarse. Si baja, esas fábricas producen menos: es el PORQUÉ de una manufactura floja.")+"</span>"+
+      "<span class='statv' style='color:"+cc+"'>"+relFillBar(pc)+" "+pc+"%</span></div>";}
+  if(chain)h+="<div class='prow'><span style='color:#9aa3ad;font-size:11px'>🏭 "+chain+"</span></div>";
+  // --- En el mundo: quién produce (excedente) y quién consume (déficit) ---
+  const geo=goodGeography(g);
+  const prod=geo.filter(r=>r.prod>1).sort((a,b)=>b.prod-a.prod).slice(0,8);
+  const defs=geo.filter(r=>r.net<-1).sort((a,b)=>a.net-b.net).slice(0,8);
+  const chip=n=>"<span class='chip' style='background:"+NATIONS[n].color+"'></span> "+NATIONS[n].name;
+  let TP=0,TC=0;for(const r of geo){TP+=r.prod;TC+=r.cons;}
+  h+="<div class='bsec'>En el mundo</div>";
+  h+="<div style='display:flex;gap:12px'>";
+  h+="<div style='flex:1'><div style='font-size:11px;color:var(--pos);margin-bottom:2px'>Producen (excedente)</div>"+
+    (prod.length?prod.map(r=>"<div class='prow' style='font-size:12px'><span>"+chip(r.n)+"</span><span class='statv pos'>"+nf(r.prod)+"</span></div>").join(""):"<div class='prow'><span class='dim'>—</span></div>")+"</div>";
+  h+="<div style='flex:1'><div style='font-size:11px;color:#d6a15a;margin-bottom:2px'>Consumen (déficit)</div>"+
+    (defs.length?defs.map(r=>"<div class='prow' style='font-size:12px'><span>"+chip(r.n)+"</span><span class='statv neg'>"+nf(-r.net)+"</span></div>").join(""):"<div class='prow'><span class='dim'>—</span></div>")+"</div>";
+  h+="</div>";
+  const ratio=TC>0?TP/TC:9;
+  h+="<div style='text-align:center;font-size:12px;margin:8px 0;color:"+(ratio>1.15?"var(--pos)":ratio<0.85?"var(--neg)":"#9aa3ad")+"'>MUNDIAL: "+nf(TP)+" prod · "+nf(TC)+" cons /año · ratio "+n1v(ratio)+" "+(ratio>1.3?"— raw en excedente, industrializable ✔":ratio<0.85?"— déficit global ⚠":"— equilibrado")+"</div>";
+  // chips que pintan el mapa
+  h+="<div style='display:flex;gap:8px;justify-content:center;margin-top:6px'>"+
+    "<button class='bbtn sm' onclick='showGoodMap(\""+g+"\",\"prod\")'>🗺 Producción</button>"+
+    "<button class='bbtn sm' onclick='showGoodMap(\""+g+"\",\"price\")'>🗺 Precio</button>"+
+    "<button class='bbtn sm' onclick='showGoodMap(\""+g+"\",\"deficit\")'>🗺 Déficit</button></div>";
+  body.innerHTML=h;
+}
+// barra 0..100 reutilizable (misma estética que las barras inline del juego)
+function relFillBar(pc){return "<span style='display:inline-block;width:46px;height:6px;background:#241a14;border-radius:3px;overflow:hidden;vertical-align:middle'><i style='display:block;height:100%;width:"+Math.max(0,Math.min(100,pc))+"%;background:"+(pc<60?"#c0563e":pc<90?"#c98a3a":"#6fae5a")+"'></i></span>";}
 function refreshMercado(){
   const ov=document.getElementById("mercadoOverlay");
   if(!ov||ov.style.display!=="flex")return;
@@ -1493,6 +1599,7 @@ function refreshMercado(){
   const mkt=(NA&&NA.mkt)||{}, info=(NA&&NA.mktInfo)||{};
   const nf=v=>Math.round(v).toLocaleString("es-ES");
   const n1v=v=>Math.round(v*10)/10;
+  if(S.mktGood){renderMktGood(body,N,NA,S.mktGood,nf,n1v);return;} // drill-down: ficha de un bien
   // agregados de comercio (valor = volumen × precio; /mes, se anualiza ×12)
   const vol=S.mktVol||{}; // VOLUMEN físico del mes en curso (producido/vendido/tirado por bien; solo jugador)
   let expVal=0,impVal=0,intVal=0,expVol=0,impVol=0,intVol=0,prodVol=0,discVol=0,discVal=0;
@@ -1501,7 +1608,7 @@ function refreshMercado(){
     expVol+=mi.exp||0; impVol+=mi.imp||0; intVol+=mi.sold||0;
     const vg=vol[g]||{}; prodVol+=vg.prod||0; discVol+=vg.discard||0; discVal+=(vg.discard||0)*pr;}
   const bal=expVal-impVal;
-  let h="<div class='tsyhead'><span class='chip' style='background:"+N.color+"'></span> "+N.name+" · comercio de bienes</div>";
+  let h="<div class='tsyhead'><span class='chip' style='background:"+N.color+"'></span> "+N.name+" · comercio de bienes"+iInfo("Los burgueses compran los bienes donde están baratos (excedente) y los venden donde están caros (déficit): el comercio hace CONVERGER los precios entre reinos. Pulsa un bien para ver su balance y su geografía mundial.")+"</div>";
   // tarjetas resumen
   const card=(lab,val,sub,col)=>"<div style='flex:1;min-width:120px;background:#20252b;border:1px solid #2f363d;border-radius:7px;padding:8px 10px'>"+
     "<div style='font-size:10px;color:#7a828b;text-transform:uppercase;letter-spacing:.4px'>"+lab+"</div>"+
@@ -1529,7 +1636,8 @@ function refreshMercado(){
     const impTxt=(mi.imp>1)?"<span style='color:#d6a15a'>↙"+nf(mi.imp)+"</span>":"<span style='color:#5a6470'>—</span>";
     const vg=vol[g]||{}, prodTxt=(vg.prod>1)?nf(vg.prod):"<span style='color:#5a6470'>—</span>";
     const discTxt=(vg.discard>1)?"<span style='color:var(--neg)'>"+nf(vg.discard)+"</span>":"<span style='color:#5a6470'>—</span>";
-    return "<div style='display:flex;align-items:center;font-size:12px;padding:2px 1px'>"+
+    const chn=chainStr(g);
+    return "<div onclick=\"openMktGood('"+g+"')\" style='display:flex;align-items:center;font-size:12px;padding:2px 1px;cursor:pointer' onmouseover=\"this.style.background='#20252b'\" onmouseout=\"this.style.background=''\""+(chn?" data-tiph=\""+ta("🏭 "+chn)+"\"":"")+">"+
       "<span style='flex:1'>"+(RES_ICON[g]||"")+" "+RES_LABEL[g]+"</span>"+
       "<span style='width:60px;text-align:right;color:"+pcol+"' title='ref. "+ref+"🪙 · "+(dev>=0?"+":"")+dev+"%'>"+n1v(price)+"🪙</span>"+
       "<span style='width:58px;text-align:right;color:var(--txt)'>"+nf(mkt[g]||0)+"</span>"+
@@ -1553,8 +1661,8 @@ function refreshMercado(){
   }
   h+="<div style='display:flex;font-size:10px;color:#7a828b;gap:14px;flex-wrap:wrap;margin-top:10px;justify-content:center'>"+
     "<span>precio en 🪙 (color: rojo caro / verde barato vs. referencia)</span><span>demanda/interno en unidades/mes</span>"+
-    "<span><span style='color:var(--pos)'>↗</span> exporta a otros reinos · <span style='color:#d6a15a'>↙</span> importa (u/mes)</span></div>";
-  h+="<p style='color:#7a828b;font-size:11px;margin-top:8px;text-align:center'>Los burgueses compran los bienes donde están baratos (excedente) y los venden donde están caros (déficit): el comercio hace CONVERGER los precios entre reinos.</p>";
+    "<span><span style='color:var(--pos)'>↗</span> exporta a otros reinos · <span style='color:#d6a15a'>↙</span> importa (u/mes)</span>"+
+    "<span style='color:var(--title)'>↕ pulsa un bien para su ficha</span></div>";
   body.innerHTML=h;
 }
 // ---- Cortes · Hacienda Real: ajustar los impuestos/gravámenes de la corona ----

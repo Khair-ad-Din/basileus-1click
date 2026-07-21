@@ -56,7 +56,7 @@
   .bbtn.red{background:#6a3a3a;border-color:#8a5050}
   .bbtn:hover:not(:disabled){filter:brightness(1.15)}
   #log{position:fixed;left:10px;bottom:282px;width:360px;z-index:14;font-size:12px;pointer-events:none}
-  #terrLegend,#popLegend,#resLegend,#mktLegend{position:fixed;right:10px;bottom:282px;width:310px;z-index:14;font-size:11px;
+  #terrLegend,#popLegend,#resLegend,#mktLegend,#goodLegend{position:fixed;right:10px;bottom:282px;width:310px;z-index:14;font-size:11px;
     background:rgba(33,38,44,.96);border:1px solid #3a4047;border-radius:6px;padding:10px;color:#d8d4c8}
   #log div{background:rgba(20,24,28,.78);padding:3px 8px;border-radius:4px;margin-top:3px;color:#cfc9ba}
   .overlay{position:fixed;inset:0;background:rgba(12,15,18,.88);z-index:50;display:flex;align-items:center;justify-content:center}
@@ -397,6 +397,7 @@
       <div data-m="res">Recursos</div>
       <div data-m="mkt">Mercados</div>
       <div data-m="hub">Centros</div>
+      <div data-m="good">Comercio de un bien</div>
     </div>
   </span>
   <button class="uiBtn" id="graphBtn" title="Malla de conexiones y posición real de las unidades">Conexiones</button>
@@ -407,6 +408,7 @@
 <div id="popLegend" style="display:none"></div>
 <div id="resLegend" style="display:none"></div>
 <div id="mktLegend" style="display:none"></div>
+<div id="goodLegend" style="display:none"></div>
 
 <div id="realmMenu"></div>
 
