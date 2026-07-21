@@ -5,6 +5,42 @@ Acordado con Sergio el 2026-07-18. Evoluciona el mercado provincial (ADR 0001, v
 propagación por dificultad de movimiento** de EU5 / Project Caesar. Continúa la fase 4 del
 [roadmap del mapa nuevo](mapa-nuevo-roadmap.md).
 
+## ⭐ FASE 2 (EL FLUJO — EL DINERO) — ARRANCA AQUÍ (nueva sesión, 2026-07-21)
+
+**Estado:** la TOPOLOGÍA del mercado está COMPLETA y commiteada (`af05dd9`, rama `mapa-nuevo`): Capa 1
+(`marketOf`/`marketKm`, grano local) y Capa 2 (`hubOf`/`hubKm`, centros de comercio con orografía). 57
+centros. **Nada de esto mueve dinero todavía** — solo lo lee la vista de mapa. La Fase 2 es hacer que
+mueva dinero. Todo el detalle de diseño está en **"Aparcado con fecha (FASE 2)"** más abajo en este doc.
+
+**Objetivo:** que `hubOf`/`hubKm` (y `marketOf`/`marketKm`) afecten al bolsillo. Orden sugerido:
+1. **ACCESO 0..1 por provincia** (el knob del flujo, no de la topología). `access = f(hubKm/marketKm)`
+   que decae con la distancia → cuánto de la producción entra al mercado. **Es el ANTÍDOTO medido esta
+   sesión** para los mega-racimos del Este: sin él, Moscú/Reval nominalmente tocan a 1.300 km. Calibrar
+   para que llegue a ~0 sobre los **200-300 km** → la cola oriental se silencia sola SIN tocar topología.
+2. **FLETE sobre el EXCEDENTE MONETIZADO** (no sobre `flujoBase` bruto — no cobrar peaje por el grano que
+   el campesino se come). Coste = `km × peso/precio` con el terreno multiplicando (reconectar
+   `tradeCost`/`TRADE_BULK`, ya escrito), no coste plano (grano ≠ paño). **CLAMP obligatorio** (suelo/techo):
+   a 700 km el flete supera el valor del grano → excedente negativo / divisiones por casi-cero. Es el gemelo
+   del error `TRADE_COST=0` por el otro extremo.
+3. **ARBITRAJE entre centros** (los `hubOf` son los nodos de precio de largo alcance; `marketOf` el precio
+   local del grano). El flete NO se evapora: fracción → renta señorial (`manorOf`/`bOwnerOf`: abadengo→clero,
+   solariego→noble, **nunca la corona**). Aduana (`almojOf`) la cobra el ORIGEN.
+
+**Decisiones YA cerradas (no re-litigar):** la frontera no confina (peaje, no pasaporte); Market Attraction
+con **TECHO relativo** (`sqrt(pop)`, innegociable o los gigantes del Este se desbocan); ríos con DOS números
+(descuento de velocidad + suelo de peaje, **nunca cero** — el Rin tenía 79 portazgos); Sund = arista cara;
+fundar mercado es mando del jugador. Todo desarrollado abajo.
+
+**Invariante que NO se rompe:** `ledger==economy` (el mercado nuevo no debe descuadrar la contabilidad).
+Verificar con el arnés (`tools/sim-economy.mjs`, `tools/market-topology.mjs`) y con `startEconLog()` en la
+partida real de Sergio (ver [[basileus-econlog-y-calentamiento]] — ojo al calentamiento: los primeros meses
+no se comercia nada porque la despensa se llena primero, y PARECE un fallo).
+
+**Riesgo transversal:** para ver el flujo de verdad hace falta una **IA de nación** decente (comercio,
+fundación de mercados). Anotado como trabajo mayor aparte.
+
+---
+
 ## Secuencia acordada (importante: este es el ORDEN)
 1. **Gazetteer**: nombres históricos de las provincias (hoy provisionales/silábicos).
 2. **Verificar pops**: que la población se ubique de forma histórica, **sobre todo en las ciudades
@@ -30,7 +66,7 @@ colinas/pantano +25% · montaña +50%**; vegetación **desierto/vega +5% · arbo
 del jugador, habilitada si la localización es **urbana** o está **mal servida (<25% de acceso)**.
 Fuentes: Tinto Talks #10 (mercados) y #47 (Market Attraction, Trade Range); wiki EU5 Control/Market.
 
-## CAPA 1 (grano local) — DICTAMEN DEL CONSEJO (2026-07-20/21) — EMPEZAR POR AQUÍ la próxima sesión
+## CAPA 1 (grano local) — DICTAMEN DEL CONSEJO (2026-07-20/21) — ✅ HECHO (commit `af05dd9`)
 
 Sergio vio la Capa 1 (mercado local del grano, `assignMarkets`→`marketOf`) como un **mosaico ilegible** y
 propuso simplificarla: (A) grano difunde a adyacentes cada mes, o (B) plaza local = **capital del ducado**.

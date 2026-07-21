@@ -15,3 +15,7 @@ tools/*.jsonl.*
 
 # imagenes de previsualizacion del mapa nuevo (se regeneran; no van al repo)
 _mapa_nuevo/
+
+# backups que dejan los generadores (gen-cities1444/gen-pops crean .bak antes de escribir).
+# Son una red de seguridad local, no codigo: no van al repo.
+*.bak
