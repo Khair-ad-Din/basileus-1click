@@ -45,8 +45,7 @@ S.provs=snap.provs.map((a,i)=>({id:i,name:a[0],x:a[1],y:a[2],country:0,owner:a[3
   named:!!a[4],coastal:false,morale:75,urban:!!a[5],capital:!!a[6],
   terrain:(a[7]!=null&&TERRAIN_KEYS[a[7]])||null,wasteland:a[8]!=null?!!a[8]:null,pop:a[9]!=null?a[9]:null,
   buildings:newBuildings(),buildQueue:[],recruitQueue:[]}));
-mg.rebuildProvinceData();mg.assignTerrain();mg.assignResources();
-mg.seedCities(); // ciudades reales de 1444 (igual que loadProvMap); va ANTES de assignPopulation
+mg.rebuildProvinceData();mg.seedCities();mg.assignTerrain();mg.assignResources(); // ORDEN del juego (mapgen): seedCities pone urban ANTES de assignResources, o las manufacturas (resType urbano) NO se siembran
 mg.assignPopulation();
 for(const p of S.provs)if(p.wasteland){p.owner=NEUTRAL;p.capital=false;p.urban=false}
 

@@ -637,6 +637,12 @@ const RES_SPEC={
   bronce:{z:[[49,50,10.8,11.6],[50.8,51.5,4.2,5],[45,46,8.5,9.6]],urban:true},
   armas:{z:[[45,46,8.5,10.5],[45.3,45.9,10,10.6],[39.5,41,-4.5,-3.5],[50.8,51.4,6.8,7.5]],urban:true},
   carbon:{z:[[45,66,-6,55]],terr:["bosque"]}, // carboneras: cualquier bosque de Europa
+  // --- manufacturas de los bienes añadidos 2026-07-21 (geografía del cronista) → siembran su fábrica al arrancar ---
+  herramientas:{z:[[50.8,51.5,6.5,7.6],[49.2,49.8,10.6,11.6],[45.2,45.8,8.8,9.7],[50.2,50.9,4.9,6.1],[42.9,43.5,-3.2,-1.9]],urban:true}, // Solingen, Núremberg, Milán, Lieja, País Vasco
+  vidrio:{z:[[45.2,45.6,12.0,12.6],[48.8,50.2,12.5,15.5],[48.5,49.5,-0.5,1.8],[48.3,49.2,5.8,7.0]],urban:true}, // Murano/Venecia (lujo) + vidrio forestal: Bohemia, Normandía, Lorena
+  cerveza:{z:[[52.5,54.5,7,13],[51.5,53,3.5,7],[51,54,-3,1]],urban:true}, // Hamburgo/Bremen, Holanda, Inglaterra (el eje cervecero del Norte)
+  ceramica:{z:[[39.2,39.8,-0.7,0.0],[44.0,44.5,11.6,12.2],[42.5,43.2,12.0,12.8]],urban:true}, // loza dorada de Manises (Valencia) + maiólica de Faenza/Deruta
+  papel:{z:[[43.0,43.6,12.6,13.3],[44.5,45.5,7.5,9.5],[49.3,49.7,10.9,11.5]],urban:true}, // Fabriano (Italia), Piamonte/Génova, Núremberg
 };
 function resTerrOK(spec,p){
   if(spec.coast)return !!p.coastal;
