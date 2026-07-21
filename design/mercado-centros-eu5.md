@@ -5,39 +5,57 @@ Acordado con Sergio el 2026-07-18. Evoluciona el mercado provincial (ADR 0001, v
 propagación por dificultad de movimiento** de EU5 / Project Caesar. Continúa la fase 4 del
 [roadmap del mapa nuevo](mapa-nuevo-roadmap.md).
 
-## ⭐ FASE 2 (EL FLUJO — EL DINERO) — ARRANCA AQUÍ (nueva sesión, 2026-07-21)
+## ⭐ FASE 2 (EL FLUJO — EL DINERO) — IMPLEMENTADA, SIN CALIBRAR EN REAL (2026-07-21)
 
-**Estado:** la TOPOLOGÍA del mercado está COMPLETA y commiteada (`af05dd9`, rama `mapa-nuevo`): Capa 1
-(`marketOf`/`marketKm`, grano local) y Capa 2 (`hubOf`/`hubKm`, centros de comercio con orografía). 57
-centros. **Nada de esto mueve dinero todavía** — solo lo lee la vista de mapa. La Fase 2 es hacer que
-mueva dinero. Todo el detalle de diseño está en **"Aparcado con fecha (FASE 2)"** más abajo en este doc.
+**Estado:** las 5 decisiones del consejo (deliberado 2026-07-21, dictamen abajo) están ESCRITAS en
+`economy.js` y VERIFICADAS con arnés (`scratchpad/verify-cover.mjs`): **invariante `ledger==economy`
+intacto en frío y tras simular** (Δ<1e-6, 190 naciones), **sin NaN**. FALTA la CALIBRACIÓN en la partida
+real de Sergio (`startEconLog`). NADA COMMITEADO aún. Precede: topología commiteada `af05dd9` (Capa 1
+`marketOf`/`marketKm`, Capa 2 `hubOf`/`hubKm`, 57 centros).
 
-**Objetivo:** que `hubOf`/`hubKm` (y `marketOf`/`marketKm`) afecten al bolsillo. Orden sugerido:
-1. **ACCESO 0..1 por provincia** (el knob del flujo, no de la topología). `access = f(hubKm/marketKm)`
-   que decae con la distancia → cuánto de la producción entra al mercado. **Es el ANTÍDOTO medido esta
-   sesión** para los mega-racimos del Este: sin él, Moscú/Reval nominalmente tocan a 1.300 km. Calibrar
-   para que llegue a ~0 sobre los **200-300 km** → la cola oriental se silencia sola SIN tocar topología.
-2. **FLETE sobre el EXCEDENTE MONETIZADO** (no sobre `flujoBase` bruto — no cobrar peaje por el grano que
-   el campesino se come). Coste = `km × peso/precio` con el terreno multiplicando (reconectar
-   `tradeCost`/`TRADE_BULK`, ya escrito), no coste plano (grano ≠ paño). **CLAMP obligatorio** (suelo/techo):
-   a 700 km el flete supera el valor del grano → excedente negativo / divisiones por casi-cero. Es el gemelo
-   del error `TRADE_COST=0` por el otro extremo.
-3. **ARBITRAJE entre centros** (los `hubOf` son los nodos de precio de largo alcance; `marketOf` el precio
-   local del grano). El flete NO se evapora: fracción → renta señorial (`manorOf`/`bOwnerOf`: abadengo→clero,
-   solariego→noble, **nunca la corona**). Aduana (`almojOf`) la cobra el ORIGEN.
+**Lo implementado (5 decisiones, en este orden):**
+1. **COBERTURA DE INSUMOS (prerrequisito que nadie vio salvo el artesano).** Antes `prodAdd` era
+   INCONDICIONAL: el telar tejía paño existiera o no la lana comprada, así que estrangular la materia prima
+   no se notaba. Ahora `prodAdd` × `inputCoverOf` (= `fbuy/fneed` suavizado EMA en `N.inputCover`, min sobre
+   los inputs de la cadena). Aplicado en los 3 espejos (`provEconomyByOwner`/`provBreakdown`/`nationLedger`)
+   + `buildingYield`. **Sin esto la Fase 2 no se puede medir.** Verificado: la cadena YA puede fallar.
+2. **ACCESO 0..1 sobre `marketKm`** (NO `hubKm` — medir contra los 57 hubs hundiría la Europa rural normal;
+   el campesino vendía en la plaza local, malla densa). Smoothstep pleno ≤`ACCESS_NEAR`=60 km → suelo
+   `ACCESS_FLOOR`=0.10 en `ACCESS_FAR`=280 km. Gatea `campCash` + lo que el campesino vierte a `N.mkt`
+   (grano sobrante, básicos no-grano, materia prima regional); EXENTOS los de largo alcance (`ACCESS_EXEMPT`:
+   pieles/ámbar/alumbre/tinte/sedacruda/seda/raros). NO toca subsistencia/despensa/hambruna ni extracción
+   feudal (decisión cerrada de Sergio). **Medido: mediana 0.81, 27% pleno; las de menor acceso son fiordos
+   escandinavos a >500 km — periferia genuina, NO Francia/Castilla.**
+3. **RE-ANCLAJE del arbitraje** (`capKm`/`tradeCost`): la distancia internacional sale del `hubOf` de la
+   capital (centro de comercio real: Brujas/Danzig no eran capitales — de Roover), no de la capital política.
+   Barato, sin estado nuevo, sin tocar `N.mkt`. (La reescritura completa a mercado-por-hub sigue APARCADA.)
+4. **FLETE sobre el excedente monetizado** (`provFlete`): coste = `TRADE_KM × hubKm × peso/precio` del grano,
+   sin descuento marítimo (acopio terrestre; hubKm ya lleva la orografía dentro). CLAMP `FLETE_MAX`=0.85. El
+   GRUESO evapora (carretero/merma). **Medido: mediana 0.20; el interior profundo a ~1300 km del hub topa a
+   0.85 → su grano no compensa moverlo (esto DESINTEGRA el Este, no el acceso).**
+5. **PORTAZGO** = `TOLL_FRAC`=15% del flete al señor de ORIGEN vía `manorOf` (abadengo→clero, solariego→
+   noble, realengo→CORONA — **SIN excepción "nunca corona"**, mercader#2). Anotado en `p.tollIncome` por
+   provincia (semilla de "señores con tierra"). El de la corona es ingreso VARIABLE (como la alcábala:
+   `N.tollRate`→`S.tsyAlc`, fuera del ledger fijo → no rompe el invariante). Campo `toll` en el econlog.
 
-**Decisiones YA cerradas (no re-litigar):** la frontera no confina (peaje, no pasaporte); Market Attraction
-con **TECHO relativo** (`sqrt(pop)`, innegociable o los gigantes del Este se desbocan); ríos con DOS números
-(descuento de velocidad + suelo de peaje, **nunca cero** — el Rin tenía 79 portazgos); Sund = arista cara;
-fundar mercado es mando del jugador. Todo desarrollado abajo.
+**REENCUADRE clave (materia prima corrigió la expectativa):** el plan esperaba que el ACCESO fuera el
+antídoto del Este. Pero como en la recon de pops sembramos plazas propias en el Este (entrepôts de 25k), los
+rusos tienen mercado LOCAL → acceso decente (correcto: comerciaban local). Lo ahistórico es su grano fluyendo
+al mercado OCCIDENTAL, y eso lo frena el FLETE (decisión 4) + el re-anclaje (3). **Acceso silencia la
+periferia sin mercado (Escandinavia); flete+re-anclaje desintegran el Este del Oeste. Capas separadas
+(marketKm vs hubKm) → sin doble penalización (campesino#2).**
 
-**Invariante que NO se rompe:** `ledger==economy` (el mercado nuevo no debe descuadrar la contabilidad).
-Verificar con el arnés (`tools/sim-economy.mjs`, `tools/market-topology.mjs`) y con `startEconLog()` en la
-partida real de Sergio (ver [[basileus-econlog-y-calentamiento]] — ojo al calentamiento: los primeros meses
-no se comercia nada porque la despensa se llena primero, y PARECE un fallo).
+**PENDIENTE (calibración de Sergio en local con `startEconLog` + fábricas reales):**
+- **Cobertura ~0 con fábricas UNIFORMES** (arnés siembra telar en las 6.000 prov; irreal). El mecanismo es
+  correcto (spread 0→1, no bug), pero el nivel depende de colocación de fábrica vs `RESTYPE_RATE` vs
+  intensidad de `B.inputs`. Se calibra al fijar CUÁNTAS fábricas y DÓNDE arranca la partida (decisión de
+  Sergio 2026-07-21: "luego calibramos... lo mismo con extracción de recursos").
+- Perillas de acceso (`ACCESS_NEAR/FAR/FLOOR`; p25=0.19 quizá estrangula de más) y flete (`FLETE_MAX`,
+  `TRADE_KM` terrestre) y portazgo (`TOLL_FRAC`).
 
-**Riesgo transversal:** para ver el flujo de verdad hace falta una **IA de nación** decente (comercio,
-fundación de mercados). Anotado como trabajo mayor aparte.
+**Invariante:** `ledger==economy` verificado (el acceso/flete/portazgo solo tocan `sWealth`/`N.mkt`/ingreso
+variable, nunca el tesoro fijo). Ojo al calentamiento del econlog ([[basileus-econlog-y-calentamiento]]).
+**Riesgo transversal:** para ver el flujo hace falta una IA de nación decente. Trabajo mayor aparte.
 
 ---
 
@@ -165,13 +183,22 @@ centro**.
 4. **Orografía reusa `TERRAINS[t].mov`** (ver B; arreglar meseta).
 5. **Icono distinto centro ≠ villa** (sin texto, regla de UI).
 
-**Aparcado con fecha (FASE 2 — cuando se enganche el flujo):**
-- El **flete NO se evapora**: una fracción del coste de distancia → **renta señorial** vía
-  `manorOf`/`bOwnerOf` (abadengo→clero, solariego→noble, **nunca la corona**). El diezmo grueso es
-  grano físico que alimenta la oferta hacia el centro (clero).
-- El coste de terreno multiplica `km×peso/precio` (reconectar `tradeCost`/`TRADE_BULK`, ya escrito), no
-  coste plano (grano ≠ paño).
+**Aparcado con fecha (FASE 2) — ⚠️ REVISADO por el consejo 2026-07-21 (ver dictamen arriba):**
+- El flete: el consejo lo CORRIGIÓ. El **grueso EVAPORA** (coste de transporte: carretero, bestias, merma
+  — la banalidad inglesa murió c.1400, cronista C); solo una fracción PEQUEÑA (`TOLL_FRAC`~15%, PARÁMETRO
+  no dato) es **portazgo** del señor de ORIGEN vía `manorOf`. **Se ELIMINA el "nunca corona"** (mercader#2:
+  el portazgo sigue `manorOf`, realengo→corona incluido, o se contradice `manorOf`). ~~El diezmo grueso
+  alimenta la oferta hacia el centro~~ → FRASE RETIRADA (cronista G: el diezmo grueso se apartaba en gavilla
+  en el campo, ANTES de la venta; NUNCA dependió del mercado — no mezclar con el flete).
+- El coste de terreno multiplica `km×peso/precio` (`tradeCost`/`TRADE_BULK`) — HECHO en `provFlete` (hubKm
+  ya lleva la orografía). Clamp `FLETE_MAX`=0.85 (ancla: coste TOTAL de ruta sal Portugal→Brujas; el "85%"
+  del mercader era coste de ruta, NO peaje — cronista D).
 - **Aduana** (`almojOf`) la cobra el lado de **ORIGEN**.
+- **Báltico 1444**: el bien eclesiástico de larga distancia es **CERA**, no grano (el grano báltico a
+  Occidente es s. XVI+, nobleza polaca — cronista F). Solo flavor.
+- **APARCADO aún**: mercado-por-hub completo (precio regional real, estado nuevo por hub — 🔴); lotería
+  ~17% abadengo del flete rural + `granja`→`ESTATE_BUILDS.clero` (clero#2/#5, junto con `MANOR_RENT`); la
+  fábrica paga flete por su propio `hubKm` (artesano#2, refinamiento tras calibrar la cobertura).
 - **RÍOS**: hueco prioritario (más que el mar para el grano interior: Rin, Loira, Vístula, Danubio).
   **Dos números obligatorios**: descuento de velocidad + **suelo de peaje** (el Rin tenía 79 estaciones
   de portazgo) — **nunca cero** (no repetir el error `TRADE_COST=0`).
