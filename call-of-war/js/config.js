@@ -188,6 +188,12 @@ const NEW_GOODS=[
   ["ganado","Ganado","Gan","🐄",1.2,false,"Reses en pie, materia del cuero y la carne. Hungría, Balcanes, Irlanda, Dinamarca, Magreb."],
   ["cera","Cera","Cer","🕯️",2.5,false,"Cera de abeja para las velas de iglesia y los sellos. Rusia, Polonia, Báltico, Magreb."],
   ["ambar","Ámbar","Amb","🟡",5.0,false,"Resina fósil para rosarios y joyas. Costa del Báltico (Prusia)."],
+  // --- Bienes añadidos 2026-07-21 (consejo + cronista): tapan huecos de la vida material de 1444 ---
+  ["herramientas","Herramientas","Her","🔨",3.5,false,"Reja, hoz, hacha, clavos y herraduras: el hierro trabajado que toda labranza e industria necesita. Solingen, Núremberg, Milán, Lieja, País Vasco."],
+  ["vidrio","Vidrio","Vid","🪟",4.0,false,"Vidrio de ventana y vasija, del vidrio forestal del norte (Bohemia, Alemania, Normandía) al cristallo de lujo de Murano."],
+  ["cerveza","Cerveza","Cev","🍺",1.6,false,"La bebida diaria del Norte, como el vino en el Sur. De la malta del grano; el gran export hanseático es de Hamburgo y las villas holandesas."],
+  ["ceramica","Cerámica","Crm","🏺",2.0,false,"Loza y vasija de barro cocido. La común es local; el lujo es la loza dorada de Manises (Valencia) y la maiólica italiana."],
+  ["papel","Papel","Pap","📜",4.0,false,"Hoja de trapo de lino para cancillerías, universidades y mercaderes. La industria despega en Fabriano justo antes de la imprenta."],
 ];
 for(const[k,label,short,icon,price,strat,desc]of NEW_GOODS){
   RES_LABEL[k]=label; RES_SHORT[k]=short; RES_ICON[k]=icon; RES_DESC[k]=desc;
@@ -228,6 +234,12 @@ const NEW_BLDGS=[
   ["almazara","Almazara","🫙","aceite",{aceituna:0.7},500],
   ["ingenio","Ingenio azucarero","🍬","azucar",{cana:0.7},550],
   ["curtiduria","Curtiduría","👞","cuero",{ganado:0.5},450],
+  // --- cadenas de los bienes añadidos 2026-07-21 (materia prima abstraída donde toca, cronista) ---
+  ["herreria","Herrería","🔨","herramientas",{metal:0.5,carbon:0.3},450],   // hierro trabajado + fuel
+  ["vidrieria","Vidriería","🪟","vidrio",{materiales:0.6},450],             // madera = fuel dominante (~200:1) Y potasa (cronista): un solo input de madera
+  ["cerveceria","Cervecería","🍺","cerveza",{comida:0.6},450],             // malta del grano (lúpulo abstraído)
+  ["alfar","Alfar","🏺","ceramica",{materiales:0.4},400],                   // barro ubicuo (abstraído) + fuel de madera
+  ["molinoPapel","Molino de papel","📜","papel",{lino:0.5},400],           // trapo de lino + fuerza hidráulica
 ];
 for(const[k,label,icon,prod,inputs,jobs]of NEW_BLDGS){
   const B={label,cat:"eco",icon,max:3,time:2880,cost:{materiales:500,dinero:300},
@@ -255,6 +267,7 @@ const RES_CAT={
   pescado:"mar",sal:"mar",ambar:"mar",
   pano:"manufactura",lienzo:"manufactura",seda:"manufactura",fustan:"manufactura",aceite:"manufactura",
   azucar:"manufactura",acero:"manufactura",bronce:"manufactura",armas:"manufactura",vino:"manufactura",cuero:"manufactura",
+  herramientas:"manufactura",vidrio:"manufactura",cerveza:"manufactura",ceramica:"manufactura",papel:"manufactura",
   raros:"comercio", plata:"moneda",oro:"moneda",dinero:"moneda",
 };
 const RES_RAW_CATS=["cereal","cultivo","ganado","bosque","extractivo","mar"]; // categorías que produce el CAMPO por terreno

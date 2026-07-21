@@ -37,7 +37,8 @@ S.mktDirty=true;mg.ensureMarketTopology(); // Fase 2: poblar marketOf/marketKm/h
 S.nations=NATIONS.map((n,i)=>({idx:i,res:Object.fromEntries(RES_KEYS.map(k=>[k,START_STOCK[k]||0])),
   ai:true,capital:-1,alive:!n.neutral,startProvs:0}));
 const BUILD=+(process.argv[2]||3); // nivel de edificios económicos UNIFORME (para que HAYA fábricas con cadenas)
-const ECO=["granja","aserradero","cantera","mina","mercado","gremio","templo","almacen","telar","sastre","curtiduria","fundicion"];
+const ECO=["granja","aserradero","cantera","mina","mercado","gremio","templo","almacen","telar","sastre","curtiduria","fundicion",
+  "herreria","vidrieria","cerveceria","alfar","molinoPapel","carbonera","dehesa","majada"]; // + cadenas y materias de los bienes nuevos
 for(let n=0;n<NPLAY;n++){let cap=S.provs.find(p=>p.owner===n&&p.capital)||S.provs.find(p=>p.owner===n);
   if(!cap){S.nations[n].alive=false;continue}
   S.nations[n].capital=cap.id;cap.morale=85;cap.buildings.cuartel=1;
@@ -112,3 +113,17 @@ if(fl.length){const q=p=>fl[Math.floor(p*(fl.length-1))];
 // (6) portazgo
 let tollN=0,tollP=0;for(const p of S.provs)if(p.tollIncome){tollN++;tollP+=p.tollIncome}
 console.log(`  provincias generando portazgo: ${tollN} · portazgo total/tick: ${tollP.toExponential(2)}`);
+
+// (7) bienes NUEVOS 2026-07-21: ¿se producen y se consumen? (precio actual vs referencia; sold/mes; inv). Media entre naciones vivas.
+const NEW=["herramientas","vidrio","cerveza","ceramica","papel"];
+console.log("\n  BIENES NUEVOS (media naciones vivas):");
+for(const g of NEW){let np=0,pr=0,sold=0,inv=0,dem=0;
+  for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(!N||!N.alive)continue;np++;
+    pr+=(N.mktPrice&&N.mktPrice[g])||0; const mi=(N.mktInfo&&N.mktInfo[g])||{};
+    sold+=mi.sold||0; inv+=(N.mkt&&N.mkt[g])||0; dem+=mi.dem||0;}
+  if(np){const ref=cfg.MKT_PRICE?cfg.MKT_PRICE[g]:0;
+    console.log(`    ${g.padEnd(12)} precio≈${(pr/np).toFixed(2)}  vendido/mes≈${Math.round(sold/np)}  demanda/mes≈${Math.round(dem/np)}  inv≈${Math.round(inv/np)}`);}}
+// cerveza vs vino por latitud: ¿un reino norteño bebe cerveza y uno sureño vino?
+function alcOf(name){const i=NATIONS.findIndex(x=>x.name===name);if(i<0)return null;const N=S.nations[i];if(!N||!N.alive)return null;
+  const mi=N.mktInfo||{};return {cerv:Math.round((mi.cerveza||{}).sold||0),vino:Math.round((mi.vino||{}).sold||0)};}
+for(const nm of ["England","Denmark","Castile","Aragon","Naples"]){const a=alcOf(nm);if(a)console.log(`    [${nm}] cerveza/mes=${a.cerv} vino/mes=${a.vino}`);}

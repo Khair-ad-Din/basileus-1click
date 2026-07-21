@@ -4,7 +4,7 @@ import { S } from "./state.js";
 // El comercio deja de ser un pool GLOBAL: cada par de reinos tiene su geografía y su política.
 // kmBetween es la MISMA haversine que ya usan las marchas de ejércitos (sim.js) — no hay geometría nueva.
 // Sin ciclo de imports: mapgen.js y diplomacy.js solo importan de config.js y state.js.
-import { kmBetween } from "./mapgen.js";
+import { kmBetween, pxToLonLat } from "./mapgen.js";
 import { isEmbargoed, atWarPair } from "./diplomacy.js";
 
 // ---- Ocupación (estilo EU4): la provincia sigue siendo de iure de su dueño (p.owner) pero
@@ -221,10 +221,12 @@ const LUX_NEED={
   // se iba en mejor dieta (carne/lácteos/cerveza) y en manufacturas del artesano (paño/lino/cuero/hierro), NO en ahorro. El
   // peso está en las MANUFACTURAS (drenan hacia el burgués) + carne (elástica: el rico come mucha más). Escala con la riqueza
   // vía sobreconsumo (ver over[k]×OVER_ELAST). Se calibra junto a CAMP_CASH: cesta grande + grifo pequeño → ahorro ≈ 0.
-  campesino:{pano:5.0*NPC,vino:3.5*NPC,sal:4.0*NPC,aceite:4.5*NPC,pescado:3.6*NPC,ganado:2.5*NPC,lienzo:4.0*NPC,cuero:3.0*NPC,hulla:3.4*NPC,fustan:3.5*NPC,cera:0.4*NPC},
-  burgues:  {comida:EAT,pano:6.0*NPC,vino:6.0*NPC,sal:4.2*NPC,seda:1.6*NPC,raros:1.2*NPC,petroleo:2.0*NPC,aceite:4.5*NPC,pescado:3.2*NPC,lienzo:3.2*NPC,fustan:2.8*NPC,cuero:2.4*NPC,hulla:3.6*NPC,azucar:0.9*NPC,cera:1.0*NPC},
-  clero:    {comida:EAT,pano:6.0*NPC,vino:8.0*NPC,sal:4.2*NPC,seda:2.0*NPC,raros:2.0*NPC,petroleo:1.0*NPC,aceite:5.2*NPC,pescado:4.0*NPC,lienzo:3.2*NPC,cuero:2.0*NPC,hulla:3.2*NPC,azucar:1.4*NPC,cera:4.4*NPC}, // el clero quema mucha cera (velas)
-  nobleza:  {comida:EAT,pano:8.0*NPC,vino:10.0*NPC,sal:4.5*NPC,seda:4.0*NPC,raros:4.0*NPC,petroleo:6.0*NPC,aceite:6.0*NPC,pescado:3.6*NPC,cuero:3.2*NPC,hulla:4.0*NPC,azucar:2.4*NPC,pieles:3.2*NPC,ambar:1.2*NPC,armas:2.4*NPC,bronce:1.0*NPC,cera:2.0*NPC}, // arma y viste a su séquito
+  // Bienes añadidos 2026-07-21 (cronista): cerveza (bebida del Norte, se reparte con el vino por latitud, ver alcoholSplit),
+  // herramientas (sumidero del campesino + su rendimiento del suelo vía campoProd), vidrio/papel (élite), ceramica (masas).
+  campesino:{pano:5.0*NPC,vino:3.5*NPC,cerveza:3.5*NPC,sal:4.0*NPC,aceite:4.5*NPC,pescado:3.6*NPC,ganado:2.5*NPC,lienzo:4.0*NPC,cuero:3.0*NPC,hulla:3.4*NPC,fustan:3.5*NPC,cera:0.4*NPC,herramientas:4.0*NPC,ceramica:1.5*NPC},
+  burgues:  {comida:EAT,pano:6.0*NPC,vino:6.0*NPC,cerveza:6.0*NPC,sal:4.2*NPC,seda:1.6*NPC,raros:1.2*NPC,petroleo:2.0*NPC,aceite:4.5*NPC,pescado:3.2*NPC,lienzo:3.2*NPC,fustan:2.8*NPC,cuero:2.4*NPC,hulla:3.6*NPC,azucar:0.9*NPC,cera:1.0*NPC,herramientas:1.5*NPC,vidrio:0.8*NPC,ceramica:1.2*NPC,papel:1.2*NPC},
+  clero:    {comida:EAT,pano:6.0*NPC,vino:8.0*NPC,cerveza:8.0*NPC,sal:4.2*NPC,seda:2.0*NPC,raros:2.0*NPC,petroleo:1.0*NPC,aceite:5.2*NPC,pescado:4.0*NPC,lienzo:3.2*NPC,cuero:2.0*NPC,hulla:3.2*NPC,azucar:1.4*NPC,cera:4.4*NPC,herramientas:0.5*NPC,vidrio:1.0*NPC,ceramica:1.0*NPC,papel:2.0*NPC}, // el clero quema mucha cera (velas) y consume papel (scriptoria)
+  nobleza:  {comida:EAT,pano:8.0*NPC,vino:10.0*NPC,cerveza:10.0*NPC,sal:4.5*NPC,seda:4.0*NPC,raros:4.0*NPC,petroleo:6.0*NPC,aceite:6.0*NPC,pescado:3.6*NPC,cuero:3.2*NPC,hulla:4.0*NPC,azucar:2.4*NPC,pieles:3.2*NPC,ambar:1.2*NPC,armas:2.4*NPC,bronce:1.0*NPC,cera:2.0*NPC,herramientas:1.0*NPC,vidrio:1.6*NPC,ceramica:1.0*NPC,papel:1.0*NPC}, // arma y viste a su séquito
 };
 // Ingreso base de dinero por hab/tick y estrato. Campesino/burgués ≈ su cesta (viven al día);
 // clero (diezmos) y nobleza (rentas de la tierra) MUY por encima de su consumo → son la ÉLITE que
@@ -286,7 +288,7 @@ const OVER_HORIZON=730;   // ticks (~1 mes) para medir el colchón de riqueza re
 // ni te pones 4× la misma ropa básica); los LUJOS son elásticos (el rico compra mucha más seda/especias). Este
 // factor multiplica el sobreconsumo por bien (0 = nada, 1 = pleno). Sin entrada = 1 (lujo por defecto).
 const OVER_ELAST={comida:0.15,sal:0.3,pescado:0.8,aceite:0.7,pano:0.8,lienzo:0.8,fustan:0.9,cuero:0.9,hulla:0.4,
-  materiales:0.3,piedra:0.2,metal:0.3,ganado:1.0}; // COMER MEJOR: el pan (comida) es inelástico (no comes 4× pan), pero el rico
+  materiales:0.3,piedra:0.2,metal:0.3,ganado:1.0,herramientas:0.9,ceramica:0.5,cerveza:0.5,vidrio:1.0,papel:1.0}; // herramientas elásticas (mejor útil), cerámica/cerveza semi-inelásticas (staple), vidrio/papel lujos; COMER MEJOR: el pan (comida) es inelástico (no comes 4× pan), pero el rico
   // pasa a CARNE (ganado=1, como un lujo) y a MÁS/MEJOR ropa (paño/lino/fustán/cuero elásticos) → el sobreconsumo va ahí, no al grano.
   // el resto (seda, especias, vino, pieles, azúcar, ámbar, cera…) = 1
 // PROSPERIDAD por sobreconsumo (bonuses PEQUEÑOS y realistas): cada bien, al consumirse por ENCIMA de la
@@ -299,6 +301,10 @@ const BONUS_BIEN={
   hulla:{indProd:1.0}, carbon:{indProd:0.8},
   vino:{moral:0.8}, seda:{moral:1.2}, pieles:{moral:1.0}, ambar:{moral:0.8}, azucar:{moral:0.8}, raros:{moral:1.0}, cera:{moral:1.0},
   armas:{militar:1.5}, acero:{militar:1.0}, bronce:{militar:1.0},
+  // añadidos 2026-07-21: cerveza da natalidad (caloría, "pan líquido" — canal YA activo); herramientas alimentan campoProd
+  // (rendimiento del suelo, la mecánica que pidió Sergio) + indProd — PLUMBING listo, inerte hasta que se enganchen esos
+  // canales (hoy solo natalidad lo está); vidrio/papel a moral (prestigio/saber), también futuro.
+  cerveza:{natalidad:0.6}, herramientas:{campoProd:1.5,indProd:0.8}, vidrio:{moral:0.6}, papel:{moral:0.8},
 };
 const PROSP_CHANNELS=["natalidad","campoProd","indProd","moral","militar"];
 // PROSPERIDAD por PROVINCIA y por BIEN (cada bien su propia barra; el canal solo agrupa el TIPO de bonus, que STACKEA).
@@ -483,6 +489,22 @@ function provFlete(p){   // fracción 0..FLETE_MAX del valor perdida al llevar e
   const c=TRADE_KM*km*(TRADE_BULK.cereal||1)/(MKT_PRICE.comida||1); // grano: peso 1.0 / precio 0.8; sin descuento de mar (acopio terrestre)
   return Math.min(FLETE_MAX,c);
 }
+// ---- CERVEZA vs VINO: reparto REGIONAL de la bebida (2026-07-21) ----
+// ⚠ PROVISIONAL por LATITUD de la capital. El Norte bebía cerveza; el Sur, vino. beerW 0..1 = fracción de la
+// "bebida de confort" que es cerveza (el resto, vino). lat 43 (Roma) → 0 (todo vino); lat 55 (Dinamarca) → 1
+// (toda cerveza); en medio, mezcla. FUTURO acordado con Sergio: cuando entren CULTURAS/RELIGIONES esto será un
+// TRAIT del pop (el musulmán tiene AMBAS taboo), no la geografía de la capital — que se rompe con las conquistas.
+function alcoholSplit(n){
+  const N=S.nations[n]; if(!N||N.capital<0)return 0.5;
+  const p=S.provs[N.capital]; if(!p)return 0.5;
+  const lat=pxToLonLat(p.x,p.y)[1];
+  return Math.max(0,Math.min(1,(lat-43)/12));
+}
+// Mantenimiento de la industria en HERRAMIENTAS (2026-07-21, decisión 5-bis del consejo): cada tick el burgués
+// compra herramientas del mercado en proporción a la escala industrial del reino (buildJobs = Σ nivel×puestos).
+// Es el SUMIDERO que ata la demanda de herramientas a la industria (una fábrica sin herramientas no se mantiene).
+// TUNABLE (se calibra con el balance raw↔fábricas). No reduce la producción (eso era la otra opción, descartada).
+const TOOL_UP_JOB=1e-6;  // herramientas/tick por puesto de trabajo industrial (mantenimiento). Placeholder: comparable a la demanda de CONSUMO; se recalibra con la densidad real de fábricas (con fábricas uniformes del arnés 1e-4 congelaba el mercado)
 // Reparto del flujo en fracciones {clero,nobleza,corona,campesino}. Clamp defensivo: si la
 // extracción supera 0.9, se escala para que al campesino le quede siempre ≥10%.
 function repartoRates(p,taxRate){
@@ -1090,6 +1112,7 @@ function economyTick(dt=1,doArb=true){
   const nationStrata=Array.from({length:NPLAY},()=>{const o={};for(const k of STRATA)o[k]=0;return o}); // pop por estrato y nación (Fase B)
   const basicDem=Array.from({length:NPLAY},()=>({})); // demanda de básicos no-grano por nación (para el precio dinámico)
   const factDem=Array.from({length:NPLAY},()=>({})); // demanda de INSUMOS de las fábricas (cadenas de producción)
+  const toolDem=new Float64Array(NPLAY); // demanda de HERRAMIENTAS por mantenimiento de la industria (∝ escala industrial)
   const armyUp=Array.from({length:NPLAY},()=>({})); // mantenimiento del ejército por nación y recurso
   for(const a of S.armies){if(a.nation>=NPLAY)continue;
     for(const k in a.units){troops[a.nation]+=a.units[k];const u=UNITS[k].up||{};
@@ -1111,7 +1134,8 @@ function economyTick(dt=1,doArb=true){
     // CADENAS: demanda de insumos de las fábricas de esta provincia (la compran del mercado del reino, ver abajo)
     {const morF=p.morale/100, terrF=TERRAINS[p.terrain].prod, stF=staffing(p), mulF=1+(provProdMul(p)-1)*stF;
      for(const b in p.buildings){const lvl=effLvl(p,b);if(!lvl)continue;const B=BUILDINGS[b];if(!B.inputs)continue; // deshabilitado no compra insumos
-       for(const k in B.inputs)factDem[n][k]=(factDem[n][k]||0)+B.inputs[k]*lvl*terrF*morF*stF*mulF;}}
+       for(const k in B.inputs)factDem[n][k]=(factDem[n][k]||0)+B.inputs[k]*lvl*terrF*morF*stF*mulF;}
+     toolDem[n]+=buildJobs(p)*TOOL_UP_JOB;} // mantenimiento industrial en herramientas (∝ escala industrial de la provincia)
     const N=S.nations[n];ensureMarket(N);const R=N.res;
     const byOwner=provEconomyByOwner(p),cr=byOwner.corona||{};
     R.dinero+=flujoBase(p)*repartoRates(p,taxRateOf(p.owner)).corona*dt; // parte de la corona del reparto feudal
@@ -1168,6 +1192,7 @@ function economyTick(dt=1,doArb=true){
     recFlow(n,"burgues","Sueldo (comercio)",STRATA_INCOME.burgues*str.burgues*dt);
     if(!N.mktInfo)N.mktInfo={};
     const coverSm=Math.min(1,COVER_SMOOTH*dt); // ritmo de la EMA de cobertura de insumos (por tick de este dt)
+    const beerW=alcoholSplit(n); // 0..1: fracción cerveza/vino de la bebida de confort (temporal, por latitud)
     // SOBRECONSUMO por estrato: extra deseado sobre la cesta básica según su riqueza (rendim. decrecientes). Rico→más.
     const over={};
     for(const k of STRATA){
@@ -1179,7 +1204,9 @@ function economyTick(dt=1,doArb=true){
     for(const g of MKT_TRADE){                                        // lujos + COMIDA (las élites compran grano para comer)
       let stock=N.mkt[g]||0,rev=0,demand=0,sold=0;
       const oe=OVER_ELAST[g]!=null?OVER_ELAST[g]:1;                    // elasticidad de sobreconsumo del bien (Engel)
-      for(const k of STRATA)demand+=(LUX_NEED[k][g]||0)*str[k]*(1+over[k]*oe)*dt; // básico + sobreconsumo elástico
+      const am=g==="vino"?(1-beerW):(g==="cerveza"?beerW:1);           // reparto regional de la bebida (Norte cerveza, Sur vino)
+      for(const k of STRATA)demand+=(LUX_NEED[k][g]||0)*str[k]*(1+over[k]*oe)*dt*am; // básico + sobreconsumo elástico, × reparto de bebida
+      if(g==="herramientas")demand+=toolDem[n]*dt;                     // + mantenimiento industrial (el burgués mantiene sus fábricas con herramientas)
       if(basicDem[n][g])demand+=basicDem[n][g]*dt;                    // básicos: demanda de subsistencia/construcción del campesinado (da precio dinámico)
       if(factDem[n][g])demand+=factDem[n][g]*dt;                      // CADENAS: demanda de insumos de las fábricas (da precio a la materia prima)
       // PRECIO LIBRE de mercado: emerge del llenado del inventario respecto a su objetivo (demanda×días), en forma
@@ -1206,7 +1233,8 @@ function economyTick(dt=1,doArb=true){
       // precio sube hacia SU reserva (ref×RMUL) y NADA por encima; un poco MÁS si está barato (DMAX). Se sirve primero
       // al de mayor disposición (por si escasea): así el noble consigue su seda y el campesino se cae del paño caro.
       for(const k of RMUL_ORDER){
-        const need=(LUX_NEED[k][g]||0)*str[k]*(1+over[k]*oe)*dt;     // deseo = cesta básica × (1 + sobreconsumo elástico por riqueza)
+        let need=(LUX_NEED[k][g]||0)*str[k]*(1+over[k]*oe)*dt*am;     // deseo = cesta básica × (1 + sobreconsumo elástico) × reparto de bebida
+        if(g==="herramientas"&&k==="burgues")need+=toolDem[n]*dt;     // el burgués suma el mantenimiento de sus fábricas a su compra de herramientas
         if(need<=0)continue;
         const res=ref*(RMUL[k]||1.5);
         const frac=Math.max(0,Math.min(DMAX,(res-price)/(res-ref))); // 1 a precio ref · 0 a la reserva · >1 si barato
