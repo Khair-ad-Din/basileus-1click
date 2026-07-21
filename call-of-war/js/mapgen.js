@@ -575,6 +575,22 @@ const GOLD_ZONES=[
   [47.8,49.6,17.4,20.6], // Eslovaquia / Cárpatos (Kremnica, Banská Štiavnica)
   [45.4,47.6,22.3,25.7]  // Transilvania (Baia Mare, Roșia Montană)
 ];
+// HIERRO — los pocos distritos mineros de 1444 (cronista, 2026-07-21). El hierro estaba CONCENTRADO y viajaba
+// lejos (Inglaterra y Egipto importaban); el motor lo daba difuso por población → todas las naciones en déficit
+// leve (artefacto). Se concentra aquí y el resto importa, como la lana. FUERA el Weald (su boom es del s.XVI) y
+// Bosnia (es PLATA, no hierro). [latMin,latMax,lonMin,lonMax]
+const IRON_ZONES=[
+  [46.8,47.8,13.3,15.6], // Estiria-Carintia (Eisenerz, Hüttenberg, valle Mur-Mürz): el mayor acero de Europa
+  [49.0,49.9,11.2,12.6], // Alto Palatinado (Amberg-Sulzbach): "el centro del hierro de Europa", Hammereinigung 1387
+  [45.6,46.4,9.7,10.7],  // Brescia-Bérgamo (Val Trompia/Camonica): hierro veneciano de armas
+  [42.7,43.4,-3.4,-1.7], // Vizcaya-Guipúzcoa (Somorrostro/Triano): el gran EXPORTADOR a Inglaterra/Francia
+  [59.4,60.9,14.3,16.6], // Bergslagen (Norberg/Dannemora): osmund sueco, pico ~1430-50
+  [50.1,50.9,4.4,6.1],   // Mosa: Lieja-Namur: hierro+carbón+armas (dinanderie, afino valón)
+];
+// Concentración del hierro: la producción de METAL de una provincia se multiplica por esto. En zona minera ×alto;
+// fuera, un SUELO pequeño (toda provincia funde/importa algo para construir, pero el grueso sale de las zonas).
+// Calibrable con tools/diag-paises.mjs (que el mundo cierre ~1.0 y las naciones mineras salgan exportadoras).
+const METAL_ZONE_MUL=60, METAL_FLOOR=0.45;
 function inZones(zones,lon,lat){for(const[la0,la1,lo0,lo1]of zones)if(lat>=la0&&lat<=la1&&lon>=lo0&&lon<=lo1)return true;return false}
 // El TERRENO manda los BÁSICOS (grano/madera/piedra/hierro). El resType de una provincia es un ESPECIAL de
 // COMERCIO situado por su ZONA HISTÓRICA de producción (cajas [latMin,latMax,lonMin,lonMax], como plata/oro):
@@ -633,6 +649,7 @@ function assignResources(){
     if(p.wasteland||isSea(p))continue;      // en el agua no hay yacimientos
     const[lon,lat]=pxToLonLat(p.x,p.y);
     const t=p.terrain;
+    p.metalMul=inZones(IRON_ZONES,lon,lat)?METAL_ZONE_MUL:METAL_FLOOR; // concentración del hierro (lo lee subsProd)
     // Yacimientos de plata/oro (zonas mineras históricas) — prioridad
     if(t==="montana"||t==="colinas"||t==="bosque"){
       if(inZones(GOLD_ZONES,lon,lat)&&S.rand()<0.40){p.resType="oro";continue}

@@ -165,6 +165,7 @@ function subsCons(p,k){return (p.pop||0)*(NEED_BASIC[k]||0)/YR_TICKS}    // cons
 function subsProd(p,k){                                                  // producción del básico k por tick (según terreno)
   let v=(p.pop||0)*(NEED_BASIC[k]||0)/YR_TICKS*terrMul(p,k);
   if(k==="comida")v*=(1+0.4*lvlOf(p,"granja"))*harvestMul(p);           // la granja y la cosecha (desastre) afectan al grano
+  else if(k==="metal")v*=(p.metalMul!=null?p.metalMul:1);              // HIERRO concentrado en las zonas mineras (mapgen IRON_ZONES); el resto produce poco e importa (cronista)
   return v;
 }
 function subsBalance(p,k){return subsProd(p,k)-subsCons(p,k)}           // >0 excedente, <0 déficit (por tick)
@@ -223,10 +224,13 @@ const LUX_NEED={
   // vía sobreconsumo (ver over[k]×OVER_ELAST). Se calibra junto a CAMP_CASH: cesta grande + grifo pequeño → ahorro ≈ 0.
   // Bienes añadidos 2026-07-21 (cronista): cerveza (bebida del Norte, se reparte con el vino por latitud, ver alcoholSplit),
   // herramientas (sumidero del campesino + su rendimiento del suelo vía campoProd), vidrio/papel (élite), ceramica (masas).
-  campesino:{pano:5.0*NPC,vino:3.5*NPC,cerveza:3.5*NPC,sal:4.0*NPC,aceite:4.5*NPC,pescado:3.6*NPC,ganado:2.5*NPC,lienzo:4.0*NPC,cuero:3.0*NPC,hulla:3.4*NPC,fustan:3.5*NPC,cera:0.4*NPC,herramientas:4.0*NPC,ceramica:1.5*NPC},
-  burgues:  {comida:EAT,pano:6.0*NPC,vino:6.0*NPC,cerveza:6.0*NPC,sal:4.2*NPC,seda:1.6*NPC,raros:1.2*NPC,petroleo:2.0*NPC,aceite:4.5*NPC,pescado:3.2*NPC,lienzo:3.2*NPC,fustan:2.8*NPC,cuero:2.4*NPC,hulla:3.6*NPC,azucar:0.9*NPC,cera:1.0*NPC,herramientas:1.5*NPC,vidrio:0.8*NPC,ceramica:1.2*NPC,papel:1.2*NPC},
-  clero:    {comida:EAT,pano:6.0*NPC,vino:8.0*NPC,cerveza:8.0*NPC,sal:4.2*NPC,seda:2.0*NPC,raros:2.0*NPC,petroleo:1.0*NPC,aceite:5.2*NPC,pescado:4.0*NPC,lienzo:3.2*NPC,cuero:2.0*NPC,hulla:3.2*NPC,azucar:1.4*NPC,cera:4.4*NPC,herramientas:0.5*NPC,vidrio:1.0*NPC,ceramica:1.0*NPC,papel:2.0*NPC}, // el clero quema mucha cera (velas) y consume papel (scriptoria)
-  nobleza:  {comida:EAT,pano:8.0*NPC,vino:10.0*NPC,cerveza:10.0*NPC,sal:4.5*NPC,seda:4.0*NPC,raros:4.0*NPC,petroleo:6.0*NPC,aceite:6.0*NPC,pescado:3.6*NPC,cuero:3.2*NPC,hulla:4.0*NPC,azucar:2.4*NPC,pieles:3.2*NPC,ambar:1.2*NPC,armas:2.4*NPC,bronce:1.0*NPC,cera:2.0*NPC,herramientas:1.0*NPC,vidrio:1.6*NPC,ceramica:1.0*NPC,papel:1.0*NPC}, // arma y viste a su séquito
+  // ⚠ HULLA rebajada 2026-07-21 (cronista): el carbón mineral NO era bien de MASAS en 1444 (la "era del carbón" es
+  // ss.XVI-XVII; se quemaba leña/carbón vegetal). Demanda pequeña y localizada (uso urbano/industrial: sea-coal de
+  // Londres, forjas del Mosa), no cesta universal. Bajado ~7× para cerrar el déficit global artificial.
+  campesino:{pano:5.0*NPC,vino:3.5*NPC,cerveza:3.5*NPC,sal:4.0*NPC,aceite:4.5*NPC,pescado:3.6*NPC,ganado:2.5*NPC,lienzo:4.0*NPC,cuero:3.0*NPC,hulla:0.2*NPC,fustan:3.5*NPC,cera:0.4*NPC,herramientas:4.0*NPC,ceramica:1.5*NPC},
+  burgues:  {comida:EAT,pano:6.0*NPC,vino:6.0*NPC,cerveza:6.0*NPC,sal:4.2*NPC,seda:1.6*NPC,raros:1.2*NPC,petroleo:2.0*NPC,aceite:4.5*NPC,pescado:3.2*NPC,lienzo:3.2*NPC,fustan:2.8*NPC,cuero:2.4*NPC,hulla:0.6*NPC,azucar:0.9*NPC,cera:1.0*NPC,herramientas:1.5*NPC,vidrio:0.8*NPC,ceramica:1.2*NPC,papel:1.2*NPC},
+  clero:    {comida:EAT,pano:6.0*NPC,vino:8.0*NPC,cerveza:8.0*NPC,sal:4.2*NPC,seda:2.0*NPC,raros:2.0*NPC,petroleo:1.0*NPC,aceite:5.2*NPC,pescado:4.0*NPC,lienzo:3.2*NPC,cuero:2.0*NPC,hulla:0.4*NPC,azucar:1.4*NPC,cera:4.4*NPC,herramientas:0.5*NPC,vidrio:1.0*NPC,ceramica:1.0*NPC,papel:2.0*NPC}, // el clero quema mucha cera (velas) y consume papel (scriptoria)
+  nobleza:  {comida:EAT,pano:8.0*NPC,vino:10.0*NPC,cerveza:10.0*NPC,sal:4.5*NPC,seda:4.0*NPC,raros:4.0*NPC,petroleo:6.0*NPC,aceite:6.0*NPC,pescado:3.6*NPC,cuero:3.2*NPC,hulla:0.8*NPC,azucar:2.4*NPC,pieles:3.2*NPC,ambar:1.2*NPC,armas:2.4*NPC,bronce:1.0*NPC,cera:2.0*NPC,herramientas:1.0*NPC,vidrio:1.6*NPC,ceramica:1.0*NPC,papel:1.0*NPC}, // arma y viste a su séquito
 };
 // Ingreso base de dinero por hab/tick y estrato. Campesino/burgués ≈ su cesta (viven al día);
 // clero (diezmos) y nobleza (rentas de la tierra) MUY por encima de su consumo → son la ÉLITE que
