@@ -1,0 +1,312 @@
+{
+ "region": 9,
+ "name": "HRE Renania y NO",
+ "box": {
+  "lonMin": 5,
+  "lonMax": 10.5,
+  "latMin": 47,
+  "latMax": 53
+ },
+ "cities": [
+  {
+   "name": "Koeln",
+   "x": 533,
+   "y": 910,
+   "lon": 6.93,
+   "lat": 50.92,
+   "cities1444": 40000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Braunschweig",
+   "x": 639,
+   "y": 846,
+   "lon": 10.5,
+   "lat": 52.26,
+   "cities1444": 18000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Strasbourg",
+   "x": 557,
+   "y": 1018,
+   "lon": 7.74,
+   "lat": 48.57,
+   "cities1444": 17000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Frankenthal",
+   "x": 585,
+   "y": 948,
+   "lon": 8.68,
+   "lat": 50.1,
+   "cities1444": 15000,
+   "year": 1450,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Muenster",
+   "x": 553,
+   "y": 861,
+   "lon": 7.61,
+   "lat": 51.95,
+   "cities1444": 11000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Aachen",
+   "x": 508,
+   "y": 916,
+   "lon": 6.09,
+   "lat": 50.79,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Metz",
+   "x": 510,
+   "y": 993,
+   "lon": 6.16,
+   "lat": 49.12,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Basel",
+   "x": 552,
+   "y": 1063,
+   "lon": 7.57,
+   "lat": 47.56,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Trier",
+   "x": 524,
+   "y": 964,
+   "lon": 6.63,
+   "lat": 49.76,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Esslingen",
+   "x": 604,
+   "y": 1010,
+   "lon": 9.32,
+   "lat": 48.75,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Worms",
+   "x": 576,
+   "y": 970,
+   "lon": 8.38,
+   "lat": 49.63,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Dortmund",
+   "x": 549,
+   "y": 881,
+   "lon": 7.47,
+   "lat": 51.53,
+   "cities1444": 9000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Mulhouse",
+   "x": 545,
+   "y": 1055,
+   "lon": 7.34,
+   "lat": 47.74,
+   "cities1444": 9000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Freiburg",
+   "x": 560,
+   "y": 1044,
+   "lon": 7.84,
+   "lat": 47.99,
+   "cities1444": 9000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Mainz",
+   "x": 573,
+   "y": 952,
+   "lon": 8.28,
+   "lat": 50.02,
+   "cities1444": 9000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Soest",
+   "x": 568,
+   "y": 879,
+   "lon": 8.11,
+   "lat": 51.57,
+   "cities1444": 8000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Goslar",
+   "x": 637,
+   "y": 863,
+   "lon": 10.43,
+   "lat": 51.9,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Hildesheim",
+   "x": 623,
+   "y": 851,
+   "lon": 9.96,
+   "lat": 52.15,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Besancon",
+   "x": 506,
+   "y": 1077,
+   "lon": 6.02,
+   "lat": 47.24,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Wuerzburg",
+   "x": 622,
+   "y": 962,
+   "lon": 9.93,
+   "lat": 49.8,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Heilbronn",
+   "x": 601,
+   "y": 993,
+   "lon": 9.22,
+   "lat": 49.12,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Rothenburg ob der Tauber",
+   "x": 629,
+   "y": 981,
+   "lon": 10.16,
+   "lat": 49.39,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Schwaebisch Hall",
+   "x": 616,
+   "y": 993,
+   "lon": 9.73,
+   "lat": 49.12,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Wesel",
+   "x": 524,
+   "y": 874,
+   "lon": 6.63,
+   "lat": 51.67,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Speyer",
+   "x": 577,
+   "y": 984,
+   "lon": 8.41,
+   "lat": 49.32,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Goettingen",
+   "x": 623,
+   "y": 881,
+   "lon": 9.96,
+   "lat": 51.53,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Hannover",
+   "x": 616,
+   "y": 839,
+   "lon": 9.73,
+   "lat": 52.4,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Osnabrueck",
+   "x": 566,
+   "y": 845,
+   "lon": 8.04,
+   "lat": 52.28,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Zuerich",
+   "x": 580,
+   "y": 1071,
+   "lon": 8.51,
+   "lat": 47.38,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Langensalza",
+   "x": 644,
+   "y": 900,
+   "lon": 10.67,
+   "lat": 51.13,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  }
+ ]
+}

@@ -1,0 +1,372 @@
+{
+ "region": 4,
+ "name": "Francia",
+ "box": {
+  "lonMin": -5,
+  "lonMax": 8,
+  "latMin": 43,
+  "latMax": 51
+ },
+ "cities": [
+  {
+   "name": "Paris",
+   "x": 396,
+   "y": 1004,
+   "lon": 2.32,
+   "lat": 48.88,
+   "cities1444": 150000,
+   "year": 1450,
+   "cityPopRaw": 100000
+  },
+  {
+   "name": "Rouen",
+   "x": 359,
+   "y": 979,
+   "lon": 1.08,
+   "lat": 49.43,
+   "cities1444": 50000,
+   "year": 1450,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Bordeaux",
+   "x": 310,
+   "y": 1180,
+   "lon": -0.57,
+   "lat": 44.83,
+   "cities1444": 30000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Toulouse",
+   "x": 369,
+   "y": 1231,
+   "lon": 1.42,
+   "lat": 43.6,
+   "cities1444": 21000,
+   "year": 1400,
+   "cityPopRaw": 25000
+  },
+  {
+   "name": "Bourges",
+   "x": 398,
+   "y": 1084,
+   "lon": 2.39,
+   "lat": 47.08,
+   "cities1444": 18000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Montpellier",
+   "x": 442,
+   "y": 1231,
+   "lon": 3.87,
+   "lat": 43.6,
+   "cities1444": 17000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Avignon",
+   "x": 470,
+   "y": 1217,
+   "lon": 4.81,
+   "lat": 43.94,
+   "cities1444": 15000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Tours",
+   "x": 347,
+   "y": 1071,
+   "lon": 0.68,
+   "lat": 47.38,
+   "cities1444": 13000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Rennes",
+   "x": 277,
+   "y": 1040,
+   "lon": -1.68,
+   "lat": 48.08,
+   "cities1444": 12000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Dijon",
+   "x": 476,
+   "y": 1073,
+   "lon": 5.02,
+   "lat": 47.33,
+   "cities1444": 11000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Marseille",
+   "x": 487,
+   "y": 1243,
+   "lon": 5.39,
+   "lat": 43.31,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Orleans",
+   "x": 383,
+   "y": 1047,
+   "lon": 1.89,
+   "lat": 47.92,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Poitiers",
+   "x": 337,
+   "y": 1106,
+   "lon": 0.34,
+   "lat": 46.57,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Reims",
+   "x": 447,
+   "y": 987,
+   "lon": 4.04,
+   "lat": 49.26,
+   "cities1444": 9000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Lyon",
+   "x": 472,
+   "y": 1141,
+   "lon": 4.88,
+   "lat": 45.76,
+   "cities1444": 8000,
+   "year": 1400,
+   "cityPopRaw": 25000
+  },
+  {
+   "name": "Geneve",
+   "x": 510,
+   "y": 1122,
+   "lon": 6.16,
+   "lat": 46.2,
+   "cities1444": 8000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Troyes",
+   "x": 448,
+   "y": 1030,
+   "lon": 4.07,
+   "lat": 48.3,
+   "cities1444": 7000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Provins",
+   "x": 425,
+   "y": 1018,
+   "lon": 3.3,
+   "lat": 48.57,
+   "cities1444": 7000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Chalons-sur-Marne",
+   "x": 471,
+   "y": 1097,
+   "lon": 4.85,
+   "lat": 46.78,
+   "cities1444": 7000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Albi",
+   "x": 391,
+   "y": 1218,
+   "lon": 2.16,
+   "lat": 43.92,
+   "cities1444": 7000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Amiens",
+   "x": 395,
+   "y": 957,
+   "lon": 2.29,
+   "lat": 49.91,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Angers",
+   "x": 311,
+   "y": 1067,
+   "lon": -0.54,
+   "lat": 47.47,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Caen",
+   "x": 317,
+   "y": 990,
+   "lon": -0.33,
+   "lat": 49.19,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Beauvais",
+   "x": 389,
+   "y": 979,
+   "lon": 2.09,
+   "lat": 49.43,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Chartres",
+   "x": 372,
+   "y": 1023,
+   "lon": 1.52,
+   "lat": 48.46,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Perigueux",
+   "x": 349,
+   "y": 1165,
+   "lon": 0.74,
+   "lat": 45.19,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Carcassonne",
+   "x": 397,
+   "y": 1247,
+   "lon": 2.36,
+   "lat": 43.21,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Chinon",
+   "x": 334,
+   "y": 1080,
+   "lon": 0.24,
+   "lat": 47.17,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Arles",
+   "x": 465,
+   "y": 1228,
+   "lon": 4.65,
+   "lat": 43.68,
+   "cities1444": 6000,
+   "year": 1450,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Nantes",
+   "x": 281,
+   "y": 1078,
+   "lon": -1.55,
+   "lat": 47.22,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "La Rochelle",
+   "x": 292,
+   "y": 1123,
+   "lon": -1.18,
+   "lat": 46.18,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Montauban",
+   "x": 367,
+   "y": 1214,
+   "lon": 1.35,
+   "lat": 44.02,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Moulins",
+   "x": 426,
+   "y": 1106,
+   "lon": 3.33,
+   "lat": 46.57,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Nimes",
+   "x": 456,
+   "y": 1222,
+   "lon": 4.34,
+   "lat": 43.82,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Lausanne",
+   "x": 524,
+   "y": 1108,
+   "lon": 6.63,
+   "lat": 46.53,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Aire",
+   "x": 319,
+   "y": 1227,
+   "lon": -0.27,
+   "lat": 43.7,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  }
+ ]
+}

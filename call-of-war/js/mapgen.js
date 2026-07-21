@@ -1,5 +1,5 @@
 // mapgen.js
-import { MW, MH, NATIONS, NPLAY, NEUTRAL, TERRAINS, TERRAIN_KEYS, newBuildings, STRATA, STRATA_SEED, isSea, SEA_KM_MULT, NAV_KM } from "./config.js";
+import { MW, MH, NATIONS, NPLAY, NEUTRAL, TERRAINS, TERRAIN_KEYS, newBuildings, STRATA, STRATA_SEED, isSea, SEA_KM_MULT, NAV_KM, CITY_MIN, CENTER_POP, CURATED_HUBS } from "./config.js";
 import { S } from "./state.js";
 
 function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
@@ -708,7 +708,7 @@ function regionDensity(lon,lat){
   return lat<40?12:lat<50?15:lat<58?7:3; // fallback por latitud
 }
 const POP_TERR_FERT={vega:1.5,pradera:1.25,llanura:1.1,bosque:0.7,colinas:0.85,
-  pantano:0.55,meseta:0.6,estepa:0.5,montana:0.35,desierto:0.15,tundra:0.1};
+  pantano:0.55,meseta:0.6,estepa:0.5,montana:0.35,desierto:0.06,tundra:0.1};
 // Grandes urbes con población histórica aproximada de mediados del s.XV (clave sin acentos).
 // Las que no estén en la tabla se modelan por región. Cubre las que existen en el mapa.
 const CITY_POP_RAW={
@@ -752,17 +752,20 @@ function assignPopulation(){
     const areaKm2=npx*K*c*c;
     let dens=regionDensity(lon,lat)*(POP_TERR_FERT[p.terrain]||1);
     if(p.coastal)dens*=1.15;                 // la gente se concentra en la costa
-    dens=Math.max(0.2,Math.min(58,dens));
+    // suelo de densidad dependiente del terreno: el desierto/tundra reales quedan CASI vacíos (el
+    // Sáhara/Arabia no tienen un mínimo de 0,2 hab/km²; la gente se apretuja en la vega, que es otro
+    // terreno). Evita que provincias de desierto enormes sumen miles por el suelo uniforme.
+    const floor=(p.terrain==="desierto"||p.terrain==="tundra")?0.03:0.2;
+    dens=Math.max(floor,Math.min(58,dens));
     const rural=Math.min(RURAL_CAP,areaKm2*dens*POP_GAIN); // rural, con tope por comarca
     let pop=p.urban?rural*0.5:rural;                        // la ciudad edifica parte del campo
     // núcleo urbano (solo ciudades reales, no los duplicados rurales del gazetteer):
     // tabla histórica para las grandes; el resto de urbes se modelan por región.
     if(p.urban){
-      // población del NÚCLEO urbano, por orden de fiabilidad: (1) tabla curada CITY_POP (217 ciudades,
-      // por nombre); (2) `p.cityPop`, la población HISTÓRICA de 1444 que seedCities ya guardó de las 319
-      // ciudades de CITIES1444 (Buringh/Bosker/Chandler); (3) modelo por región para el resto.
-      const tabled=CITY_POP[popNormKey(p.name)]??CITY_POP[popNormKey(p.canon||p.name)]; // por nombre localizado o canónico
-      const hist=tabled!=null?tabled:(p.cityPop>0?p.cityPop:null);
+      // NÚCLEO urbano: `p.cityPop` (cities1444, reconciliado a mano en la Tanda B) es la FUENTE ÚNICA.
+      // La antigua tabla CITY_POP ya NO decide el pop (fuente en conflicto: mostraba 250k y sumaba 40k);
+      // solo queda como heurística de nombrado (mapgen.js:373). Sin cityPop (capital sin dato) → modelo.
+      const hist=p.cityPop>0?p.cityPop:null;
       if(hist!=null)pop+=hist;
       else{
         const jit=0.7+0.6*hashN(p.x,p.y);       // determinista por posición
@@ -1119,24 +1122,41 @@ function buildMarketEdges(){
 function seedCities(){
   if(typeof CITIES1444==="undefined")return;   // sin el fichero de datos, se respeta lo que haya
   for(const p of S.provs)if(!p.wasteland){p.urban=false;p.cityPop=0;p.cityName=null}
-  const marca=(x,y,pop,name)=>{
-    const pid=S.provIdx[y*MW+x];
-    if(pid<0)return;
+  // marca SOLO el núcleo (cityPop/cityName). El flag `urban` se decide DESPUÉS por umbral, no aquí:
+  // así una coordenada de ciudad no hace urbana a su provincia por el mero hecho de existir.
+  const norm=s=>(s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"");
+  const landAt=q=>q>=0&&!isSea(S.provs[q])&&!S.provs[q].wasteland;
+  const setCore=(x,y,pop,name)=>{
+    let pid=S.provIdx[y*MW+x];
+    // Si la coordenada cae en MAR/HUECO/YERMO, la ciudad se PERDÍA en silencio (bug: Nóvgorod 40k caía
+    // en el lago Ilmen; Málaga/Catania mar adentro → 5 ciudades sin sembrar, ~71k pop fantasma). La
+    // rescatamos saltando a la tierra más cercana (≤SNAP px), PREFIRIENDO una provincia HOMÓNIMA si la
+    // hay (así Nóvgorod cae en la provincia "Nóvgorod", no en la vecina Pankovka a la misma distancia);
+    // sin homónima, la tierra más cercana (Málaga→Vélez-Málaga costera). Más allá de SNAP se descarta.
+    if(!landAt(pid)){
+      const SNAP=4,nc=norm(name);let bm=-1,bmD=1e9,ba=-1,baD=1e9;
+      for(let dy=-SNAP;dy<=SNAP;dy++){const yy=y+dy;if(yy<0||yy>=MH)continue;
+        for(let dx=-SNAP;dx<=SNAP;dx++){const xx=x+dx;if(xx<0||xx>=MW)continue;
+          const q=S.provIdx[yy*MW+xx];if(!landAt(q))continue;
+          const d=dx*dx+dy*dy;
+          if(d<baD){baD=d;ba=q}
+          if(name&&norm(S.provs[q].name)===nc&&d<bmD){bmD=d;bm=q}
+        }}
+      pid=bm>=0?bm:ba;
+      if(pid<0)return;                       // ni tierra cerca (isla minúscula): se descarta como antes
+    }
     const p=S.provs[pid];
-    if(p.wasteland||isSea(p))return;        // no se fundan ciudades en el mar
-    p.urban=true;
     // varias ciudades reales caen en la MISMA provincia (son grandes, ~85 km): manda la MÁS POBLADA
     if(pop>(p.cityPop||0)){p.cityPop=pop;p.cityName=name}
   };
-  for(const[name,x,y,pop] of CITIES1444)marca(x,y,pop,name);
-  for(const[name,cx,cy,c,cap] of MAPDATA.cities)marca(cx,cy,0,null); // el SUELO curado a mano
-  // La capital de un reino es CIUDAD por definición. Hace falta decirlo aparte porque el mapa
-  // oficial se editó a mano después de colocar las ciudades: 54 de las 217 coordenadas curadas ya
-  // no caen en la provincia que lleva su nombre (la de Toledo cae en "Puente de Vallecas"), así que
-  // sembrando solo por coordenada, 11 capitales —Toledo, Praga, Lübeck, Nóvgorod, Buda, Tabriz…—
-  // se quedaban sin ciudad. Esto es un PARCHE: desaparece cuando se rehaga el nombrado de
-  // provincias con el gazetteer histórico y el nombre vuelva a caer sobre la ciudad de verdad.
-  for(const p of S.provs)if(p.capital&&!p.wasteland)p.urban=true;
+  for(const[name,x,y,pop] of CITIES1444)setCore(x,y,pop,name);
+  for(const[name,cx,cy] of MAPDATA.cities)setCore(cx,cy,0,null); // suelo curado: solo aporta ancla, pop 0
+  // URBANA ⇔ núcleo histórico ≥ CITY_MIN (umbral "ciudad" de 1450, Bairoch/Buringh) O capital nacional
+  // (sede = ciudad por función, aunque no llegue). Por debajo, la provincia es RURAL (conserva su nombre).
+  for(const p of S.provs){
+    if(p.wasteland)continue;
+    p.urban=(p.cityPop>=CITY_MIN)||!!p.capital;
+  }
 }
 // Cada provincia pertenece a UNA plaza: `p.marketOf` (la plaza es satélite de sí misma). Es la
 // pertenencia de la aldea a su mercado — dónde irá a vender su grano en la Fase 2. Aquí NO se
@@ -1203,11 +1223,64 @@ function assignMarkets(){
     if(N&&N.capital>=0){p.marketOf=N.capital;p.marketKm=kmBetween(p,S.provs[N.capital])}
   }
 }
-// Rehace la topología del mercado (grafo + pertenencia). Solo cuesta cuando cambian las fronteras:
-// `transferDuchy` es el ÚNICO sitio donde cambia p.owner en partida, y marca S.mktDirty.
+// ============ CAPA 2: CENTROS DE COMERCIO (hubOf/hubKm) — design/mercado-centros-eu5.md ============
+// 2ª pasada del MISMO Dijkstra multifuente, con OTRO set de semillas (los pocos CENTROS, no las ~400
+// plazas) y con la OROGRAFÍA en la tinta. NO toca marketOf: la Capa 1 (grano local, radio corto) y la
+// Capa 2 (arbitraje de largo alcance entre centros) conviven. Sigue siendo TOPOLOGÍA — nadie lee
+// hubOf/hubKm para mover dinero todavía (eso es la Fase 2 del flujo).
+// SEMILLA = centro ⇔ cityPop≥CENTER_POP  O  está en CURATED_HUBS. La CAPITAL NO cuenta por serlo (a
+// diferencia de las plazas de assignMarkets, que sí incluyen p.capital): un centro se gana por tamaño
+// o por función comercial, no por ser sede política (dictamen 2026-07-19).
+// OROGRAFÍA: el coste de cada arista es km × dificultad de terreno, reusando TERRAINS[t].mov (una sola
+// verdad, DRY). mov es VELOCIDAD (mayor=más fácil), así que el coste va con 1/mov (media de las dos
+// teselas): montaña (mov .6) cuesta ×1.67, meseta (.87) ×1.15, llanura (1.0) ×1, estepa (1.15) ×0.87.
+// El mar conserva su descuento de cabotaje (SEA_KM_MULT), sin penalización de terreno. Cambia la FORMA
+// del territorio de cada centro (los pasos de montaña lo estrangulan; los llanos y el mar lo estiran),
+// no el número de centros.
+function hubSeeds(){
+  const norm=s=>(s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"");
+  const curated=new Set(CURATED_HUBS.map(norm));
+  const seeds=[];
+  for(const p of S.provs){
+    if(p.wasteland||isSea(p)||p.owner>=NPLAY)continue;
+    if((p.cityPop||0)>=CENTER_POP||curated.has(norm(p.cityName))||curated.has(norm(p.name)))seeds.push(p);
+  }
+  return seeds;
+}
+function assignHubs(){
+  const km=new Float64Array(S.provs.length).fill(Infinity);
+  for(const p of S.provs){p.hubOf=-1;p.hubKm=0}
+  const h=[];
+  const push=(d,i)=>{h.push([d,i]);for(let c=h.length-1;c>0;){const par=(c-1)>>1;if(h[par][0]<=h[c][0])break;[h[par],h[c]]=[h[c],h[par]];c=par}};
+  const pop=()=>{const top=h[0],last=h.pop();if(h.length){h[0]=last;for(let c=0;;){const l=2*c+1,r=l+1;let m=c;if(l<h.length&&h[l][0]<h[m][0])m=l;if(r<h.length&&h[r][0]<h[m][0])m=r;if(m===c)break;[h[m],h[c]]=[h[c],h[m]];c=m}}return top};
+  const seeds=hubSeeds();
+  seeds.sort((a,b)=>a.id-b.id);                            // orden fijo = determinista
+  for(const p of seeds){p.hubOf=p.id;km[p.id]=0;push(0,p.id)}
+  while(h.length){
+    const[d,c]=pop();
+    if(d>km[c])continue;
+    const P=S.provs[c];
+    for(const nb of [...S.adj[c],...S.seaAdj[c]]){
+      const Q=S.provs[nb];
+      if(Q.wasteland)continue;
+      const w=(isSea(P)||isSea(Q))?SEA_KM_MULT                         // mar: cabotaje, sin orografía
+        :2/((TERRAINS[P.terrain]?.mov||1)+(TERRAINS[Q.terrain]?.mov||1)); // tierra: km × dificultad (1/mov)
+      const nd=d+kmBetween(P,Q)*w;
+      if(nd<km[nb]-1e-9){km[nb]=nd;Q.hubOf=P.hubOf;Q.hubKm=nd;push(nd,nb)}
+      else if(Math.abs(nd-km[nb])<1e-9&&P.hubOf<Q.hubOf)Q.hubOf=P.hubOf; // empate exacto: id menor
+    }
+  }
+  for(const p of S.provs){  // sin centro alcanzable (isla) → el del centro de su capital, si lo tiene; si no, -1 (autarquía)
+    if(p.hubOf>=0||p.wasteland||p.owner>=NPLAY)continue;
+    const N=S.nations[p.owner];
+    if(N&&N.capital>=0&&S.provs[N.capital].hubOf>=0){p.hubOf=S.provs[N.capital].hubOf;p.hubKm=kmBetween(p,S.provs[N.capital])}
+  }
+}
+// Rehace la topología del mercado (grafo + pertenencia + centros). Solo cuesta cuando cambian las
+// fronteras: `transferDuchy` es el ÚNICO sitio donde cambia p.owner en partida, y marca S.mktDirty.
 function ensureMarketTopology(){
   if(S.marketEdges&&!S.mktDirty)return;
-  buildMarketEdges();assignMarkets();S.mktDirty=false;
+  buildMarketEdges();assignMarkets();assignHubs();S.mktDirty=false;
 }
 function kmBetween(a,b){
   const[lo1,la1]=pxToLonLat(a.x,a.y),[lo2,la2]=pxToLonLat(b.x,b.y);
@@ -1243,5 +1316,5 @@ function sprinkleTerrain(on) {
 }
 
 export {
-  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, seedStrata, rebuildProvinceData, buildDuchies, isDuchyCap, seedCities, renameProvincesHistorical, buildMarketEdges, assignMarkets, ensureMarketTopology, MKT_LINK_KM, kmBetween, roadKey, hasRoad, roadLvl, landPath, generateRoads, sprinkleTerrain, CITY_POP, popNormKey, localize
+  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, seedStrata, rebuildProvinceData, buildDuchies, isDuchyCap, seedCities, renameProvincesHistorical, buildMarketEdges, assignMarkets, assignHubs, ensureMarketTopology, MKT_LINK_KM, kmBetween, roadKey, hasRoad, roadLvl, landPath, generateRoads, sprinkleTerrain, CITY_POP, popNormKey, localize
 };

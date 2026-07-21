@@ -1,0 +1,102 @@
+{
+ "region": 15,
+ "name": "Grecia Bizancio y Rumelia",
+ "box": {
+  "lonMin": 19,
+  "lonMax": 29.5,
+  "latMin": 34.5,
+  "latMax": 43
+ },
+ "cities": [
+  {
+   "name": "Bursa",
+   "x": 1191,
+   "y": 1367,
+   "lon": 29.07,
+   "lat": 40.2,
+   "cities1444": 130000,
+   "year": 1450,
+   "cityPopRaw": 30000
+  },
+  {
+   "name": "Edirne",
+   "x": 1117,
+   "y": 1309,
+   "lon": 26.58,
+   "lat": 41.67,
+   "cities1444": 85000,
+   "year": 1450,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Saloniki",
+   "x": 1008,
+   "y": 1350,
+   "lon": 22.92,
+   "lat": 40.64,
+   "cities1444": 42000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Athens",
+   "x": 1032,
+   "y": 1452,
+   "lon": 23.72,
+   "lat": 37.98,
+   "cities1444": 35000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Ephese",
+   "x": 1141,
+   "y": 1453,
+   "lon": 27.39,
+   "lat": 37.95,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Pergamon",
+   "x": 1135,
+   "y": 1409,
+   "lon": 27.19,
+   "lat": 39.11,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Plovdiv",
+   "x": 1063,
+   "y": 1290,
+   "lon": 24.77,
+   "lat": 42.15,
+   "cities1444": 8000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Sliven",
+   "x": 1109,
+   "y": 1269,
+   "lon": 26.31,
+   "lat": 42.67,
+   "cities1444": 7000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Larisa",
+   "x": 993,
+   "y": 1427,
+   "lon": 22.41,
+   "lat": 38.64,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  }
+ ]
+}

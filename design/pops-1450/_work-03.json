@@ -1,0 +1,122 @@
+{
+ "region": 3,
+ "name": "Sicilia y Cerdena",
+ "box": {
+  "lonMin": 8,
+  "lonMax": 16,
+  "latMin": 36.5,
+  "latMax": 40
+ },
+ "cities": [
+  {
+   "name": "Tunis",
+   "x": 629,
+   "y": 1496,
+   "lon": 10.16,
+   "lat": 36.8,
+   "cities1444": 65000,
+   "year": 1450,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Nicosia",
+   "x": 755,
+   "y": 1461,
+   "lon": 14.4,
+   "lat": 37.74,
+   "cities1444": 20000,
+   "year": 1400,
+   "cityPopRaw": 10000
+  },
+  {
+   "name": "Trapani",
+   "x": 699,
+   "y": 1451,
+   "lon": 12.52,
+   "lat": 38.01,
+   "cities1444": 12000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Catania",
+   "x": 776,
+   "y": 1470,
+   "lon": 15.11,
+   "lat": 37.5,
+   "cities1444": 7000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Piazza Armerina",
+   "x": 754,
+   "y": 1475,
+   "lon": 14.37,
+   "lat": 37.37,
+   "cities1444": 7000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Polizzi Generosa",
+   "x": 744,
+   "y": 1459,
+   "lon": 14.03,
+   "lat": 37.79,
+   "cities1444": 7000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Noto",
+   "x": 775,
+   "y": 1493,
+   "lon": 15.08,
+   "lat": 36.89,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Sciacca",
+   "x": 716,
+   "y": 1470,
+   "lon": 13.09,
+   "lat": 37.5,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Randazzo",
+   "x": 771,
+   "y": 1456,
+   "lon": 14.94,
+   "lat": 37.87,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Corleone",
+   "x": 722,
+   "y": 1458,
+   "lon": 13.29,
+   "lat": 37.82,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Lentini",
+   "x": 773,
+   "y": 1478,
+   "lon": 15.01,
+   "lat": 37.29,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  }
+ ]
+}

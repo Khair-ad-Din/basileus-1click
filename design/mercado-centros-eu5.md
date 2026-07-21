@@ -30,6 +30,37 @@ colinas/pantano +25% · montaña +50%**; vegetación **desierto/vega +5% · arbo
 del jugador, habilitada si la localización es **urbana** o está **mal servida (<25% de acceso)**.
 Fuentes: Tinto Talks #10 (mercados) y #47 (Market Attraction, Trade Range); wiki EU5 Control/Market.
 
+## CAPA 1 (grano local) — DICTAMEN DEL CONSEJO (2026-07-20/21) — EMPEZAR POR AQUÍ la próxima sesión
+
+Sergio vio la Capa 1 (mercado local del grano, `assignMarkets`→`marketOf`) como un **mosaico ilegible** y
+propuso simplificarla: (A) grano difunde a adyacentes cada mes, o (B) plaza local = **capital del ducado**.
+Se convocó el consejo (5 estamentos + cronista + consejero). **Veredicto unánime:**
+
+- **(B) DESCARTADA con dato duro.** El grano se vendía en radio **~16 km** (Farmer, cuentas de los manors
+  de Deverill, Wiltshire, AgHR 1989; lana ~32 km). El ducado (~35-40 km) es **2-2,5× demasiado grande**
+  para el grano, y confunde tres cosas distintas de 1444: el **señorío/granero** (renta, ya en `manorOf`),
+  la **plaza de mercado** (villa con carta), y el **ducado** (demarcación de justicia/vasallaje). Los seis
+  coincidieron. La doctrina "viaje de un día → catchment ~10 millas" es de **Bracton**, no del Statute of
+  Winchester (corrección del cronista). No re-proponer B.
+- **(A) DESCARTADA**: borra el **nodo de precio fijo** que la Capa 2 necesita encima.
+- **(C) el Dijkstra en km actual SE QUEDA** intacto: es el modelo correcto (central place theory sobre
+  villas-mercado), respeta el km del carro y ya alimenta `marketKm` para el flete. **La ilegibilidad es un
+  problema de RENDER, no de mecánica** (mandamiento del consejo: el realismo se PERCIBE, no se OPERA).
+
+**LO PERTINENTE A ARREGLAR DE LA CAPA 1 (primer bloque de la próxima sesión, ANTES de los centros):**
+1. **Render** (🟡, la "una sola cosa"): `render.js:57-58` — el color por-plaza (`marketOf*137.508`) es
+   confeti de ~400 tonos. Agrupar el color por comarca/ducado + contorno suave (BS=3 ya existe) + relleno
+   desaturado → zonas legibles, subdivisiones como líneas finas. **Sin tocar una línea de economía.**
+2. **Disciplina de nombre** (🟢): el nodo por comarca es **"núcleo urbano de la comarca"**, NUNCA "capital
+   del ducado" (el código ya elige la provincia más urbana, no la corte — si se etiqueta mal, alguien lo
+   "corrige" hacia la sede señorial y rompe la mecánica).
+3. **Aparcado con fecha**: si tras pintarlo bien la vista SIGUE siendo confeti → consolidar a un nodo por
+   comarca (≤974 semillas **resueltas por km**, nunca asignación directa a la capital = eso es B con otro
+   nombre). Gatillo: Sergio corre la vista pintada y dice "sigue siendo confeti".
+4. **Nota para la Fase 2 (flujo)**: el flete solo pesa sobre el **excedente monetizado**
+   (`fb*rr.campesino*CAMP_CASH`), no sobre `flujoBase` bruto (campesino) — no cobrar peaje por el grano que
+   el campesino se come en casa.
+
 ## El modelo acordado
 
 ### A) Ciudad ≠ centro de mercado (arregla el "caos" de 378 plazas)
@@ -85,11 +116,16 @@ centro**.
    actuales se QUEDAN** como destino del grano (`marketOf`), y los **58 centros** son una **2ª capa**
    de arbitraje de largo alcance en campos NUEVOS `hubOf`/`hubKm`. Mismo Dijkstra, otro set de semillas,
    **sin pisar `marketOf`**.
-3. **Criterio de centro COMPUESTO + capital siempre**: semilla = `pop≥25k` **O** lista curada de
-   función. Curada = **todas las capitales** + Lübeck (¡no está en `cities1444.js`!), Cracovia, Ragusa,
-   Augsburgo, sedes de peregrinación (Roma, Santiago, Canterbury, Colonia). **Ypres FUERA** (cronista:
-   hundido en 1444, de >90k piezas/año a <25k). Lovaina marginal (en declive). Patrón "suelo" tipo
-   `MAPDATA.cities` para la lista curada.
+3. **Criterio de centro COMPUESTO — la CAPITAL NO cuenta** (⚠️ CORREGIDO por Sergio 2026-07-19, revoca
+   el "capital siempre" original): semilla = `pop≥25k` **O** lista curada **de función comercial**.
+   Ser sede política no hace centro de comercio: una capital pequeña se abastece de centros vecinos,
+   **aunque sean de otro país** (la frontera no confina, ya es así en `assignMarkets`). Motivo del giro:
+   con 190 naciones, "capital siempre" disparaba los centros de ~57 a **233** (medido en la vista
+   Ciudades) — deshacía la reducción que era el objetivo (378→~58 legibles). Curada = Lübeck (¡no está
+   en `cities1444.js`!), Cracovia, Ragusa, Augsburgo, sedes de peregrinación (Roma, Santiago, Canterbury,
+   Colonia) — **por su comercio, no por ser capitales**. **Ypres FUERA** (cronista: hundido en 1444, de
+   >90k piezas/año a <25k). Lovaina marginal (en declive). Patrón "suelo" tipo `MAPDATA.cities` para la
+   lista curada. Umbral en `config.js` `CENTER_POP=25000`.
 4. **Orografía reusa `TERRAINS[t].mov`** (ver B; arreglar meseta).
 5. **Icono distinto centro ≠ villa** (sin texto, regla de UI).
 
@@ -112,8 +148,19 @@ centro**.
   sesión dedicada del cronista).
 
 **Primer entregable (decisiones 1+2+3 juntas):** en `assignMarkets`, set de semillas de centro =
-capitales ∪ curada ∪ {urbanas con pop≥25k}, y 2ª pasada del Dijkstra que escribe `hubOf`/`hubKm` sin
-tocar `marketOf`. Va DESPUÉS del gazetteer + verificación de pops (secuencia de Sergio).
+curada ∪ {urbanas con `cityPop≥CENTER_POP`} — **sin las capitales** (ver corrección en la decisión 3),
+y 2ª pasada del Dijkstra que escribe `hubOf`/`hubKm` sin tocar `marketOf`. Va DESPUÉS del gazetteer +
+verificación de pops (secuencia de Sergio).
+
+**Ciudades FUSIONADAS en el mapa político (HECHO 2026-07-19, decisión de Sergio):** no hay modo aparte.
+En el político (y solo ahí, no en las vistas de datos) cada urbe se rotula: **villa** = punto + nombre
+(el nombre aparece al acercar el zoom, `z>2.4`, para no amontonar); **centro** (`cityPop≥CENTER_POP`) =
+**cuadro dorado** + nombre SIEMPRE (con población), que **sustituye** al rombo de la
+capital de ducado cuando coinciden. El punto de villa se omite si ya hay rombo de ducado o disco de
+capital (no doblar ancla). Así se leen a la vez villa / capital de ducado / capital de ducado+ciudad+
+mercado. Todo en el bloque de marcadores de `render.js` (`politicalView`). Recuento (materia prima):
+**526 ciudades · 57 centros**, encabezados por Fustat, Tabriz, Venezia, Milano, Gent, Genova, Brugge…
+(comprobado reconstruyendo el mundo oficial en Node). Es el paso "verificar pops" de la secuencia.
 
 **Fix colateral pendiente**: la ficha `design/epoca/noble.md` tiene invertido el privilegio de Koszyce
 (1374) — es una EXENCIÓN de carga al noble (no pagar/construir castillos sin su acuerdo), NO un veto

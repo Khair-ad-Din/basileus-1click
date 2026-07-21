@@ -1,0 +1,242 @@
+{
+ "region": 7,
+ "name": "Iberia Norte",
+ "box": {
+  "lonMin": -9,
+  "lonMax": 3.5,
+  "latMin": 40,
+  "latMax": 43.6
+ },
+ "cities": [
+  {
+   "name": "Barcelona",
+   "x": 392,
+   "y": 1321,
+   "lon": 2.19,
+   "lat": 41.37,
+   "cities1444": 38000,
+   "year": 1400,
+   "cityPopRaw": 35000
+  },
+  {
+   "name": "Burgos",
+   "x": 217,
+   "y": 1282,
+   "lon": -3.7,
+   "lat": 42.35,
+   "cities1444": 37500,
+   "year": 1450,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Valladolid",
+   "x": 187,
+   "y": 1310,
+   "lon": -4.71,
+   "lat": 41.65,
+   "cities1444": 20000,
+   "year": 1400,
+   "cityPopRaw": 20000
+  },
+  {
+   "name": "Zaragoza",
+   "x": 301,
+   "y": 1311,
+   "lon": -0.87,
+   "lat": 41.62,
+   "cities1444": 20000,
+   "year": 1400,
+   "cityPopRaw": 25000
+  },
+  {
+   "name": "Porto",
+   "x": 71,
+   "y": 1329,
+   "lon": -8.61,
+   "lat": 41.17,
+   "cities1444": 18000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Morella",
+   "x": 324,
+   "y": 1351,
+   "lon": -0.1,
+   "lat": 40.61,
+   "cities1444": 13000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Medina del Campo",
+   "x": 181,
+   "y": 1324,
+   "lon": -4.91,
+   "lat": 41.3,
+   "cities1444": 12000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Leon",
+   "x": 161,
+   "y": 1272,
+   "lon": -5.58,
+   "lat": 42.6,
+   "cities1444": 11000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Salamanca",
+   "x": 159,
+   "y": 1337,
+   "lon": -5.65,
+   "lat": 40.97,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Plasencia",
+   "x": 146,
+   "y": 1374,
+   "lon": -6.09,
+   "lat": 40.02,
+   "cities1444": 9000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Palencia",
+   "x": 192,
+   "y": 1295,
+   "lon": -4.54,
+   "lat": 42.03,
+   "cities1444": 7000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Medina de Rioseco",
+   "x": 177,
+   "y": 1301,
+   "lon": -5.04,
+   "lat": 41.87,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Tarragona",
+   "x": 364,
+   "y": 1331,
+   "lon": 1.25,
+   "lat": 41.12,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Pamplona",
+   "x": 278,
+   "y": 1263,
+   "lon": -1.65,
+   "lat": 42.82,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Tudela",
+   "x": 279,
+   "y": 1293,
+   "lon": -1.61,
+   "lat": 42.07,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Gerona",
+   "x": 411,
+   "y": 1297,
+   "lon": 2.83,
+   "lat": 41.98,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Tortosa",
+   "x": 342,
+   "y": 1344,
+   "lon": 0.51,
+   "lat": 40.79,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Zamora",
+   "x": 157,
+   "y": 1316,
+   "lon": -5.72,
+   "lat": 41.5,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Lerida",
+   "x": 345,
+   "y": 1311,
+   "lon": 0.61,
+   "lat": 41.62,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Cervera",
+   "x": 365,
+   "y": 1309,
+   "lon": 1.28,
+   "lat": 41.67,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Puigcerda",
+   "x": 384,
+   "y": 1279,
+   "lon": 1.92,
+   "lat": 42.42,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Teruel",
+   "x": 294,
+   "y": 1361,
+   "lon": -1.11,
+   "lat": 40.35,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Chaves",
+   "x": 105,
+   "y": 1307,
+   "lon": -7.47,
+   "lat": 41.72,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  }
+ ]
+}

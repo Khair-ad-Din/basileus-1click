@@ -1,0 +1,292 @@
+{
+ "region": 1,
+ "name": "Italia Norte",
+ "box": {
+  "lonMin": 7,
+  "lonMax": 14,
+  "latMin": 43.5,
+  "latMax": 47
+ },
+ "cities": [
+  {
+   "name": "Venezia",
+   "x": 694,
+   "y": 1154,
+   "lon": 12.35,
+   "lat": 45.45,
+   "cities1444": 100000,
+   "year": 1450,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Milano",
+   "x": 600,
+   "y": 1153,
+   "lon": 9.19,
+   "lat": 45.47,
+   "cities1444": 83000,
+   "year": 1450,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Genova",
+   "x": 593,
+   "y": 1197,
+   "lon": 8.95,
+   "lat": 44.43,
+   "cities1444": 76000,
+   "year": 1450,
+   "cityPopRaw": 60000
+  },
+  {
+   "name": "Firenze",
+   "x": 661,
+   "y": 1224,
+   "lon": 11.24,
+   "lat": 43.77,
+   "cities1444": 53000,
+   "year": 1450,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Bologna",
+   "x": 664,
+   "y": 1194,
+   "lon": 11.34,
+   "lat": 44.5,
+   "cities1444": 49000,
+   "year": 1450,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Padova",
+   "x": 680,
+   "y": 1155,
+   "lon": 11.88,
+   "lat": 45.43,
+   "cities1444": 34000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Brescia",
+   "x": 632,
+   "y": 1150,
+   "lon": 10.26,
+   "lat": 45.55,
+   "cities1444": 27000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Piacenza",
+   "x": 614,
+   "y": 1172,
+   "lon": 9.66,
+   "lat": 45.02,
+   "cities1444": 25000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Lucca",
+   "x": 638,
+   "y": 1222,
+   "lon": 10.47,
+   "lat": 43.82,
+   "cities1444": 23000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Verona",
+   "x": 654,
+   "y": 1154,
+   "lon": 11,
+   "lat": 45.45,
+   "cities1444": 22000,
+   "year": 1400,
+   "cityPopRaw": 30000
+  },
+  {
+   "name": "Mantua",
+   "x": 648,
+   "y": 1167,
+   "lon": 10.8,
+   "lat": 45.14,
+   "cities1444": 20000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Pavia",
+   "x": 599,
+   "y": 1166,
+   "lon": 9.15,
+   "lat": 45.17,
+   "cities1444": 20000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Parma",
+   "x": 634,
+   "y": 1181,
+   "lon": 10.33,
+   "lat": 44.81,
+   "cities1444": 15000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Cremona",
+   "x": 625,
+   "y": 1168,
+   "lon": 10.03,
+   "lat": 45.12,
+   "cities1444": 11000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Ferrara",
+   "x": 671,
+   "y": 1180,
+   "lon": 11.58,
+   "lat": 44.83,
+   "cities1444": 11000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Faenza",
+   "x": 680,
+   "y": 1203,
+   "lon": 11.88,
+   "lat": 44.28,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Como",
+   "x": 597,
+   "y": 1140,
+   "lon": 9.09,
+   "lat": 45.78,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Bergamo",
+   "x": 616,
+   "y": 1143,
+   "lon": 9.73,
+   "lat": 45.71,
+   "cities1444": 9000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Ravenna",
+   "x": 690,
+   "y": 1197,
+   "lon": 12.22,
+   "lat": 44.43,
+   "cities1444": 9000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Modena",
+   "x": 651,
+   "y": 1187,
+   "lon": 10.9,
+   "lat": 44.67,
+   "cities1444": 8000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Cesena",
+   "x": 691,
+   "y": 1209,
+   "lon": 12.25,
+   "lat": 44.14,
+   "cities1444": 8000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Alessandria",
+   "x": 583,
+   "y": 1177,
+   "lon": 8.62,
+   "lat": 44.91,
+   "cities1444": 7000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Vicenza",
+   "x": 670,
+   "y": 1150,
+   "lon": 11.54,
+   "lat": 45.55,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Crema",
+   "x": 615,
+   "y": 1157,
+   "lon": 9.69,
+   "lat": 45.38,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Iesi",
+   "x": 720,
+   "y": 1234,
+   "lon": 13.23,
+   "lat": 43.53,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Rimini",
+   "x": 701,
+   "y": 1212,
+   "lon": 12.59,
+   "lat": 44.07,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Fribourg",
+   "x": 539,
+   "y": 1096,
+   "lon": 7.14,
+   "lat": 46.8,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Savigliano",
+   "x": 555,
+   "y": 1189,
+   "lon": 7.67,
+   "lat": 44.62,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  }
+ ]
+}

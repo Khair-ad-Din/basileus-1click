@@ -1,0 +1,102 @@
+{
+ "region": 19,
+ "name": "Rus-Moscovia y estepa pontica",
+ "box": {
+  "lonMin": 30,
+  "lonMax": 52,
+  "latMin": 42,
+  "latMax": 60
+ },
+ "cities": [
+  {
+   "name": "Feodosija",
+   "x": 1378,
+   "y": 1171,
+   "lon": 35.36,
+   "lat": 45.05,
+   "cities1444": 60000,
+   "year": 1450,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Gorkij",
+   "x": 1635,
+   "y": 638,
+   "lon": 44.01,
+   "lat": 56.34,
+   "cities1444": 55000,
+   "year": 1450,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Moscow",
+   "x": 1444,
+   "y": 669,
+   "lon": 37.58,
+   "lat": 55.75,
+   "cities1444": 30000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Smolensk",
+   "x": 1280,
+   "y": 720,
+   "lon": 32.07,
+   "lat": 54.78,
+   "cities1444": 25000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Saray",
+   "x": 1737,
+   "y": 1080,
+   "lon": 47.44,
+   "lat": 47.17,
+   "cities1444": 15000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Derbent",
+   "x": 1762,
+   "y": 1294,
+   "lon": 48.28,
+   "lat": 42.05,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Sudak",
+   "x": 1366,
+   "y": 1178,
+   "lon": 34.96,
+   "lat": 44.88,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Astrakan",
+   "x": 1755,
+   "y": 1116,
+   "lon": 48.05,
+   "lat": 46.34,
+   "cities1444": 8000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Kazan",
+   "x": 1787,
+   "y": 665,
+   "lon": 49.13,
+   "lat": 55.83,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  }
+ ]
+}

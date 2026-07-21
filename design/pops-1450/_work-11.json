@@ -1,0 +1,112 @@
+{
+ "region": 11,
+ "name": "HRE Norte Baltico y Escandinavia S",
+ "box": {
+  "lonMin": 6,
+  "lonMax": 18,
+  "latMin": 53,
+  "latMax": 60
+ },
+ "cities": [
+  {
+   "name": "Luebeck",
+   "x": 644,
+   "y": 766,
+   "lon": 10.67,
+   "lat": 53.87,
+   "cities1444": 17000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Rostock",
+   "x": 687,
+   "y": 756,
+   "lon": 12.11,
+   "lat": 54.07,
+   "cities1444": 13000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Szczecin",
+   "x": 759,
+   "y": 790,
+   "lon": 14.54,
+   "lat": 53.39,
+   "cities1444": 10000,
+   "year": 1450,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Hamburg",
+   "x": 624,
+   "y": 782,
+   "lon": 10,
+   "lat": 53.55,
+   "cities1444": 8000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Bremen",
+   "x": 588,
+   "y": 806,
+   "lon": 8.78,
+   "lat": 53.07,
+   "cities1444": 7000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Wismar",
+   "x": 668,
+   "y": 766,
+   "lon": 11.48,
+   "lat": 53.87,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Stendal",
+   "x": 679,
+   "y": 829,
+   "lon": 11.85,
+   "lat": 52.6,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Lueneburg",
+   "x": 637,
+   "y": 797,
+   "lon": 10.43,
+   "lat": 53.25,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Roskilde",
+   "x": 686,
+   "y": 674,
+   "lon": 12.08,
+   "lat": 55.66,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Greifswald",
+   "x": 725,
+   "y": 756,
+   "lon": 13.39,
+   "lat": 54.07,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  }
+ ]
+}

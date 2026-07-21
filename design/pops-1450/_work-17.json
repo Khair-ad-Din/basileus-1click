@@ -1,0 +1,112 @@
+{
+ "region": 17,
+ "name": "Levante Siria y Mesopotamia",
+ "box": {
+  "lonMin": 33.5,
+  "lonMax": 48,
+  "latMin": 29,
+  "latMax": 37.5
+ },
+ "cities": [
+  {
+   "name": "Baghdad",
+   "x": 1646,
+   "y": 1622,
+   "lon": 44.38,
+   "lat": 33.34,
+   "cities1444": 90000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Damascus",
+   "x": 1406,
+   "y": 1616,
+   "lon": 36.31,
+   "lat": 33.5,
+   "cities1444": 65000,
+   "year": 1450,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Soltaniyeh",
+   "x": 1777,
+   "y": 1510,
+   "lon": 48.79,
+   "lat": 36.43,
+   "cities1444": 50000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Mosul",
+   "x": 1609,
+   "y": 1513,
+   "lon": 43.14,
+   "lat": 36.35,
+   "cities1444": 20000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Jerusalem",
+   "x": 1374,
+   "y": 1677,
+   "lon": 35.23,
+   "lat": 31.78,
+   "cities1444": 20000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Basra",
+   "x": 1748,
+   "y": 1722,
+   "lon": 47.81,
+   "lat": 30.48,
+   "cities1444": 15000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Wasit",
+   "x": 1671,
+   "y": 1656,
+   "lon": 45.22,
+   "lat": 32.37,
+   "cities1444": 15000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Acra",
+   "x": 1369,
+   "y": 1637,
+   "lon": 35.06,
+   "lat": 32.91,
+   "cities1444": 15000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Hilla",
+   "x": 1642,
+   "y": 1652,
+   "lon": 44.25,
+   "lat": 32.49,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Kufa",
+   "x": 1646,
+   "y": 1668,
+   "lon": 44.38,
+   "lat": 32.03,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  }
+ ]
+}

@@ -1,0 +1,252 @@
+{
+ "region": 8,
+ "name": "Iberia Sur",
+ "box": {
+  "lonMin": -9,
+  "lonMax": 1,
+  "latMin": 35.5,
+  "latMax": 40
+ },
+ "cities": [
+  {
+   "name": "Granada",
+   "x": 218,
+   "y": 1481,
+   "lon": -3.67,
+   "lat": 37.21,
+   "cities1444": 165000,
+   "year": 1450,
+   "cityPopRaw": 70000
+  },
+  {
+   "name": "Sevilla",
+   "x": 149,
+   "y": 1475,
+   "lon": -5.99,
+   "lat": 37.37,
+   "cities1444": 70000,
+   "year": 1400,
+   "cityPopRaw": 50000
+  },
+  {
+   "name": "Lisboa",
+   "x": 56,
+   "y": 1424,
+   "lon": -9.12,
+   "lat": 38.72,
+   "cities1444": 60000,
+   "year": 1450,
+   "cityPopRaw": 50000
+  },
+  {
+   "name": "Toledo",
+   "x": 207,
+   "y": 1380,
+   "lon": -4.04,
+   "lat": 39.87,
+   "cities1444": 45000,
+   "year": 1400,
+   "cityPopRaw": 25000
+  },
+  {
+   "name": "Valencia",
+   "x": 316,
+   "y": 1395,
+   "lon": -0.37,
+   "lat": 39.48,
+   "cities1444": 40000,
+   "year": 1400,
+   "cityPopRaw": 40000
+  },
+  {
+   "name": "Cordoba",
+   "x": 185,
+   "y": 1456,
+   "lon": -4.78,
+   "lat": 37.87,
+   "cities1444": 40000,
+   "year": 1400,
+   "cityPopRaw": 40000
+  },
+  {
+   "name": "Oran",
+   "x": 308,
+   "y": 1535,
+   "lon": -0.64,
+   "lat": 35.75,
+   "cities1444": 30000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Jerez de la Frontera",
+   "x": 145,
+   "y": 1501,
+   "lon": -6.12,
+   "lat": 36.67,
+   "cities1444": 15000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Almeria",
+   "x": 254,
+   "y": 1495,
+   "lon": -2.45,
+   "lat": 36.83,
+   "cities1444": 12000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Jaen",
+   "x": 215,
+   "y": 1460,
+   "lon": -3.77,
+   "lat": 37.77,
+   "cities1444": 11000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Ubeda",
+   "x": 227,
+   "y": 1451,
+   "lon": -3.36,
+   "lat": 38.01,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Ecija",
+   "x": 176,
+   "y": 1469,
+   "lon": -5.08,
+   "lat": 37.53,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Arcos de la Frontera",
+   "x": 155,
+   "y": 1498,
+   "lon": -5.78,
+   "lat": 36.75,
+   "cities1444": 9000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Evora",
+   "x": 92,
+   "y": 1430,
+   "lon": -7.9,
+   "lat": 38.56,
+   "cities1444": 8000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Merida",
+   "x": 139,
+   "y": 1416,
+   "lon": -6.32,
+   "lat": 38.93,
+   "cities1444": 7000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Murcia",
+   "x": 294,
+   "y": 1452,
+   "lon": -1.11,
+   "lat": 37.98,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": 15000
+  },
+  {
+   "name": "Badajoz",
+   "x": 120,
+   "y": 1418,
+   "lon": -6.96,
+   "lat": 38.88,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Jativa",
+   "x": 311,
+   "y": 1414,
+   "lon": -0.54,
+   "lat": 38.98,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Malaga",
+   "x": 196,
+   "y": 1499,
+   "lon": -4.41,
+   "lat": 36.72,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": 16000
+  },
+  {
+   "name": "Velez Malaga",
+   "x": 205,
+   "y": 1497,
+   "lon": -4.1,
+   "lat": 36.78,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Baena",
+   "x": 199,
+   "y": 1466,
+   "lon": -4.3,
+   "lat": 37.61,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Aracena",
+   "x": 132,
+   "y": 1456,
+   "lon": -6.56,
+   "lat": 37.87,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Castellon-de-la-Plana",
+   "x": 326,
+   "y": 1376,
+   "lon": -0.03,
+   "lat": 39.97,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Ronda",
+   "x": 173,
+   "y": 1499,
+   "lon": -5.18,
+   "lat": 36.72,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  }
+ ]
+}

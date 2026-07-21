@@ -1,0 +1,292 @@
+{
+ "region": 5,
+ "name": "Paises Bajos y Flandes",
+ "box": {
+  "lonMin": 2,
+  "lonMax": 7,
+  "latMin": 50,
+  "latMax": 53.6
+ },
+ "cities": [
+  {
+   "name": "Gent",
+   "x": 437,
+   "y": 904,
+   "lon": 3.7,
+   "lat": 51.04,
+   "cities1444": 80000,
+   "year": 1450,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Brugge",
+   "x": 423,
+   "y": 896,
+   "lon": 3.23,
+   "lat": 51.21,
+   "cities1444": 60000,
+   "year": 1450,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Tournai",
+   "x": 427,
+   "y": 925,
+   "lon": 3.37,
+   "lat": 50.6,
+   "cities1444": 40000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Bruxelles",
+   "x": 456,
+   "y": 914,
+   "lon": 4.34,
+   "lat": 50.83,
+   "cities1444": 26000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Leuven",
+   "x": 467,
+   "y": 912,
+   "lon": 4.71,
+   "lat": 50.88,
+   "cities1444": 17000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Antwerpen",
+   "x": 458,
+   "y": 896,
+   "lon": 4.41,
+   "lat": 51.21,
+   "cities1444": 15000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Liege",
+   "x": 492,
+   "y": 924,
+   "lon": 5.55,
+   "lat": 50.62,
+   "cities1444": 15000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Utrecht",
+   "x": 479,
+   "y": 854,
+   "lon": 5.12,
+   "lat": 52.09,
+   "cities1444": 13000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Arras",
+   "x": 410,
+   "y": 940,
+   "lon": 2.79,
+   "lat": 50.28,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Cambrai",
+   "x": 423,
+   "y": 945,
+   "lon": 3.23,
+   "lat": 50.17,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Ieper",
+   "x": 413,
+   "y": 913,
+   "lon": 2.9,
+   "lat": 50.85,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "s Hertogenbosch",
+   "x": 484,
+   "y": 873,
+   "lon": 5.28,
+   "lat": 51.7,
+   "cities1444": 9000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Mons",
+   "x": 444,
+   "y": 931,
+   "lon": 3.94,
+   "lat": 50.47,
+   "cities1444": 9000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Dordrecht",
+   "x": 466,
+   "y": 868,
+   "lon": 4.68,
+   "lat": 51.8,
+   "cities1444": 8000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Valenciennes",
+   "x": 432,
+   "y": 939,
+   "lon": 3.54,
+   "lat": 50.3,
+   "cities1444": 7000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "St Omer",
+   "x": 394,
+   "y": 918,
+   "lon": 2.26,
+   "lat": 50.75,
+   "cities1444": 7000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Maastricht",
+   "x": 497,
+   "y": 912,
+   "lon": 5.72,
+   "lat": 50.88,
+   "cities1444": 7000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Leiden",
+   "x": 461,
+   "y": 851,
+   "lon": 4.51,
+   "lat": 52.15,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Nijmegen",
+   "x": 500,
+   "y": 867,
+   "lon": 5.82,
+   "lat": 51.82,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Namur",
+   "x": 472,
+   "y": 931,
+   "lon": 4.88,
+   "lat": 50.47,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Roermond",
+   "x": 505,
+   "y": 897,
+   "lon": 5.99,
+   "lat": 51.19,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Nivelles",
+   "x": 456,
+   "y": 925,
+   "lon": 4.34,
+   "lat": 50.6,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Diest",
+   "x": 477,
+   "y": 907,
+   "lon": 5.05,
+   "lat": 50.98,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Groningen",
+   "x": 522,
+   "y": 799,
+   "lon": 6.56,
+   "lat": 53.21,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Deventer",
+   "x": 510,
+   "y": 846,
+   "lon": 6.16,
+   "lat": 52.26,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Kampen",
+   "x": 502,
+   "y": 832,
+   "lon": 5.89,
+   "lat": 52.54,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Middelburg",
+   "x": 435,
+   "y": 882,
+   "lon": 3.64,
+   "lat": 51.51,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Dendermonde",
+   "x": 449,
+   "y": 905,
+   "lon": 4.11,
+   "lat": 51.02,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  }
+ ]
+}

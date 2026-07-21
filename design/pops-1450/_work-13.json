@@ -1,0 +1,162 @@
+{
+ "region": 13,
+ "name": "Polonia-Lituania-Rutenia",
+ "box": {
+  "lonMin": 14.5,
+  "lonMax": 32,
+  "latMin": 48.5,
+  "latMax": 60
+ },
+ "cities": [
+  {
+   "name": "Novgorod",
+   "x": 1257,
+   "y": 517,
+   "lon": 31.29,
+   "lat": 58.53,
+   "cities1444": 60000,
+   "year": 1450,
+   "cityPopRaw": 25000
+  },
+  {
+   "name": "Trakai",
+   "x": 1068,
+   "y": 727,
+   "lon": 24.93,
+   "lat": 54.64,
+   "cities1444": 50000,
+   "year": 1450,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Gdansk",
+   "x": 882,
+   "y": 740,
+   "lon": 18.68,
+   "lat": 54.39,
+   "cities1444": 20000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Wroclaw",
+   "x": 832,
+   "y": 901,
+   "lon": 16.99,
+   "lat": 51.11,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Krakow",
+   "x": 921,
+   "y": 951,
+   "lon": 19.99,
+   "lat": 50.04,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Kaliningrad",
+   "x": 936,
+   "y": 723,
+   "lon": 20.49,
+   "lat": 54.72,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Pskov",
+   "x": 1169,
+   "y": 556,
+   "lon": 28.33,
+   "lat": 57.83,
+   "cities1444": 8000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Goerlitz",
+   "x": 772,
+   "y": 899,
+   "lon": 14.97,
+   "lat": 51.15,
+   "cities1444": 8000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Vilnjus",
+   "x": 1079,
+   "y": 725,
+   "lon": 25.3,
+   "lat": 54.68,
+   "cities1444": 7000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Riga",
+   "x": 1043,
+   "y": 605,
+   "lon": 24.09,
+   "lat": 56.95,
+   "cities1444": 7000,
+   "year": 1450,
+   "cityPopRaw": 8000
+  },
+  {
+   "name": "Olomouc",
+   "x": 840,
+   "y": 971,
+   "lon": 17.26,
+   "lat": 49.61,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Elblag",
+   "x": 904,
+   "y": 751,
+   "lon": 19.42,
+   "lat": 54.17,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Polock",
+   "x": 1182,
+   "y": 681,
+   "lon": 28.77,
+   "lat": 55.52,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Stockholm",
+   "x": 863,
+   "y": 471,
+   "lon": 18.04,
+   "lat": 59.32,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Kosice",
+   "x": 959,
+   "y": 1011,
+   "lon": 21.27,
+   "lat": 48.73,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  }
+ ]
+}

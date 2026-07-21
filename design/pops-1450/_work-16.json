@@ -1,0 +1,142 @@
+{
+ "region": 16,
+ "name": "Anatolia y Caucaso",
+ "box": {
+  "lonMin": 26,
+  "lonMax": 48,
+  "latMin": 36,
+  "latMax": 42
+ },
+ "cities": [
+  {
+   "name": "Tabriz",
+   "x": 1703,
+   "y": 1448,
+   "lon": 46.3,
+   "lat": 38.09,
+   "cities1444": 250000,
+   "year": 1450,
+   "cityPopRaw": 40000
+  },
+  {
+   "name": "Karaman",
+   "x": 1314,
+   "y": 1482,
+   "lon": 33.21,
+   "lat": 37.18,
+   "cities1444": 80000,
+   "year": 1450,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Aleppo",
+   "x": 1432,
+   "y": 1518,
+   "lon": 37.18,
+   "lat": 36.21,
+   "cities1444": 70000,
+   "year": 1450,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Siwas",
+   "x": 1427,
+   "y": 1385,
+   "lon": 37.01,
+   "lat": 39.74,
+   "cities1444": 31000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Trapezunt",
+   "x": 1507,
+   "y": 1336,
+   "lon": 39.7,
+   "lat": 40.99,
+   "cities1444": 25000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Ankara",
+   "x": 1305,
+   "y": 1378,
+   "lon": 32.91,
+   "lat": 39.92,
+   "cities1444": 20000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Iconum",
+   "x": 1293,
+   "y": 1456,
+   "lon": 32.5,
+   "lat": 37.87,
+   "cities1444": 20000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Nicea",
+   "x": 1210,
+   "y": 1358,
+   "lon": 29.71,
+   "lat": 40.43,
+   "cities1444": 20000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Ceasarea",
+   "x": 1382,
+   "y": 1424,
+   "lon": 35.5,
+   "lat": 38.72,
+   "cities1444": 20000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Adana",
+   "x": 1376,
+   "y": 1488,
+   "lon": 35.3,
+   "lat": 37.02,
+   "cities1444": 20000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Tokat",
+   "x": 1414,
+   "y": 1362,
+   "lon": 36.58,
+   "lat": 40.33,
+   "cities1444": 14000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Antiochia",
+   "x": 1400,
+   "y": 1517,
+   "lon": 36.1,
+   "lat": 36.24,
+   "cities1444": 12000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Kirshehir",
+   "x": 1343,
+   "y": 1408,
+   "lon": 34.19,
+   "lat": 39.14,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  }
+ ]
+}

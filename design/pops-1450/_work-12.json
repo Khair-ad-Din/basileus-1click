@@ -1,0 +1,11 @@
+{
+ "region": 12,
+ "name": "Escandinavia N subartica",
+ "box": {
+  "lonMin": 4,
+  "lonMax": 31,
+  "latMin": 60,
+  "latMax": 66.5
+ },
+ "cities": []
+}

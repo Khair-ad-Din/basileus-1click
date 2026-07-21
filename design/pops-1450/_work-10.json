@@ -1,0 +1,202 @@
+{
+ "region": 10,
+ "name": "HRE Sur y Bohemia",
+ "box": {
+  "lonMin": 8.5,
+  "lonMax": 17,
+  "latMin": 46,
+  "latMax": 51
+ },
+ "cities": [
+  {
+   "name": "Praha",
+   "x": 756,
+   "y": 949,
+   "lon": 14.44,
+   "lat": 50.08,
+   "cities1444": 70000,
+   "year": 1450,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Magdeburg",
+   "x": 673,
+   "y": 853,
+   "lon": 11.64,
+   "lat": 52.11,
+   "cities1444": 24000,
+   "year": 1450,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Wien",
+   "x": 812,
+   "y": 1034,
+   "lon": 16.32,
+   "lat": 48.21,
+   "cities1444": 20000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Augsburg",
+   "x": 650,
+   "y": 1028,
+   "lon": 10.87,
+   "lat": 48.35,
+   "cities1444": 12000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Erfurt",
+   "x": 654,
+   "y": 908,
+   "lon": 11,
+   "lat": 50.96,
+   "cities1444": 11000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Ulm",
+   "x": 624,
+   "y": 1026,
+   "lon": 10,
+   "lat": 48.39,
+   "cities1444": 9000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Kutna Hora",
+   "x": 781,
+   "y": 954,
+   "lon": 15.28,
+   "lat": 49.97,
+   "cities1444": 9000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Landshut",
+   "x": 689,
+   "y": 1020,
+   "lon": 12.18,
+   "lat": 48.53,
+   "cities1444": 9000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Regensburg",
+   "x": 687,
+   "y": 998,
+   "lon": 12.11,
+   "lat": 49.01,
+   "cities1444": 8000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Muenchen",
+   "x": 671,
+   "y": 1038,
+   "lon": 11.58,
+   "lat": 48.12,
+   "cities1444": 7000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Wiener Neustadt",
+   "x": 810,
+   "y": 1051,
+   "lon": 16.25,
+   "lat": 47.83,
+   "cities1444": 7000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Nuernberg",
+   "x": 656,
+   "y": 978,
+   "lon": 11.07,
+   "lat": 49.45,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Plzen",
+   "x": 725,
+   "y": 964,
+   "lon": 13.39,
+   "lat": 49.76,
+   "cities1444": 6000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Berlin",
+   "x": 725,
+   "y": 833,
+   "lon": 13.39,
+   "lat": 52.52,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Brno",
+   "x": 821,
+   "y": 990,
+   "lon": 16.62,
+   "lat": 49.19,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Bamberg",
+   "x": 650,
+   "y": 958,
+   "lon": 10.87,
+   "lat": 49.89,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Zerbst",
+   "x": 687,
+   "y": 860,
+   "lon": 12.11,
+   "lat": 51.97,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Bautzen",
+   "x": 757,
+   "y": 898,
+   "lon": 14.47,
+   "lat": 51.17,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Zittau",
+   "x": 768,
+   "y": 911,
+   "lon": 14.84,
+   "lat": 50.9,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  }
+ ]
+}

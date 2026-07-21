@@ -1,7 +1,7 @@
 // render.js
-import { MW, MH, NATIONS, TERRAINS, TERRAIN_KEYS, UNITS, isSea } from "./config.js";
+import { MW, MH, NATIONS, TERRAINS, TERRAIN_KEYS, UNITS, isSea, CENTER_POP } from "./config.js";
 import { S } from "./state.js";
-import { hashN, roadKey, hasRoad, kmBetween } from "./mapgen.js";
+import { hashN, roadKey, hasRoad, kmBetween, localize } from "./mapgen.js";
 import { armyCount, armyPops, recruitable, soldAvail, canAfford } from "./economy.js";
 // número compacto para el marcador del ejército (pops soldados): 850, 4.2k, 12k
 function popTag(v){return v>=1000?(v/1000).toFixed(v>=10000?0:1).replace(".0","")+"k":Math.round(v)}
@@ -39,13 +39,21 @@ function resColor(pid){
   if(p.wasteland)return WASTECOL;
   return RES_MAPCOL[p.resType]||[150,150,150];
 }
-// Mapa de MERCADOS (ADR 0001): a qué plaza acude cada provincia a vender (p.marketOf).
-// El color es una IDENTIDAD, no una medida: todas las provincias de una misma plaza salen
-// EXACTAMENTE del mismo color (ni degradado por distancia, ni el `shade` aleatorio que el resto
-// del mapa da a cada provincia — ver paintAll/repaintProvince). Si el tono varía dentro del racimo,
-// el ojo deja de ver el racimo, que es justo lo único que esta vista tiene que contar.
-// El matiz sale del id de la plaza por ÁNGULO ÁUREO: reparte los matices sin que dos vecinas
-// coincidan. Dónde está la plaza lo dice una FORMA (el anillo que pinta draw), no el color.
+// Mapa de MERCADOS (ADR 0001): a qué plaza acude cada provincia a vender (p.marketOf). La plaza es el
+// NÚCLEO URBANO DE LA COMARCA (la villa-mercado más cercana en km), NUNCA "la capital del ducado" — el
+// Dijkstra la elige por proximidad de carro, no por rango señorial; etiquetarla como sede rompería la
+// mecánica (ver dictamen del consejo, design/mercado-centros-eu5.md).
+// COLOR = IDENTIDAD, no medida: todas las provincias de una misma plaza salen EXACTAMENTE del mismo
+// tono (ni degradado por distancia, ni el `shade` aleatorio de paintAll/repaintProvince). Si el tono
+// varía dentro del racimo, el ojo deja de ver el racimo.
+// LEGIBILIDAD (dictamen 2026-07-21): el matiz por-plaza (ángulo áureo sobre ~400 ids) era confeti
+// —cada comarca un color vivo distinto, arcoíris sin estructura—. Ahora el matiz sale del DUCADO de la
+// plaza: las comarcas de un mismo ducado comparten familia de color y forman una ZONA legible; las
+// plazas distintas dentro del ducado se separan solo por un escalón tonal fino (jitter de luminosidad)
+// y por la línea de provincia ya horneada en borderC. Relleno DESATURADO (pastel) para que ducados
+// vecinos —hue áureo, siempre distintos— no choquen. El contorno de ducado (medio) y el de provincia
+// (fino) los pone paintBorders encima; aquí solo se decide el relleno. La plaza la marca una FORMA
+// (el anillo que pinta draw), no el color.
 function hsl2rgb(h,s,l){
   const a=s*Math.min(l,1-l);
   const f=n=>{const k=(n+h/30)%12;return 255*(l-a*Math.max(-1,Math.min(k-3,9-k,1)))};
@@ -55,7 +63,52 @@ function mktColor(pid){
   const p=S.provs[pid];
   if(p.wasteland)return WASTECOL;
   if(p.marketOf==null||p.marketOf<0)return[228,224,214];   // sin plaza (no debería quedar ninguna)
-  return hsl2rgb((p.marketOf*137.508)%360,.58,.62);
+  const plaza=S.provs[p.marketOf];
+  const group=(plaza&&plaza.duchy>=0)?plaza.duchy:p.marketOf; // agrupa por ducado de la plaza (zona legible)
+  const jit=(hashN(p.marketOf,11)-0.5)*0.12;               // ±0.06 de luz por plaza: subdivisión fina dentro del ducado
+  return hsl2rgb((group*137.508)%360,.30,.72+jit);
+}
+// Mapa de CENTROS DE COMERCIO (Capa 2, hubOf): a qué CENTRO gravita cada provincia. Autarquía (hubOf<0
+// = fuera del alcance de todo centro) = gris neutro. La forma la marca una ESTRELLA dorada (draw).
+// COLOR: el ángulo áureo sobre hubOf repartía los matices pero NO garantizaba que dos centros CONTIGUOS
+// difirieran (podían caer en tonos parecidos). Se resuelve como un COLOREADO DE GRAFO: se construye la
+// adyacencia entre centros (territorios que se tocan por tierra) y se asigna, de forma voraz, un color
+// de una paleta de tonos distintos evitando el de cualquier vecino ya coloreado (y, a igualdad, el menos
+// usado global → variedad). Determinista; se cachea y se invalida al repintar (paintAll), como el borde.
+let hubHue=null;   // centerId -> [r,g,b] del coloreado de grafo
+function buildHubColoring(){
+  const land=q=>q>=0&&!isSea(S.provs[q])&&!S.provs[q].wasteland;
+  const adj=new Map();
+  const link=(a,b)=>{if(a===b)return;if(!adj.has(a))adj.set(a,new Set());if(!adj.has(b))adj.set(b,new Set());adj.get(a).add(b);adj.get(b).add(a)};
+  for(let y=0;y<MH;y++){const row=y*MW,below=row+MW;
+    for(let x=0;x<MW;x++){
+      const p=S.provIdx[row+x];if(!land(p))continue;const hp=S.provs[p].hubOf;if(hp<0)continue;
+      const rp=x<MW-1?S.provIdx[row+x+1]:-1;if(land(rp)){const hq=S.provs[rp].hubOf;if(hq>=0&&hq!==hp)link(hp,hq)}
+      const dp=y<MH-1?S.provIdx[below+x]:-1;if(land(dp)){const hq=S.provs[dp].hubOf;if(hq>=0&&hq!==hp)link(hp,hq)}
+    }
+  }
+  const NP=16,pal=[];                                       // paleta: hue espaciado + 2 bandas de luz = todos distintos
+  for(let i=0;i<NP;i++)pal.push(hsl2rgb((i*360/NP)%360,.38,i%2?0.58:0.72));
+  const centers=new Set(adj.keys());
+  for(const p of S.provs)if(!p.wasteland&&!isSea(p)&&p.hubOf===p.id)centers.add(p.id); // incluye centros-isla sin vecinos
+  const order=[...centers].sort((a,b)=>((adj.get(b)?.size||0)-(adj.get(a)?.size||0))||a-b); // grado desc, id como desempate
+  const color=new Map(),globalCount=new Array(NP).fill(0);
+  for(const c of order){
+    const used=new Set();for(const nb of (adj.get(c)||[]))if(color.has(nb))used.add(color.get(nb));
+    let idx=-1,best=Infinity;
+    for(let i=0;i<NP;i++){if(used.has(i))continue;if(globalCount[i]<best){best=globalCount[i];idx=i}}
+    if(idx<0){const cnt=new Array(NP).fill(0);for(const nb of (adj.get(c)||[]))if(color.has(nb))cnt[color.get(nb)]++;idx=cnt.indexOf(Math.min(...cnt))} // >NP vecinos: el menos repetido
+    color.set(c,idx);globalCount[idx]++;
+  }
+  const out={};for(const[c,i]of color)out[c]=pal[i];
+  return out;
+}
+function hubColor(pid){
+  const p=S.provs[pid];
+  if(p.wasteland)return WASTECOL;
+  if(p.hubOf==null||p.hubOf<0)return[176,172,164];         // autarquía: ningún centro alcanza
+  if(!hubHue)hubHue=buildHubColoring();
+  return hubHue[p.hubOf]||[176,172,164];
 }
 // Jerarquía de fronteras (estilo EU4): nación = gruesa y opaca, ducado = media, provincia = fina.
 // [r,g,b,a]; el grosor por tier lo fija paintBorders al trazar los vectores (ver layer(...)).
@@ -152,6 +205,7 @@ function provColor(p){
   if(S.popView)return popColor(p);
   if(S.resView)return resColor(p);
   if(S.mktView)return mktColor(p);
+  if(S.hubView)return hubColor(p);
   if(S.terrainView)return TCOL[S.provs[p].terrain];
   // EL MAR ANTES DE NADA. Sin esto reventaba el mapa entero: una tesela de mar tiene owner=NEUTRAL,
   // que vale NPLAY (193) y está FUERA de NCOL (0..192) -> undefined -> `c[0]*s` peta en paintAll y
@@ -171,13 +225,14 @@ function paintAll(){
     }else{
       const P=S.provs[p];let c=provColor(p);
       // ocupación (solo en vista política): franjas diagonales del color del ocupante
-      if(!S.terrainView&&!S.popView&&!S.resView&&!S.mktView&&!P.wasteland&&P.occupier>=0&&P.occupier!==P.owner&&((x+y)>>2&1))c=NCOL[P.occupier];
-      const s=S.mktView?1:P.shade;   // en Mercados el color es identidad: el shade rompería el racimo
+      if(!S.terrainView&&!S.popView&&!S.resView&&!S.mktView&&!S.hubView&&!P.wasteland&&P.occupier>=0&&P.occupier!==P.owner&&((x+y)>>2&1))c=NCOL[P.occupier];
+      const s=S.mktView||S.hubView?1:P.shade;   // en Mercados/Centros el color es identidad: el shade rompería el racimo
       d[o]=c[0]*s;d[o+1]=c[1]*s;d[o+2]=c[2]*s;d[o+3]=255;
     }
   }
   baseCtx.putImageData(baseData,0,0);
   paintBorders();
+  hubBorderPath=null;hubHue=null;   // la topología pudo cambiar: borde y coloreado de Centros se reconstruyen al dibujar
   drawGraph(); // la malla de conexiones/nodos se rehace cuando cambia la estructura del mapa
   bakeTerrain(); // PRUEBA: capa de sprites de terreno (no-op si aún no cargaron)
 }
@@ -303,6 +358,30 @@ function buildSelPath(pid,scale=1){
   for(const l of tracePolys(flat))chaikinPath(l,path,scale);
   return path;
 }
+// Límite de los CENTROS DE COMERCIO (vista Centros): traza como VECTOR el borde entre territorios de
+// distinto hubOf, para que dos centros de color parecido no se confundan. Solo aristas TIERRA-TIERRA
+// (el mar ya lo separa la costa; no ensuciamos el agua con líneas). Se recorre el ráster una vez y se
+// cachea el Path2D; se invalida al repintar (paintAll), que es cuando puede cambiar la topología.
+let hubBorderPath=null;
+function buildHubBorderPath(){
+  const flat=[];
+  const land=q=>q>=0&&!isSea(S.provs[q])&&!S.provs[q].wasteland;
+  for(let y=0;y<MH;y++){
+    const row=y*MW, below=row+MW;
+    for(let x=0;x<MW;x++){
+      const p=S.provIdx[row+x];
+      if(!land(p))continue;
+      const hb=S.provs[p].hubOf;
+      const rp=x<MW-1?S.provIdx[row+x+1]:-1;              // arista derecha (una vez por arista)
+      if(land(rp)&&S.provs[rp].hubOf!==hb){const n0=y*NODEW+x+1;flat.push(n0,n0+NODEW)}
+      const dp=y<MH-1?S.provIdx[below+x]:-1;              // arista inferior
+      if(land(dp)&&S.provs[dp].hubOf!==hb){const n0=(y+1)*NODEW+x;flat.push(n0,n0+1)}
+    }
+  }
+  const path=new Path2D();
+  for(const l of tracePolys(flat))chaikinPath(l,path,1);
+  return path;
+}
 // ============================ PRUEBA: relleno con sprites de terreno ============================
 // Cada provincia se rellena con el sprite de su terreno, escalado para cubrir su bounding-box
 // (modo "cover", conservando proporción) y RECORTADO a la forma de la provincia con clip() sobre
@@ -387,8 +466,8 @@ if(typeof window!=="undefined")window.__terr={c:terrainC,img:_terrImg,SPRITE:TER
 let POL_TINT=0.35;
 if(typeof window!=="undefined")window.setPolTint=v=>{POL_TINT=Math.max(0,Math.min(1,+v||0))};
 function repaintProvince(pid){
-  const P=S.provs[pid],base=provColor(pid),s=S.mktView?1:P.shade,d=baseData.data;
-  const occ=(!S.terrainView&&!S.popView&&!S.resView&&!S.mktView&&!P.wasteland&&P.occupier>=0&&P.occupier!==P.owner)?NCOL[P.occupier]:null;
+  const P=S.provs[pid],base=provColor(pid),s=S.mktView||S.hubView?1:P.shade,d=baseData.data;
+  const occ=(!S.terrainView&&!S.popView&&!S.resView&&!S.mktView&&!S.hubView&&!P.wasteland&&P.occupier>=0&&P.occupier!==P.owner)?NCOL[P.occupier]:null;
   for(const i of S.pixOfProv[pid]){
     const o=i*4;let c=base;
     if(occ){const x=i%MW,y=(i/MW)|0;if((x+y)>>2&1)c=occ}
@@ -511,6 +590,21 @@ function drawArrow(x0,y0,x1,y1){
   ctx.closePath();
   ctx.fillStyle="rgba(255,210,74,.95)";ctx.fill();
 }
+// Arco de MERCADO (vista Mercados): línea roja curvada con punta de flecha entre una aldea y su
+// plaza. Se comba (control perpendicular) para que un haz de arcos desde la misma plaza no se
+// solape en un borrón. La punta se orienta por la tangente en el destino.
+function mktArc(x0,y0,x1,y1){
+  const z=S.zoom,dx=x1-x0,dy=y1-y0,len=Math.hypot(dx,dy)||1;
+  const bow=Math.min(len*0.16,36);
+  const cx=(x0+x1)/2-dy/len*bow, cy=(y0+y1)/2+dx/len*bow;   // punto de control perpendicular
+  ctx.beginPath();ctx.moveTo(x0,y0);ctx.quadraticCurveTo(cx,cy,x1,y1);
+  ctx.strokeStyle="rgba(214,38,38,.92)";ctx.lineWidth=1.8/z;ctx.stroke();
+  const ang=Math.atan2(y1-cy,x1-cx),s=8/z;                  // tangente = último tramo de la curva
+  ctx.beginPath();ctx.moveTo(x1,y1);
+  ctx.lineTo(x1-Math.cos(ang-0.5)*s,y1-Math.sin(ang-0.5)*s);
+  ctx.lineTo(x1-Math.cos(ang+0.5)*s,y1-Math.sin(ang+0.5)*s);
+  ctx.closePath();ctx.fillStyle="rgba(214,38,38,.92)";ctx.fill();
+}
 function drawEditorOverlay(){
   if(S.shapeSel>=0&&S.shapePoly.length){
     ctx.beginPath();
@@ -584,7 +678,7 @@ function draw(){
   ctx.drawImage(baseC,0,0);
   // En las vistas de DATOS el color ES el dato: el relieve encima lo ahoga (el tinte solo pesa
   // POL_TINT=0.35, así que la rampa de población quedaba en un oliva ilegible). Se pintan planas.
-  const dataView=S.popView||S.resView||S.mktView;
+  const dataView=S.popView||S.resView||S.mktView||S.hubView;
   if(_terrReady===_terrTotal&&!dataView){
     ctx.drawImage(terrainC,0,0,MW,MH); // terreno sobre el relleno
     // TINTE POLÍTICO: se repinta baseC (color de dueño, ya actualizado al conquistar) con poca
@@ -596,30 +690,108 @@ function draw(){
   // marcadores de capital como DIBUJO DE FONDO: centrados en la provincia, pequeños y translúcidos.
   // Se pintan BAJO la malla, así el nodo rojo del centro queda visible encima. No bloquean clics
   // (el clic se resuelve por píxel de provincia, no por la geometría del marcador).
+  const politicalView=!S.terrainView&&!S.popView&&!S.resView&&!S.mktView&&!S.hubView; // el mapa por defecto
   if(!S.editMode&&S.started){
-    for(const d of S.duchies){                       // capital de ducado = rombo pequeño
+    const z=S.zoom;
+    const ducCaps=new Set(S.duchies.map(d=>d.cap));     // provincias que son capital de ducado
+    const isCenter=p=>politicalView&&p.urban&&!p.wasteland&&!isSea(p)&&(p.cityPop||0)>=CENTER_POP;
+    for(const d of S.duchies){                          // capital de ducado = rombo tostado…
       const p=S.provs[d.cap];
-      if(!p||p.capital)continue;
+      if(!p||p.capital||isCenter(p))continue;           // …salvo si es CENTRO: lo sustituye el cuadro dorado
       ctx.save();ctx.translate(p.x,p.y);ctx.rotate(Math.PI/4);
       ctx.fillStyle="rgba(216,203,160,0.45)";ctx.fillRect(-2.5,-2.5,5,5);
-      ctx.strokeStyle="rgba(42,36,24,0.45)";ctx.lineWidth=0.7/S.zoom;ctx.strokeRect(-2.5,-2.5,5,5);
+      ctx.strokeStyle="rgba(42,36,24,0.45)";ctx.lineWidth=0.7/z;ctx.strokeRect(-2.5,-2.5,5,5);
       ctx.restore();
     }
-    for(const p of S.provs){                          // capital nacional = disco pequeño
+    for(const p of S.provs){                            // capital nacional = disco pequeño
       if(!p.capital)continue;
       ctx.beginPath();ctx.arc(p.x,p.y,4,0,7);
       ctx.fillStyle="rgba(240,230,200,0.5)";ctx.fill();
-      ctx.strokeStyle="rgba(34,34,34,0.45)";ctx.lineWidth=0.9/S.zoom;ctx.stroke();
+      ctx.strokeStyle="rgba(34,34,34,0.45)";ctx.lineWidth=0.9/z;ctx.stroke();
+    }
+    // CIUDADES fusionadas en el mapa político (solo en el político; en las vistas de datos estorbarían):
+    // villa = punto + nombre; CENTRO de comercio (núcleo≥CENTER_POP) = CUADRO DORADO + nombre. El punto de
+    // villa NO se dibuja si ya hay rombo de ducado o disco de capital (esos ya anclan el sitio); el nombre sí.
+    if(politicalView){
+      const cities=[];
+      for(const p of S.provs)if(p.urban&&!p.wasteland&&!isSea(p))cities.push(p);
+      cities.sort((a,b)=>(a.cityPop||0)-(b.cityPop||0)); // las grandes al final = se dibujan encima
+      const short=v=>v>=1000?Math.round(v/1000)+"k":(""+v);
+      ctx.lineJoin="round";ctx.textAlign="center";ctx.textBaseline="alphabetic";
+      for(const p of cities){
+        const core=p.cityPop||0, center=core>=CENTER_POP; // clasificación por el NÚCLEO histórico (estable)
+        const r=((center?4.2:2.2)+2.3*Math.sqrt(Math.min(core,400000)/25000))/z;
+        const anchored=p.capital||ducCaps.has(p.id);    // ya tiene disco/rombo
+        if(center){                                      // cuadro DORADO (sustituye rombo/anclaje)
+          ctx.save();ctx.translate(p.x,p.y);ctx.rotate(Math.PI/4);
+          ctx.fillStyle="rgba(232,196,74,0.96)";ctx.fillRect(-r,-r,2*r,2*r);
+          ctx.strokeStyle="rgba(40,30,10,0.92)";ctx.lineWidth=1.3/z;ctx.strokeRect(-r,-r,2*r,2*r);
+          ctx.restore();
+        }else if(!anchored){                             // villa suelta = punto (si ya hay rombo/disco, se omite)
+          ctx.beginPath();ctx.arc(p.x,p.y,r,0,7);
+          ctx.fillStyle="rgba(42,48,56,0.82)";ctx.fill();
+          ctx.strokeStyle="rgba(238,236,228,0.85)";ctx.lineWidth=0.9/z;ctx.stroke();
+        }
+        if(center||z>2.4){                               // nombre: centros siempre; villas al acercar el zoom
+          let lab=p.cityName?localize(p.cityName):(p.name||""); // etiqueta = exónimo español (misma tabla que el nombre de provincia), no el canon crudo
+          if(center){const live=Math.round(p.pop||0);if(live>0)lab+=" "+short(live);} // pop VIVO (crece con la sim), no el núcleo sembrado
+          const markR=center?r:(p.capital?4.5:ducCaps.has(p.id)?3.2:r);
+          const fs=(center?11:9.5)/z;
+          ctx.font="600 "+fs+"px system-ui,sans-serif";
+          const ty=p.y-markR-3/z;
+          ctx.lineWidth=3/z;ctx.strokeStyle="rgba(10,10,12,0.82)";ctx.strokeText(lab,p.x,ty);
+          ctx.fillStyle=center?"#fff3d0":"#eef0ec";ctx.fillText(lab,p.x,ty);
+        }
+      }
     }
   }
   // vista de Mercados: la plaza se marca con una FORMA, no con un tono — así el racimo conserva su
   // color plano (que es lo único que hay que leer) y aun así se ve dónde está el mercado.
   if(S.mktView&&S.started){
+    // ARCOS de pertenencia al pulsar (interroga la Capa 1): aldea seleccionada → arco a su plaza;
+    // plaza seleccionada → flechas a cada aldea que le vende. Se dibujan BAJO las formas de plaza.
+    if(S.selProv>=0){
+      const sp=S.provs[S.selProv];
+      if(sp&&!sp.wasteland&&sp.marketOf>=0){
+        if(sp.marketOf===sp.id){                            // es PLAZA → su racimo de satélites
+          for(const q of S.provs)if(q.marketOf===sp.id&&q.id!==sp.id&&!q.wasteland)mktArc(sp.x,sp.y,q.x,q.y);
+        }else{                                              // es aldea → su plaza
+          const m=S.provs[sp.marketOf];if(m)mktArc(sp.x,sp.y,m.x,m.y);
+        }
+      }
+    }
     for(const p of S.provs){
       if(p.wasteland||p.marketOf!==p.id)continue;
       ctx.beginPath();ctx.arc(p.x,p.y,3.4,0,7);
       ctx.fillStyle="rgba(28,24,18,0.82)";ctx.fill();
       ctx.strokeStyle="rgba(255,252,242,0.9)";ctx.lineWidth=1.1/S.zoom;ctx.stroke();
+    }
+  }
+  // vista de CENTROS DE COMERCIO (Capa 2): cada centro = ESTRELLA (cuadro girado) dorada. Al pulsar
+  // una provincia → arco a su centro; al pulsar un centro → arcos a todas sus provincias (como Mercados).
+  if(S.hubView&&S.started){
+    if(!hubBorderPath)hubBorderPath=buildHubBorderPath();
+    // Borde de Centros: línea OSCURA nítida (los rellenos son pastel claro: el blanco no contrastaba)
+    // sobre un halo claro suave que lo separa de las fronteras de ducado ya horneadas.
+    ctx.save();ctx.lineJoin="round";ctx.lineCap="round";
+    ctx.strokeStyle="rgba(250,247,240,0.55)";ctx.lineWidth=2.6/S.zoom;ctx.stroke(hubBorderPath); // halo claro (glow)
+    ctx.strokeStyle="rgba(34,28,22,0.85)";ctx.lineWidth=1.2/S.zoom;ctx.stroke(hubBorderPath);   // línea oscura nítida
+    ctx.restore();
+    if(S.selProv>=0){
+      const sp=S.provs[S.selProv];
+      if(sp&&!sp.wasteland&&sp.hubOf>=0){
+        if(sp.hubOf===sp.id){                               // es CENTRO → arcos a todas sus provincias
+          for(const q of S.provs)if(q.hubOf===sp.id&&q.id!==sp.id&&!q.wasteland)mktArc(sp.x,sp.y,q.x,q.y);
+        }else{const c=S.provs[sp.hubOf];if(c)mktArc(sp.x,sp.y,c.x,c.y);} // es provincia → arco a su centro
+      }
+    }
+    for(const p of S.provs){
+      if(p.wasteland||p.hubOf!==p.id)continue;
+      const r=4.2/S.zoom;
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(Math.PI/4);
+      ctx.fillStyle="rgba(232,196,74,0.96)";ctx.fillRect(-r,-r,2*r,2*r);
+      ctx.strokeStyle="rgba(40,30,10,0.92)";ctx.lineWidth=1.3/S.zoom;ctx.strokeRect(-r,-r,2*r,2*r);
+      ctx.restore();
     }
   }
   if(S.showGraph)ctx.drawImage(graphC,0,0); // malla de conexiones + nodos reales (encima de los marcadores)

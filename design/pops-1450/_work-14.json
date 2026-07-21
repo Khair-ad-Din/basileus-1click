@@ -1,0 +1,122 @@
+{
+ "region": 14,
+ "name": "Hungria y Balcanes",
+ "box": {
+  "lonMin": 14.5,
+  "lonMax": 29.5,
+  "latMin": 40,
+  "latMax": 48.5
+ },
+ "cities": [
+  {
+   "name": "Tirgoviste",
+   "x": 1084,
+   "y": 1176,
+   "lon": 25.47,
+   "lat": 44.93,
+   "cities1444": 40000,
+   "year": 1450,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Belgrade",
+   "x": 936,
+   "y": 1180,
+   "lon": 20.49,
+   "lat": 44.83,
+   "cities1444": 30000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Skopje",
+   "x": 964,
+   "y": 1297,
+   "lon": 21.43,
+   "lat": 41.98,
+   "cities1444": 30000,
+   "year": 1450,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Nis",
+   "x": 978,
+   "y": 1243,
+   "lon": 21.91,
+   "lat": 43.31,
+   "cities1444": 15000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Brasov",
+   "x": 1088,
+   "y": 1146,
+   "lon": 25.61,
+   "lat": 45.64,
+   "cities1444": 11000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Suceava",
+   "x": 1109,
+   "y": 1059,
+   "lon": 26.31,
+   "lat": 47.65,
+   "cities1444": 9000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Buda",
+   "x": 893,
+   "y": 1066,
+   "lon": 19.05,
+   "lat": 47.49,
+   "cities1444": 8000,
+   "year": 1400,
+   "cityPopRaw": 20000
+  },
+  {
+   "name": "Prizrend",
+   "x": 943,
+   "y": 1287,
+   "lon": 20.73,
+   "lat": 42.22,
+   "cities1444": 7000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Shumen",
+   "x": 1127,
+   "y": 1245,
+   "lon": 26.92,
+   "lat": 43.26,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Banska Stiavnica",
+   "x": 890,
+   "y": 1022,
+   "lon": 18.94,
+   "lat": 48.48,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Cluj",
+   "x": 1029,
+   "y": 1097,
+   "lon": 23.62,
+   "lat": 46.78,
+   "cities1444": 5000,
+   "year": 1400,
+   "cityPopRaw": null
+  }
+ ]
+}

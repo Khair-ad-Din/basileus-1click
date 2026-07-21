@@ -677,7 +677,7 @@ window.scaleProvPop=function(f){
   refreshEditorPanel();
 };
 function syncMapModeUI(){
-  const cur=S.terrainView?"Terreno":S.popView?"Población":S.resView?"Recursos":S.mktView?"Mercados":"Político";
+  const cur=S.terrainView?"Terreno":S.popView?"Población":S.resView?"Recursos":S.mktView?"Mercados":S.hubView?"Centros":"Político";
   const mb=document.getElementById("mapBtn");
   if(mb){mb.textContent="🗺 "+cur;mb.classList.toggle("active",cur!=="Político");}
   const tl=document.getElementById("terrLegend");if(tl)tl.style.display=S.terrainView?"block":"none";
@@ -687,8 +687,8 @@ function syncMapModeUI(){
 }
 // vista de mapa: político (null) o "terrain"/"pop"/"res"/"mkt" (excluyentes entre sí)
 window.setMapView=function(mode){
-  S.terrainView=mode==="terrain";S.popView=mode==="pop";S.resView=mode==="res";S.mktView=mode==="mkt";
-  if(S.mktView)ensureMarketTopology(); // la vista es el primer consumidor de p.marketOf: hay que tenerla al día
+  S.terrainView=mode==="terrain";S.popView=mode==="pop";S.resView=mode==="res";S.mktView=mode==="mkt";S.hubView=mode==="hub";
+  if(S.mktView||S.hubView)ensureMarketTopology(); // la vista consume p.marketOf/p.hubOf: hay que tenerlos al día
   paintAll();
   syncMapModeUI();
   if(S.editMode)refreshEditorPanel();
@@ -1011,7 +1011,7 @@ document.getElementById("ledgerBtn").addEventListener("click",()=>{refreshLedger
   if(mb&&ml){
     mb.addEventListener("click",e=>{
       e.stopPropagation();
-      if(S.terrainView||S.popView||S.resView||S.mktView){window.setMapView(null);ml.style.display="none";}
+      if(S.terrainView||S.popView||S.resView||S.mktView||S.hubView){window.setMapView(null);ml.style.display="none";}
       else ml.style.display=(ml.style.display==="none"?"block":"none");
     });
     ml.querySelectorAll("div").forEach(d=>d.addEventListener("click",e=>{

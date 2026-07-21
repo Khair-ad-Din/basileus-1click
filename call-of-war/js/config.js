@@ -301,7 +301,11 @@ const TERRAINS={
   // ibérica, altiplano anatolio, Atlas, Levante interior — 140 ducados, 14% del mapa). Va AL FINAL
   // para no mover ningún índice guardado. Stats PROVISIONALES (entre colinas y estepa): se revisarán
   // junto al resto de terrenos con el consejo + investigación histórica. Sin sprite → color pelado.
-  meseta:{label:"Meseta",mov:1,def:1.1,prod:0.8,color:"#c9a86a"}
+  // mov 0.87 (antes 1.0, = igual que llanura, un error): la meseta ESTORBA el paso ~15% (dificultad
+  // ×1.15 en velocidad = 1/1.15 ≈ 0.87). El dictamen de mercado-centros lo pedía como "factor 1.15";
+  // como `mov` es VELOCIDAD (mayor = más fácil), el valor correcto es su inverso, no 1.15. Lo usan la
+  // marcha del ejército (sim.js) y la tinta de los centros de comercio (assignHubs) — una sola verdad.
+  meseta:{label:"Meseta",mov:0.87,def:1.1,prod:0.8,color:"#c9a86a"}
 };
 const SEA_TERRAIN="mar";
 const isSea=p=>p&&p.terrain===SEA_TERRAIN;
@@ -341,6 +345,26 @@ const GARR_CITADEL=3;          // guarnición extra de la Ciudadela
 // carreta (cabotaje ~90 km/día vs. carreta ~30). Con esto el mercado y la marcha eligen la ruta
 // más rápida entre "por tierra siguiendo la costa" y "por mar". Knobs a calibrar en vivo.
 const SEA_KM_MULT=0.45;   // coste de mercado del km por mar = 45% del km por tierra
+// CENTRO DE COMERCIO (modelo EU5, design/mercado-centros-eu5.md): una ciudad es CENTRO si su núcleo
+// histórico llega a este umbral (40 centros con el dataset actual) O está en la lista CURADA de abajo.
+// La CAPITAL NO cuenta por serlo (corrección de Sergio 2026-07-19: "capital siempre" disparaba a 233
+// centros con 190 naciones). Es la semilla de la 2ª capa del mercado (assignHubs → hubOf/hubKm), que
+// NO pisa marketOf (la plaza local del grano). Sigue siendo solo TOPOLOGÍA (no engancha dinero aún).
+const CENTER_POP=25000;
+// Lista CURADA: ciudades que son CENTRO por FUNCIÓN comercial o de peregrinación aunque su núcleo no
+// llegue a CENTER_POP. Se resuelven por nombre (cityName o name de provincia) en assignHubs. Ypres
+// queda FUERA (hundida en 1444, cronista). Dover = puerto del ducado de Kent, proxy de Canterbury
+// (la peregrinación inglesa; "Kent" es nombre de DUCADO, no de provincia). Dubrovnik = Ragusa dálmata,
+// NO la Ragusa siciliana. Roma y Köln ya entran por población; van en la lista por robustez
+// (idempotente). Ampliable por Sergio (p.ej. Hansa oriental: Reval/Riga/Danzig/Nóvgorod).
+const CURATED_HUBS=["Lübeck","Krakow","Augsburg"];  // reales de ~15-20k, centro por función. Los demás
+// (Dubrovnik, Santiago, Dover, y el Este) ahora son centro por población ≥25k (cities1444); Roma/Köln ya
+// pasaban de 25k. Así NO hay centros fantasma: todo centro es una ciudad que llega al umbral.
+// UMBRAL URBANO (¿qué es "ciudad" en 1450?): núcleo histórico ≥ CITY_MIN. Es el umbral estándar de
+// Bairoch/Buringh (la fuente de cities1444). Por debajo = villa grande/aldea → provincia RURAL (pierde
+// el flag urbano; conserva su nombre). Anulación funcional: las capitales nacionales son urbanas aunque
+// no lleguen (sede = ciudad). Decidido por Sergio 2026-07-19 (ver design/pops-1450-metodo.md).
+const CITY_MIN=5000;
 const NAV_KM=350;         // alcance de "vecino por mar" (S.navAdj) para los heurísticos de IA
 // TIEMPO DE EMBARQUE: coste fijo (horas) que se paga UNA vez al embarcar (tierra→mar). El barco es
 // mucho más rápido por km que la marcha, así que sin esto cualquier salto —aunque las dos provincias
@@ -370,7 +394,7 @@ const STRATA_SEED={
 
 export {
   GH_PER_SEC, START_DATE, MESES, WAR_LOCK_HOURS, LOOT_FRAC, GOLD_PER_WS, WS_DUCHY_BASE, WS_DUCHY_PER, WS_BATTLE,
-  LEVY_RAISE_HOURS, SIEGE_BASE_H, GARR_MIN, GARR_FORT, GARR_CITADEL, SEA_KM_MULT, NAV_KM, EMBARK_HOURS,
+  LEVY_RAISE_HOURS, SIEGE_BASE_H, GARR_MIN, GARR_FORT, GARR_CITADEL, SEA_KM_MULT, NAV_KM, EMBARK_HOURS, CENTER_POP, CURATED_HUBS, CITY_MIN,
   MW, MH, NATIONS, NPLAY, NEUTRAL, RES_KEYS, RES_STRAT, RES_TRADE, RES_LABEL, RES_SHORT, RES_ICON, RES_DESC, START_STOCK, BUILDINGS, BUILD_JOBS, BUILD_CATS, RES_BUILDING, newBuildings, UNITS, TERRAINS, TERRAIN_KEYS, terrainFx, SEA_TERRAIN, isSea,
   STRATA, STRATA_INFO, STRATA_SEED, RES_ART, EXTRA_GOODS, RES_CAT, RES_RAW_CATS
 };

@@ -1,0 +1,222 @@
+{
+ "region": 18,
+ "name": "Egipto y Magreb",
+ "box": {
+  "lonMin": -11,
+  "lonMax": 34,
+  "latMin": 26,
+  "latMax": 37.5
+ },
+ "cities": [
+  {
+   "name": "Fustat",
+   "x": 1256,
+   "y": 1737,
+   "lon": 31.26,
+   "lat": 30.04,
+   "cities1444": 380000,
+   "year": 1450,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Fez",
+   "x": 179,
+   "y": 1596,
+   "lon": -4.98,
+   "lat": 34.06,
+   "cities1444": 125000,
+   "year": 1450,
+   "cityPopRaw": 55000
+  },
+  {
+   "name": "Marakesh",
+   "x": 89,
+   "y": 1682,
+   "lon": -8.01,
+   "lat": 31.63,
+   "cities1444": 50000,
+   "year": 1450,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Tlemcen",
+   "x": 288,
+   "y": 1567,
+   "lon": -1.31,
+   "lat": 34.87,
+   "cities1444": 50000,
+   "year": 1450,
+   "cityPopRaw": 30000
+  },
+  {
+   "name": "Bejaia",
+   "x": 478,
+   "y": 1498,
+   "lon": 5.08,
+   "lat": 36.75,
+   "cities1444": 40000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Alexandria",
+   "x": 1216,
+   "y": 1697,
+   "lon": 29.91,
+   "lat": 31.2,
+   "cities1444": 30000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Constantine",
+   "x": 524,
+   "y": 1512,
+   "lon": 6.63,
+   "lat": 36.37,
+   "cities1444": 30000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Meknes",
+   "x": 162,
+   "y": 1602,
+   "lon": -5.55,
+   "lat": 33.9,
+   "cities1444": 20000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Kairouan",
+   "x": 627,
+   "y": 1538,
+   "lon": 10.1,
+   "lat": 35.66,
+   "cities1444": 20000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Nicosia",
+   "x": 1319,
+   "y": 1556,
+   "lon": 33.38,
+   "lat": 35.17,
+   "cities1444": 20000,
+   "year": 1400,
+   "cityPopRaw": 10000
+  },
+  {
+   "name": "Bahnesa",
+   "x": 1238,
+   "y": 1754,
+   "lon": 30.65,
+   "lat": 29.55,
+   "cities1444": 20000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "al-Mahalla al-Kubra",
+   "x": 1253,
+   "y": 1705,
+   "lon": 31.16,
+   "lat": 30.97,
+   "cities1444": 18000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Rosetta",
+   "x": 1230,
+   "y": 1690,
+   "lon": 30.38,
+   "lat": 31.4,
+   "cities1444": 15000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Medina al-Fayyum",
+   "x": 1243,
+   "y": 1762,
+   "lon": 30.82,
+   "lat": 29.31,
+   "cities1444": 15000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Rabat",
+   "x": 135,
+   "y": 1598,
+   "lon": -6.46,
+   "lat": 34.01,
+   "cities1444": 15000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Mansura",
+   "x": 1269,
+   "y": 1702,
+   "lon": 31.7,
+   "lat": 31.06,
+   "cities1444": 14000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Al-Djazair",
+   "x": 418,
+   "y": 1498,
+   "lon": 3.06,
+   "lat": 36.75,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Bilbeis",
+   "x": 1265,
+   "y": 1724,
+   "lon": 31.56,
+   "lat": 30.42,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Damanhur",
+   "x": 1233,
+   "y": 1702,
+   "lon": 30.49,
+   "lat": 31.06,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Menuf",
+   "x": 1246,
+   "y": 1723,
+   "lon": 30.92,
+   "lat": 30.45,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  },
+  {
+   "name": "Asyut",
+   "x": 1253,
+   "y": 1834,
+   "lon": 31.16,
+   "lat": 27.18,
+   "cities1444": 10000,
+   "year": 1400,
+   "cityPopRaw": null
+  }
+ ]
+}
