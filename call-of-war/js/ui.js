@@ -3,7 +3,7 @@ import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, 
 import { S } from "./state.js";
 import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildJobs, buildMax, buildSlots, canAfford, costFor, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationProvCount, nationStrength, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, resetTsyLedger, tsyAvail, tsyMonthBal, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, provProdMul, YR_TICKS, manorOf, MANOR_RENT, bOwnerOf } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
-import { GOODS2, LABEL2, REF2, NEED2, WANT2, BLD2, PRICE_SCALE, CROWN_STOCK, specialty2, siteOK2, transport, buildingProfit2, buildingOutput2, upkeepScale } from "./economy2.js";
+import { GOODS2, LABEL2, REF2, NEED2, WANT2, BLD2, PRICE_SCALE, CROWN_STOCK, specialty2, obsolete2, siteOK2, transport, buildingProfit2, buildingOutput2, upkeepScale } from "./economy2.js";
 import { canvas, clampPan } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
 import { armiesIn, atWar, duchyValue, fortGarrison, occupiedDuchiesBy, tryBuild, tryRecruit, tryRoad, warscore, coalitionOf, coalScore, coalCededDuchies } from "./sim.js";
@@ -216,7 +216,7 @@ function buildTilesHTML(p){
       const B=BUILDINGS[b];if(B.cat!==cat)continue;
       if(B.resReq&&p.resType!==B.resReq)continue; // mina de plata/oro: solo donde hay yacimiento
       const lvl=lvlOf(p,b),max=buildMax(p,b),inQ=p.buildQueue.some(q=>q.b===b);
-      if(!lvl&&goldOnly(B))continue; // v2: el oro "de la nada" (mercado, lonja) ya no rinde: no se ofrece
+      if(!lvl&&obsolete2(b))continue; // heredado de la v1 (bien que ya no existe u oro "de la nada"): no se ofrece
       const block=inQ?null:(buildBlock(p,b)||siteBlock2(p,b));
       const maxed=lvl>=max;
       let cls="btile";
@@ -1456,7 +1456,6 @@ function estateBar(p,w){ // los cuatro estamentos apilados (ancho = su parte de 
   return "<span data-tiph=\""+ta(tipRows("Población · "+nfE(p.pop),rows))+"\" style='display:inline-flex;width:"+(w||110)+"px;height:8px;border-radius:3px;overflow:hidden;background:#241a14;vertical-align:middle;cursor:help'>"+seg+"</span>";
 }
 // ---------- Tarjetas de Construir (v2): lo que da un edificio a SU dueño ----------
-function goldOnly(B){const fx=B.fx||{};return !!fx.goldAdd&&Object.keys(fx).every(k=>k==="goldAdd")&&!B.unlock} // mercado, lonja
 function siteBlock2(p,b){return BLD2[b]&&!siteOK2(p,b)?"Sin materia prima aquí":null}
 function bldEcon2(p,b,lvl){ // {o, stock:[{k,q}] | out:{g,q}, ins, noSite, profit (🪙/mes)} para lvl niveles
   const B=BUILDINGS[b],fx=B.fx||{},o=lvlOf(p,b)>0?bOwnerOf(p,b):"corona",D=BLD2[b];

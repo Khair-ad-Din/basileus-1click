@@ -38,7 +38,7 @@ S.nations=NATIONS.map((n,i)=>({idx:i,res:Object.fromEntries(RES_KEYS.map(k=>[k,S
   ai:true,capital:-1,alive:!n.neutral,startProvs:0,sWealth:{campesino:0,burgues:0,clero:0,nobleza:0},mkt:{},taxRate:0.08}));
 function seedEstateBld(p,b,e){if(ec.lvlOf(p,b)>=1||ec.usedSlots(p)>=ec.buildSlots(p))return;p.buildings[b]=(p.buildings[b]||0)+1;(p.bOwner||(p.bOwner={}))[b]=e}
 for(const p of S.provs)if(!p.wasteland&&p.owner<NPLAY){
-  p.sold=ec.soldCap(p);p.bOwner=p.bOwner||{};const b=RES_BUILDING[p.resType];
+  p.sold=ec.soldCap(p);p.bOwner=p.bOwner||{};const b=e2.obsolete2(RES_BUILDING[p.resType])?null:RES_BUILDING[p.resType];
   if(b&&ec.canStaffIndustry(p,b)){const B=BUILDINGS[b];p.buildings[b]=(ec.specialistCap(p)>=2*ec.jobsOf(b)&&(B.unique?1:(B.max||3)>=2))?2:1;const o=e2.seedOwner2(b);if(o!=="corona")p.bOwner[b]=o}
   e2.seedEstates2(p,seedEstateBld);
   p.store={};for(const k of ec.SUBS_BASICS)p.store[k]=ec.storeCap(p,k)*0.6;}

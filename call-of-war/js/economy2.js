@@ -156,6 +156,12 @@ const SITE2={
   telarLino:OR(RT("lino","lienzo","algodon","fustan"),TR("vega","llanura","pradera")), fustaneria:RT("algodon","fustan","lino"),
 };
 function siteOK2(p,b){const f=SITE2[b];return !f||f(p)}
+// Edificios heredados de la v1 que en esta economía NO HACEN NADA: producen bienes que ya no existen (tinte, aceite,
+// cera, carbón, cobre, vidrio…) o solo daban oro "de la nada" (mercado, lonja). No se siembran al arrancar, no se
+// ofrecen al jugador y nadie los construye (su mantenimiento era dinero tirado hasta que el presupuesto los cerraba).
+function obsolete2(b){const B=BUILDINGS[b]; if(!B||BLD2[b])return false; const fx=B.fx||{};
+  if(fx.prodAdd)return !Object.keys(fx.prodAdd).some(k=>CROWN_STOCK.has(k)||k==="dinero");
+  return !!fx.goldAdd&&Object.keys(fx).every(k=>k==="goldAdd")&&!B.unlock}
 // Lo que DISTINGUE a la provincia en v2 (para la ficha): su especialidad plegada a los 17 bienes y lo que da su sitio
 // (puerta de las especias, ciudad sedera o pañera, salina/mina de sal, centro armero). Solo lectura (UI).
 function specialty2(p){const s=[],add=g=>{if(s.indexOf(g)<0)s.push(g)};
@@ -602,4 +608,4 @@ function moneyStock(){let m=0,pl=0;for(let n=0;n<NPLAY;n++){const N=S.nations[n]
   if(N.sWealth)for(const k in N.sWealth)m+=N.sWealth[k];if(N.e2)pl+=N.e2.plaza}return{m,pl}}
 
 export { economyTick2, siteOK2, seedEstates2, upkeepScale, seedOwner2, seedWealth2, GOODS2, LABEL2, REF2, NEED2, WANT2, TIERS, BLD2, ESTATE_BUILDS2, buildingProfit2, buildingOutput2,
-  transport, tradeCost2, moneyStock, PRICE_SCALE, JORNAL, MARGIN, CROWN_STOCK, CROWN_STOCK_WANT, crownStockOut, specialty2 };
+  transport, tradeCost2, moneyStock, PRICE_SCALE, JORNAL, MARGIN, CROWN_STOCK, CROWN_STOCK_WANT, crownStockOut, specialty2, obsolete2 };

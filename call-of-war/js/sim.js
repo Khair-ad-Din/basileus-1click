@@ -7,7 +7,7 @@ import { aiOpenWar } from "./council.js";
 import { buildDuchies, hasRoad, roadLvl, isDuchyCap, kmBetween, roadKey } from "./mapgen.js";
 import { drawRoads, paintBorders, repaintProvince } from "./render.js";
 import { saveGame } from "./save.js";
-import { economyTick2, seedOwner2, seedWealth2, seedEstates2, siteOK2, BLD2 } from "./economy2.js";
+import { economyTick2, seedOwner2, seedWealth2, seedEstates2, siteOK2, BLD2, obsolete2 } from "./economy2.js";
 // IA de obras y gestión de edificios de los ESTAMENTOS (y de la corona IA): vive en estates.js, sin DOM (la usa el arnés)
 import { estateBuild, budgetManage, profitOf, pickCrownBuild } from "./estates.js";
 import { log, refreshBuildBar, refreshSide, refreshTop } from "./ui.js";
@@ -36,7 +36,7 @@ function setupNations(){
       p.sold=soldCap(p);p.bOwner=p.bOwner||{};
       // fábrica de la CORONA del resType, sembrada a NIVEL 2 (Paso 2): más producción de arranque para que el
       // mundo no empiece con oferta ≈0. Nivel 2 solo si la provincia puede dotar dos niveles; si no, nivel 1.
-      const b=RES_BUILDING[p.resType];
+      const b=obsolete2(RES_BUILDING[p.resType])?null:RES_BUILDING[p.resType]; // sin los talleres heredados de la v1 que ya no producen
       if(b&&canStaffIndustry(p,b)){const B=BUILDINGS[b];p.buildings[b]=(specialistCap(p)>=2*jobsOf(b)&&(B.unique?1:(B.max||3)>=2))?2:1;
         const o=seedOwner2(b);if(o!=="corona")p.bOwner[b]=o} // cada taller a su dueño histórico (su producción se VENDE)
       // E2: base inicial por estamento (lever de nivelado). Urbano: el burgués tiene su comercio (INGRESO)
@@ -1066,7 +1066,7 @@ function findTarget(from,n,enemies,wantNeutral,myPower,garrison){
 function tryBuild(pid,b){
   const p=S.provs[pid];
   if(p.owner!==S.player||isOccupied(p)||buildBlock(p,b))return;
-  if(BLD2[b]&&!siteOK2(p,b))return;   // un taller sin su materia prima no produciría nada
+  if(obsolete2(b)||(BLD2[b]&&!siteOK2(p,b)))return;   // heredado de la v1 (no hace nada) o taller sin su materia prima
   if(!canAfford(S.player,costFor(p,b)))return; // solvencia sobre el saldo comprometido (tesoro mensual)
   pay(S.player,costFor(p,b),"Obras",BUILDINGS[b].label);
   p.buildQueue.push({b,hoursLeft:timeFor(p,b)});
