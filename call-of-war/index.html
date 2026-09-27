@@ -168,6 +168,27 @@
   .tcrumbi{cursor:pointer;color:#9fb878}
   .tcrumbi:hover{text-decoration:underline}
   .tcrumbc{color:#e8e0c8}
+  /* economía v2: tablas de Mercado y Estamentos, conmutador de mes, chapas */
+  .e2head{display:flex;align-items:center;gap:7px;justify-content:center;margin-bottom:10px;font-size:var(--fs-t)}
+  .e2stats{display:flex;gap:18px;justify-content:center;font-size:var(--fs);margin:-2px 0 10px;color:var(--muted)}
+  .e2stats b{font-variant-numeric:tabular-nums}
+  .e2t{width:100%;border-collapse:collapse;font-size:var(--fs)}
+  .e2t th{font-size:var(--fs-s);color:var(--muted);font-weight:normal;text-align:right;padding:3px 6px;border-bottom:1px solid #3a4047;white-space:nowrap}
+  .e2t th:first-child,.e2t td:first-child{text-align:left}
+  .e2t td{padding:5px 6px;text-align:right;border-bottom:1px solid #2a2f36;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .e2t tr.click{cursor:pointer}
+  .e2t tr.click:hover td{background:#2a3037}
+  .e2t tr.grp td{color:var(--title);font-size:var(--fs-s);text-transform:uppercase;letter-spacing:.4px;padding-top:11px;border-bottom:1px solid #3a4047;text-align:left}
+  .e2sub{color:var(--dim);font-size:var(--fs-s)}
+  .e2big{font-size:20px;font-weight:bold}
+  .e2chip{display:inline-block;padding:0 5px;margin-left:6px;border-radius:4px;background:#2c343c;border:1px solid #4a525b;font-size:var(--fs-s);color:#c9c2ae;cursor:pointer}
+  .e2chip:hover{border-color:#9fb878;color:#e8e0c8}
+  .e2tag{display:inline-block;width:38px;text-align:center;font-size:10px;border-radius:3px;margin-left:3px}
+  .e2tag.sobra{color:var(--pos);border:1px solid #3d5a36}
+  .e2tag.falta{color:var(--neg);border:1px solid #6a3a32}
+  .e2seg{display:inline-block;padding:2px 10px;font-size:var(--fs-s);color:var(--muted);background:#262c32;border:1px solid #3a4047;cursor:pointer}
+  .e2seg:first-child{border-radius:4px 0 0 4px}.e2seg:last-child{border-radius:0 4px 4px 0;border-left:none}
+  .e2seg.on{background:#3f4b39;border-color:#9fb878;color:#e8e0c8}
   #loadMsg{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:60;
     background:#1c2127;color:#c9c2ae;font-size:18px}
   /* barra de recursos: la corona stockea muchos bienes → hasta 2 FILAS (la 2ª reservada); si no caben, scroll */
@@ -559,17 +580,15 @@
 <div class="overlay" id="treasuryOverlay" style="display:none">
   <div class="panel" style="min-width:460px;max-width:560px;max-height:86vh;overflow:auto">
     <button class="panelX" title="Cerrar" onclick="document.getElementById('treasuryOverlay').style.display='none'">✕</button>
-    <h1 style="text-align:center;margin-bottom:2px">Tesorería del reino</h1>
-    <p style="text-align:center;color:#9aa3ad;font-size:12px;margin:0 0 12px">Clic en una categoría para ver su detalle. El total de abajo verifica la suma.</p>
+    <h1 style="text-align:center;margin-bottom:10px">Tesorería del reino</h1>
     <div id="treasuryBody"></div>
   </div>
 </div>
 
 <div class="overlay" id="estatesOverlay" style="display:none">
-  <div class="panel" style="min-width:420px;max-width:520px;max-height:86vh;overflow:auto">
+  <div class="panel" style="min-width:420px;max-width:620px;max-height:86vh;overflow:auto">
     <button class="panelX" title="Cerrar" onclick="document.getElementById('estatesOverlay').style.display='none'">✕</button>
-    <h1 style="text-align:center;margin-bottom:2px">Estamentos del reino</h1>
-    <p style="text-align:center;color:#9aa3ad;font-size:12px;margin:0 0 12px">Composición social de tu población.</p>
+    <h1 style="text-align:center;margin-bottom:10px">Estamentos del reino</h1>
     <div id="estatesBody"></div>
   </div>
 </div>
@@ -577,8 +596,7 @@
 <div class="overlay" id="mercadoOverlay" style="display:none">
   <div class="panel" style="min-width:560px;max-width:720px;max-height:88vh;overflow:auto">
     <button class="panelX" title="Cerrar" onclick="document.getElementById('mercadoOverlay').style.display='none'">✕</button>
-    <h1 style="text-align:center;margin-bottom:2px">🏪 Mercado del reino</h1>
-    <p style="text-align:center;color:#9aa3ad;font-size:12px;margin:0 0 12px">Comercio de bienes: precios, oferta/demanda interna y comercio exterior.</p>
+    <h1 style="text-align:center;margin-bottom:10px">🏪 Mercado del reino</h1>
     <div id="mercadoBody"></div>
   </div>
 </div>
@@ -587,7 +605,6 @@
   <div class="panel" style="min-width:460px;max-width:560px;max-height:88vh;overflow:auto">
     <button class="panelX" title="Cerrar" onclick="document.getElementById('fiscalOverlay').style.display='none'">✕</button>
     <h1 style="text-align:center;margin-bottom:2px">⚖️ Cortes · Hacienda Real</h1>
-    <p style="text-align:center;color:#9aa3ad;font-size:12px;margin:0 0 12px">Ajusta los impuestos y gravámenes de la corona.</p>
     <div id="fiscalBody"></div>
   </div>
 </div>

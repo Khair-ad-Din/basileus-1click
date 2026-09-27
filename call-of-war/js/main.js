@@ -127,13 +127,14 @@ window.tryBuild=tryBuild;window.tryRecruit=tryRecruit;
 // Ciclo de vida de edificios: deshabilitar (libera dotación, deja de producir/pagar) o reactivar (reparando la parte degradada)
 window.toggleBuilding=function(pid,b){
   const p=S.provs[pid]; if(!p||p.owner!==S.player||!(p.buildings[b]>0))return;
+  if(S.econV2&&p.bOwner&&p.bOwner[b]&&p.bOwner[b]!=="corona")return; // v2: el taller de un estamento lo gestiona su dueño
   if(!p.bOff)p.bOff={}; if(!p.bCond)p.bCond={};
   if(p.bOff[b]){ // REACTIVAR: repara la parte degradada (coste de creación prorrateado)
     const cond=p.bCond[b]!=null?p.bCond[b]:1, frac=Math.max(0,1-cond);
     if(frac>0.001){
       const base=costFor(p,b),cost={}; for(const k in base)cost[k]=Math.round(base[k]*frac);
       if(!canAfford(S.player,cost)){log("No puedes pagar la reparación de "+BUILDINGS[b].label+" en "+p.name+".");return}
-      pay(S.player,cost);
+      pay(S.player,cost,"Reparaciones",BUILDINGS[b].label);
     }
     delete p.bOff[b]; p.bCond[b]=1;
     log(BUILDINGS[b].label+" reactivada en "+p.name+(frac>0.001?" (reparada)":"")+".");
@@ -172,13 +173,14 @@ window.closeArmyPanel=function(){S.armyPanelOpen=false;document.getElementById("
 // --- Tesorería (libro mayor navegable): abrir, cambiar de pestaña, entrar en una categoría y volver ---
 window.openTreasury=function(){
   if(S.player<0)return;
-  S.treasuryTab="tesoro";S.treasuryPath=[];
+  S.treasuryTab="tesoro";S.treasuryPath=[];S.tsyMonth="prev";
   document.getElementById("treasuryOverlay").style.display="flex";
   refreshTreasury();
 };
 // --- Estamentos (composición social del reino; Fase A: solo lectura) ---
 window.openEstates=function(){
   if(S.player<0)return;
+  S.estSel=null;
   document.getElementById("estatesOverlay").style.display="flex";
   refreshEstates();
 };
@@ -709,6 +711,7 @@ window.togglePopView=function(){window.setMapView(S.popView?null:"pop")};
 window.toggleResView=function(){window.setMapView(S.resView?null:"res")};
 window.setProvTab=function(t){
   S.provTab=(S.provTab===t?null:t); // clic en el botón activo lo cierra (pestañas mutuamente excluyentes)
+  S.pEcoPath=null;                  // la ventana Economía vuelve a su vista general
   refreshSide();
 };
 window.downloadMap=function(){

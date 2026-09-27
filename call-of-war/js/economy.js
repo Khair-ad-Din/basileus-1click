@@ -627,8 +627,9 @@ function canAfford(n,cost){
 function monthKeyOf(hour){const d=new Date(START_DATE+hour*3600e3);return d.getUTCFullYear()*12+d.getUTCMonth()}
 function resetTsyLedger(){ // (re)inicia el ledger al empezar/retomar partida o al tomar el mando
   S.tsyAccrual={};S.monthKey=monthKeyOf(S.hour);S.tsyAlc=0;S.sFlow={};S.sConsume={};S.mktVol={};S.sNG={};
-  S.tsyMonthBal={};
-  if(S.player>=0){const ec=nationEconomy(S.player).res;for(const k in ec)S.tsyMonthBal[k]=ec[k]*MONTH_TICKS} // semilla: proyección mensual del ritmo actual
+  S.tsyMonthBal={};S.sFlowPrev=null;S.sConsumePrev=null;
+  S.cBook={};S.cPrev=null;S.cStart=S.player>=0?(S.nations[S.player].res.dinero||0):0; // libro de la corona (v2)
+  if(S.player>=0&&!S.econV2){const ec=nationEconomy(S.player).res;for(const k in ec)S.tsyMonthBal[k]=ec[k]*MONTH_TICKS} // semilla: proyección mensual del ritmo actual (v1; en v2 esa proyección es de la v1 y mentiría)
 }
 // LOG ECONÓMICO MENSUAL (diagnóstico de series temporales para dejar el juego corriendo y analizar el log).
 // Cada mes cerrado guarda una foto del JUGADOR: riqueza y flujos COMPLETOS por estamento + mercado por bien
@@ -720,6 +721,9 @@ function tsyTick(before){
   const mk=monthKeyOf(S.hour);
   if(mk!==S.monthKey){
     if(S.econLogOn)logEconMonth(S.monthKey);   // foto del mes que CIERRA (usa sFlow/mktVol/tsyAlc antes de limpiarlos)
+    S.sFlowPrev=S.sFlow;S.sConsumePrev=S.sConsume;   // el mes CERRADO se guarda: la UI enseña un mes completo, no uno a medias
+    const cd=S.nations[S.player].res.dinero||0;
+    S.cPrev={book:S.cBook||{},delta:cd-(S.cStart||0)};S.cBook={};S.cStart=cd; // libro de la corona: su Δ real verifica la suma
     S.tsyMonthBal=S.tsyAccrual;S.tsyAccrual={};S.tsyAlc=0;S.sFlow={};S.sConsume={};S.mktVol={};S.sNG={};S.monthKey=mk // cierra el mes: se "cobra" la alcábala y se reinician los desgloses de estamentos
   }
   const R=S.nations[S.player].res;
@@ -783,7 +787,16 @@ function recVol(n,g,field,amt){
   const f=S.mktVol||(S.mktVol={}),e=f[g]||(f[g]={prod:0,sold:0,discard:0});
   e[field]+=amt;
 }
-function pay(n,cost){for(const k in cost)S.nations[n].res[k]-=cost[k]}
+// LIBRO DE LA CORONA (solo jugador, mes en curso): S.cBook[categoría][detalle] = ducados que entran (+) o salen (−) del
+// tesoro. Lo escribe la v2 en cada cobro/pago de la corona y pay() en cada gasto. Al cerrar el mes pasa a S.cPrev junto
+// con el Δ REAL del tesoro: si la suma no cuadra, a la Tesorería le falta un apunte ("Otros").
+function recCrown(n,cat,sub,amt){
+  if(n!==S.player||!amt)return;
+  const b=S.cBook||(S.cBook={}),c=b[cat]||(b[cat]={}),k=sub||"—";
+  c[k]=(c[k]||0)+amt;
+}
+function pay(n,cost,cat,sub){for(const k in cost)S.nations[n].res[k]-=cost[k];
+  if(cost.dinero)recCrown(n,cat||"Gastos varios",sub,-cost.dinero)}
 function lvlOf(p,b){return p.buildings[b]||0}                          // nivel ESTRUCTURAL (existe, aunque esté deshabilitado)
 // ---- Ciclo de vida de edificios: DESHABILITAR / degradar / destruir / reparar ----
 // Un edificio deshabilitado no produce, no consume insumos, no exige dotación ni paga mantenimiento (libera
@@ -1447,7 +1460,7 @@ export {
   canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, nationLedger, isOccupied, occupierOf, provLoot, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, recruitable, taxOf, moraleGrowth, MORALE_MIN, MORALE_HOSTILE, SOLD_FRAC, foodCons, foodBalance, foodCap, foodFill, harvestMul, subsProd, subsCons, subsBalance, storeCap, storeOf, SUBS_BASICS, specialistCap, buildJobs, freeLabor, staffing, employedIn, jobsOf, buildingYield, buildSlots, usedSlots, structPPF, JOBS_PER_LEVEL, NEED_PC, NEED_PRICE, FOOD_PRICE, economyTick,
   MKT_GOODS, MKT_TRADE, MKT_PRICE, ensureMarket, seedStrataWealth, flujoBase, repartoRates, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, manorOf, canStaffIndustry, bOwnerOf, provEconomyByOwner, ESTATES_BUILD, tradeCost, TRADE_BULK,
   BASICS, TERRAIN_CAT, terrMul, terrCatMul, RES_RAW_CATS,
-  MONTH_TICKS, resetTsyLedger, tsyTick, tsyAvail, tsyMonthBal, recFlow, BONUS_BIEN, PROSP_CHANNELS,
+  MONTH_TICKS, monthKeyOf, resetTsyLedger, tsyTick, tsyAvail, tsyMonthBal, recFlow, recCrown, BONUS_BIEN, PROSP_CHANNELS,
   bOff, bCond, effLvl, buildingProfit, buildingOutput, degradeBuildings, sourceableSet, inputsSourceable, inputCoverOf, marketAccess, provFlete,
   prosperityTick, prospLevel, PROSP_LEVEL_PTS, PROSP_MAX_PTS, CHANNEL_GOODS, NAT_BONUS_PER_LEVEL,
   // exports para diagnóstico (tools/diag-paises.mjs): constantes y helpers de producción/consumo por bien

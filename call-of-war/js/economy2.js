@@ -12,12 +12,12 @@
 // por f = dt/YR_TICKS. Precios de referencia en ducados/unidad (grano = 1 × PRICE_SCALE).
 import { NPLAY, BUILDINGS, UNITS, STRATA, TERRAINS } from "./config.js";
 import { S } from "./state.js";
-import { kmBetween, pxToLonLat } from "./mapgen.js";
+import { kmBetween, pxToLonLat, ensureMarketTopology } from "./mapgen.js";
 import { isEmbargoed, atWarPair } from "./diplomacy.js";
 import { isOccupied, effLvl, lvlOf, bOwnerOf, manorOf, taxRateOf, alcabalaOf, almojOf, repartoRates, harvestMul, terrMul, DIEZMO,
-  terrCatMul, staffing, storeCap, armyFood, soldCap, provProdMul, ensureMarket, recFlow, recBuy, YR_TICKS,
+  terrCatMul, staffing, storeCap, armyFood, soldCap, provProdMul, ensureMarket, recFlow, recBuy, recCrown, YR_TICKS,
   TRADE_KM, TRADE_SEA, TRADE_WAR, TRADE_BULK, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE,
-  SOLD_REGEN, PROMO_RATE, targetBurgFrac } from "./economy.js";
+  SOLD_REGEN, PROMO_RATE, targetBurgFrac, monthKeyOf } from "./economy.js";
 
 // ============================== CONSTANTES (todo lo tunable está aquí) ==============================
 const PRICE_SCALE=8;     // palanca GLOBAL de precios: iguala el dinero del comercio a la escala de costes de la v1
@@ -158,6 +158,16 @@ const SITE2={
   telarLino:OR(RT("lino","lienzo","algodon","fustan"),TR("vega","llanura","pradera")), fustaneria:RT("algodon","fustan","lino"),
 };
 function siteOK2(p,b){const f=SITE2[b];return !f||f(p)}
+// Lo que DISTINGUE a la provincia en v2 (para la ficha): su especialidad plegada a los 17 bienes y lo que da su sitio
+// (puerta de las especias, ciudad sedera o pañera, salina/mina de sal, centro armero). Solo lectura (UI).
+function specialty2(p){const s=[],add=g=>{if(s.indexOf(g)<0)s.push(g)};
+  if(inBox(p,SPICE_GATES))add("raros");
+  if(p.urban&&p.resType==="seda")add("seda");
+  if(p.urban&&p.resType==="pano")add("pano");
+  const sg=FOLD2[p.resType]; if(sg&&!p.urban)add(sg);
+  if(inBox(p,SALT_POINTS))add("sal");
+  if(inBox(p,ARMS_CENTERS))add("armas");
+  return s}
 // Lo que la CORONA produce en sus propios edificios para sus obras y su ejército NO va a la plaza: va a su almacén.
 const CROWN_STOCK=new Set(["materiales","piedra","metal","comida","petroleo"]);
 // DUEÑO de los talleres sembrados al arrancar (el del resType de cada provincia). En la v1 eran todos de la corona
@@ -251,7 +261,22 @@ function harvestShares(p){const m=manorOf(p);
   return {tithe:DIEZMO_KIND, rent:MANOR_RENT[m]||0, lord:m==="solariego"?"nobleza":(m==="abadengo"?"clero":"corona")}}
 function pushHarvest(list,p,g,q,sh,N){
   list.push({p,g,q:q*(1-sh.tithe-sh.rent),kind:"camp"},{p,g,q:q*sh.tithe,kind:"tithe"},{p,g,q:q*sh.rent,kind:"rent",owner:sh.lord});
+  pmProd(p,g,q);
   N.e2.st.prodV+=q*REF2[g];
+}
+// LIBRO DE CADA PROVINCIA (todas las naciones; solo telemetría, no toca la economía): p._m = mes en curso, p.m = el último
+// mes cerrado. prod[g] = unidades producidas · val[g] = lo que la plaza paga por ellas · pay[quién][concepto] = a quién va
+// ese dinero · lost = lo que se come el flete · bld[b] = unidades de cada taller · stock[k] = lo que va al almacén de la
+// corona. Invariante: Σ pay + lost = Σ val (lo comprueba el arnés). La ficha de provincia lo lee (ui.js).
+function pm(p){return p._m||(p._m={prod:{},val:{},pay:{},lost:0,bld:{},stock:{}})}
+function pmProd(p,g,q){if(q>0){const m=pm(p);m.prod[g]=(m.prod[g]||0)+q}}
+function pmPay(p,who,cat,v){if(!v)return;const m=pm(p),w=m.pay[who]||(m.pay[who]={});w[cat]=(w[cat]||0)+v}
+function pmClose(dt){ // al cambiar de mes de calendario, el libro en curso pasa a ser el del mes cerrado.
+  // Se mira el mes del tick ANTERIOR: así el primer día del mes nuevo cae en el mes que cierra, igual que en el libro
+  // de la corona (tsyTick cierra DESPUÉS del tick) y la suma de las provincias cuadra con la Tesorería.
+  const mk=monthKeyOf(S.hour-dt); if(mk===S.pmKey)return;
+  if(S.pmKey!=null)for(const p of S.provs){p.m=p._m||null;p._m=null}
+  S.pmKey=mk;
 }
 function addInc(N,o,v){if(v>0&&N.e2&&N.e2.incTick)N.e2.incTick[o]=(N.e2.incTick[o]||0)+v}
 function ensure2(N){
@@ -288,6 +313,9 @@ function buildingOutput2(p,b,lvlArg){ // unidades/MES del bien del edificio (la 
 // ============================== EL TICK ==============================
 function economyTick2(dt=24,doArb=true){
   const f=dt/YR_TICKS, L=ledger();
+  pmClose(dt);            // libro de cada provincia: cierra el mes si ha cambiado
+  ensureMarketTopology(); // centros de comercio (p.hubOf/hubKm → flete y portazgo). Antes solo se calculaban al abrir la vista
+                          // de mapa "Centros": en partida el flete era 0 y el arnés (que sí los calcula) no medía lo mismo. Barato: solo si cambian fronteras.
   for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(!N)continue;ensure2(N);N.tollRate=0;N.alcabalaRate=0;N.almojRate=0;
     // INGRESO MENSUAL de cada dueño (media de ~1 mes): lo que de verdad le entra. La gestión por presupuesto lo compara con
     // su subsistencia + mantenimiento (no con la caja del día, que el consumo deja siempre rozando la reserva)
@@ -305,9 +333,9 @@ function economyTick2(dt=24,doArb=true){
   const factNeed=Array.from({length:NPLAY},()=>({}));         // insumos pedidos: owner → {bien: q}
   const grainReq=Array.from({length:NPLAY},()=>[]);           // provincias con la despensa vacía: {p,q}
   const upMonth=Array.from({length:NPLAY},()=>({}));          // mantenimiento en dinero por estamento, al mes
-  const pay=(n,who,amt,cat,estateSide)=>{ // abona a corona (tesoro) o a un estamento (su riqueza)
+  const pay=(n,who,amt,cat,sub)=>{ // abona a corona (tesoro) o a un estamento (su riqueza); sub = detalle del libro de la corona
     if(!amt)return; const N=S.nations[n]; if(!N)return;
-    if(who==="corona"){N.res.dinero+=amt}else{N.sWealth[who]+=amt;recFlow(n,who,cat,amt)}
+    if(who==="corona"){N.res.dinero+=amt;recCrown(n,cat,sub,amt)}else{N.sWealth[who]+=amt;recFlow(n,who,cat,amt)}
     if(amt>0)N.e2.incTick[who]=(N.e2.incTick[who]||0)+amt;
   };
 
@@ -323,7 +351,7 @@ function economyTick2(dt=24,doArb=true){
     const gprod=c*GRAIN_YIELD*terrMul(p,"comida")*(1+0.4*lvlOf(p,"granja"))*harvestMul(p)*f;
     const sh=harvestShares(p), kept=1-sh.tithe-sh.rent;   // DIEZMO y RENTA en especie sobre TODA la cosecha
     if(gprod>0){deliv[n].push({p,g:"comida",q:gprod*sh.tithe,kind:"tithe"},{p,g:"comida",q:gprod*sh.rent,kind:"rent",owner:sh.lord})} // la décima del grano, al granero del clero
-    p.store.comida+=gprod*kept-c*f; N.e2.st.prodV+=gprod*REF2.comida;
+    p.store.comida+=gprod*kept-c*f; N.e2.st.prodV+=gprod*REF2.comida; pmProd(p,"comida",gprod);
     p._grainNeed=0;p._grainGot=0;
     // por encima de la mitad de la despensa, el excedente del tick se VENDE (el campesino vendía tras la cosecha, no
     // esperaba a tener el granero lleno); por debajo, rellena la despensa. Sin esto los primeros meses no hay grano en la plaza.
@@ -337,7 +365,7 @@ function economyTick2(dt=24,doArb=true){
       if(q>0)pushHarvest(deliv[n],p,g,q,sh,N)}
     const sg=FOLD2[p.resType];
     const ug=inBox(p,SPICE_GATES)?"raros":(p.urban&&p.resType==="seda"?"seda":null);   // puertas de las especias (tenga el resType que tenga) · ciudades sederas
-    if(ug&&!isOccupied(p)){const q=(p.pop||0)*URBAN2[ug]*mor*f;if(q>0)deliv[n].push({p,g:ug,q,kind:"bld",owner:"burgues"})}
+    if(ug&&!isOccupied(p)){const q=(p.pop||0)*URBAN2[ug]*mor*f;if(q>0){deliv[n].push({p,g:ug,q,kind:"bld",owner:"burgues"});pmProd(p,ug,q)}}
     if(inBox(p,SALT_POINTS)){const q=c*SALT_ZONE_RATE*mor*f;if(q>0)pushHarvest(deliv[n],p,"sal",q,sh,N)} // mina de sal de roca/salmuera o gran salina
     if(sg&&!p.urban){const q=c*SPEC2[sg]*terrMul(p,p.resType)*mor*f;if(q>0)pushHarvest(deliv[n],p,sg,q,sh,N)}
     // ARTESANOS (burgueses de la provincia)
@@ -349,7 +377,7 @@ function economyTick2(dt=24,doArb=true){
       for(const g in mix0){const r=(N.mktPrice[g]||ref(g))/ref(g);mix[g]=mix0[g]*r*r;tw+=mix[g]}
       for(const g in mix){const q=bu*ARTISAN_VALUE*(mix[g]/tw)/REF2[g]*mor*f, ins=ARTISAN_IN[g];
         let cov=1;if(ins)for(const k in ins){const v=N.e2.cover[k];if(v!=null&&v<cov)cov=v}
-        if(q*cov>0)deliv[n].push({p,g,q:q*cov,kind:"bld",owner:"burgues"});
+        if(q*cov>0){deliv[n].push({p,g,q:q*cov,kind:"bld",owner:"burgues"});pmProd(p,g,q*cov)}
         if(ins)for(const k in ins)fn[k]=(fn[k]||0)+q*ins[k]}}
     // EDIFICIOS
     const st=staffing(p), mul=1+(provProdMul(p)-1)*st, terr=(TERRAINS[p.terrain]||{prod:1}).prod;
@@ -358,19 +386,19 @@ function economyTick2(dt=24,doArb=true){
       const B=BUILDINGS[b], fx=B.fx||{}, o=bOwnerOf(p,b);
       // mantenimiento: dinero → sumidero; bienes → la corona los descuenta de su almacén, un estamento los paga
       if(B.up)for(const k in B.up){const a=B.up[k]/12*lvl*dt*upkeepScale(p,b);
-        if(k==="dinero"){if(o==="corona")N.res.dinero-=a;else{N.sWealth[o]-=a;recFlow(n,o,"Mantenimiento de edificios",-a);upMonth[n][o]=(upMonth[n][o]||0)+a/dt*730}L.sink+=a}
+        if(k==="dinero"){if(o==="corona"){N.res.dinero-=a;recCrown(n,"Mantenimiento de edificios",B.label,-a)}else{N.sWealth[o]-=a;recFlow(n,o,"Mantenimiento de edificios",-a);upMonth[n][o]=(upMonth[n][o]||0)+a/dt*730}L.sink+=a}
         else if(o==="corona")N.res[k]=(N.res[k]||0)-a;}  // el mantenimiento en BIENES es del almacén de la corona (unidades de la v1); un estamento solo paga el dinero
       if(isOccupied(p))continue; // ocupada: no produce para su dueño
       // minas de plata/oro: el ÚNICO dinero que nace sin venta (acuñación), contado aparte
-      if(fx.prodAdd&&fx.prodAdd.dinero){const a=fx.prodAdd.dinero*lvl*mor*st*dt;pay(n,o,a,"Minas de plata y oro");L.mint+=a}
+      if(fx.prodAdd&&fx.prodAdd.dinero){const a=fx.prodAdd.dinero*lvl*mor*st*dt;pay(n,o,a,"Minas de plata y oro",B.label);L.mint+=a}
       // la corona abastece su almacén de obra y ejército (misma fórmula y unidades que la v1)
       if(o==="corona"&&fx.prodAdd){let used=false;
-        for(const k in fx.prodAdd)if(CROWN_STOCK.has(k)){N.res[k]=(N.res[k]||0)+fx.prodAdd[k]*lvl*terr*mor*st*mul*dt;used=true}
+        for(const k in fx.prodAdd)if(CROWN_STOCK.has(k)){const a=fx.prodAdd[k]*lvl*terr*mor*st*mul*dt;N.res[k]=(N.res[k]||0)+a;used=true;const m=pm(p);m.stock[k]=(m.stock[k]||0)+a}
         if(used)continue;}
       const D=BLD2[b]; if(!D||!siteOK2(p,b))continue;   // un taller fuera del sitio de su materia no produce
       const y=bldYear(p,b,lvl); const cov=inputCov(N,b);
       const q=y.q*mul*f;
-      if(q*cov>0)deliv[n].push({p,g:D.out,q:q*cov,kind:"bld",owner:o});
+      if(q*cov>0){deliv[n].push({p,g:D.out,q:q*cov,kind:"bld",owner:o});pmProd(p,D.out,q*cov);const m=pm(p);m.bld[b]=(m.bld[b]||0)+q*cov}
       if(D.in){const fn=factNeed[n][o]||(factNeed[n][o]={});for(const k in D.in)fn[k]=(fn[k]||0)+q*D.in[k]}
     }
   }
@@ -413,17 +441,19 @@ function economyTick2(dt=24,doArb=true){
       const p=d.p, val=d.q*price[d.g]*(1-MARGIN-alc), t=transport(p,d.g);
       const net=val*(1-t), toll=val*t*TOLL_FRAC;
       N.e2.plaza-=net+toll;
+      {const m=pm(p);m.val[d.g]=(m.val[d.g]||0)+val;m.lost+=val*t*(1-TOLL_FRAC)}
       N.mkt[d.g]=(N.mkt[d.g]||0)+d.q;
       if(toll>0){const m=manorOf(p);
+        pmPay(p,m==="abadengo"?"clero":m==="solariego"?"nobleza":"corona","Portazgo",toll);
         if(m==="abadengo")pay(n,"clero",toll,"Portazgo");else if(m==="solariego")pay(n,"nobleza",toll,"Portazgo");
-        else{pay(crownPayee(p),"corona",toll);const C=S.nations[crownPayee(p)];if(C)C.tollRate+=toll/dt}}
+        else{pay(crownPayee(p),"corona",toll,"Portazgo",p.name);const C=S.nations[crownPayee(p)];if(C)C.tollRate+=toll/dt}}
       if(d.kind==="camp"){const rr=repartoRates(p,taxRateOf(n));
         N.e2.st.soldV+=d.q*REF2[d.g]; N.e2.st.campNet+=net*(1-taxRateOf(n)); N.e2.st.grossV+=d.q*price[d.g];
         // diezmo y renta ya se cobraron EN ESPECIE: sobre lo que vende de SU parte, el campesino solo paga el pecho
-        const tax=taxRateOf(n); pay(crownPayee(p),"corona",net*tax); pay(n,"campesino",net*(1-tax),"Ventas en la plaza")}
-      else if(d.kind==="rent"){if(d.owner==="corona")pay(crownPayee(p),"corona",net);else pay(n,d.owner,net,"Renta del señorío (en especie)")}
-      else if(d.kind==="tithe")pay(n,"clero",net,"Diezmo (en especie)");
-      else{const j=net*JORNAL;N.e2.st.jornal+=j;pay(n,"campesino",j,"Jornales");pay(n,d.owner,net-j,"Ventas de sus talleres")}
+        const tax=taxRateOf(n); pay(crownPayee(p),"corona",net*tax,"Pecho",p.name); pmPay(p,"corona","Pecho",net*tax); pmPay(p,"campesino","Ventas en la plaza",net*(1-tax)); pay(n,"campesino",net*(1-tax),"Ventas en la plaza")}
+      else if(d.kind==="rent"){pmPay(p,d.owner,d.owner==="corona"?"Renta del realengo":"Renta del señorío",net);if(d.owner==="corona")pay(crownPayee(p),"corona",net,"Renta del realengo",LABEL2[d.g]);else pay(n,d.owner,net,"Renta del señorío (en especie)")}
+      else if(d.kind==="tithe"){pay(n,"clero",net,"Diezmo (en especie)");pmPay(p,"clero","Diezmo",net)}
+      else{const j=net*JORNAL;N.e2.st.jornal+=j;pmPay(p,"campesino","Jornales",j);pmPay(p,d.owner,"Talleres",net-j);pay(n,"campesino",j,"Jornales");pay(n,d.owner,net-j,"Ventas de sus talleres",LABEL2[d.g])}
     }
     // COMPRAS: quien compra paga el precio; comisión al burgués, alcabala a la corona, el resto a la plaza
     const got={},gapStock={};for(const e of STRATA)got[e]={};
@@ -436,7 +466,7 @@ function economyTick2(dt=24,doArb=true){
       const cost=q*pr; N.mkt[g]=stock-q;
       if(who==="corona")N.res.dinero-=cost;else W[who]-=cost;
       W.burgues+=cost*MARGIN; N.res.dinero+=cost*alc; N.e2.incTick.burgues=(N.e2.incTick.burgues||0)+cost*MARGIN; N.e2.incTick.corona=(N.e2.incTick.corona||0)+cost*alc; N.alcabalaRate+=cost*alc/dt; N.e2.plaza+=cost*(1-MARGIN-alc);
-      recFlow(n,"burgues","Comisión de la plaza",cost*MARGIN);
+      recFlow(n,"burgues","Comisión de la plaza",cost*MARGIN); recCrown(n,"Alcabala",LABEL2[g],cost*alc);
       if(who!=="corona"){recFlow(n,who,"Compras",-cost);recBuy(n,who,g,q,cost)}
       bought[n][g]=(bought[n][g]||0)+q; return q;
     };
@@ -485,7 +515,7 @@ function economyTick2(dt=24,doArb=true){
 
   // ---------------- EJÉRCITO: mantenimiento y comida (como en la v1) ----------------
   for(const a of S.armies){if(a.nation>=NPLAY)continue;const R=S.nations[a.nation].res;
-    for(const k in a.units){const u=UNITS[k].up||{};for(const r in u){const v=u[r]*a.units[k]*dt;R[r]=(R[r]||0)-v;if(r==="dinero")L.sink+=v}}
+    for(const k in a.units){const u=UNITS[k].up||{};for(const r in u){const v=u[r]*a.units[k]*dt;R[r]=(R[r]||0)-v;if(r==="dinero"){L.sink+=v;recCrown(a.nation,"Ejército",UNITS[k].label,-v)}}}
     const food=armyFood(a)*dt; if(food<=1e-9)continue;
     const forage=(a.supply==null?70:a.supply)/100;
     R.comida=Math.max(0,(R.comida||0)-food*(1-forage));
@@ -545,8 +575,8 @@ function economyTick2(dt=24,doArb=true){
         A.N.mkt[g]-=q; B.N.mkt[g]=(B.N.mkt[g]||0)+q;
         A.N.e2.plaza+=q*A.p; B.N.e2.plaza-=q*B.p; L.sink+=q*c.cost;          // la plaza de origen vende, la de destino compra; el flete se pierde
         const half=q*c.m*0.5, tA=half*almojOf(A.n), tB=half*almojOf(B.n);   // el mercader se queda el margen neto, menos la aduana
-        A.N.res.dinero+=tA; A.N.almojRate+=tA/dt; A.N.sWealth.burgues+=half-tA; addInc(A.N,"corona",tA); addInc(A.N,"burgues",half-tA); recFlow(A.n,"burgues","Comercio exterior",half-tA);
-        B.N.res.dinero+=tB; B.N.almojRate+=tB/dt; B.N.sWealth.burgues+=half-tB; addInc(B.N,"corona",tB); addInc(B.N,"burgues",half-tB); recFlow(B.n,"burgues","Comercio exterior",half-tB);
+        A.N.res.dinero+=tA; A.N.almojRate+=tA/dt; A.N.sWealth.burgues+=half-tA; addInc(A.N,"corona",tA); addInc(A.N,"burgues",half-tA); recFlow(A.n,"burgues","Comercio exterior",half-tA); recCrown(A.n,"Almojarifazgo",LABEL2[g],tA);
+        B.N.res.dinero+=tB; B.N.almojRate+=tB/dt; B.N.sWealth.burgues+=half-tB; addInc(B.N,"corona",tB); addInc(B.N,"burgues",half-tB); recFlow(B.n,"burgues","Comercio exterior",half-tB); recCrown(B.n,"Almojarifazgo",LABEL2[g],tB);
         A.N.mktInfo[g].exp+=q/dt*730; B.N.mktInfo[g].imp+=q/dt*730}
     }
   }
@@ -558,4 +588,4 @@ function moneyStock(){let m=0,pl=0;for(let n=0;n<NPLAY;n++){const N=S.nations[n]
   if(N.sWealth)for(const k in N.sWealth)m+=N.sWealth[k];if(N.e2)pl+=N.e2.plaza}return{m,pl}}
 
 export { economyTick2, siteOK2, seedEstates2, upkeepScale, seedOwner2, seedWealth2, GOODS2, LABEL2, REF2, NEED2, WANT2, TIERS, BLD2, ESTATE_BUILDS2, buildingProfit2, buildingOutput2,
-  transport, tradeCost2, moneyStock, PRICE_SCALE, JORNAL, MARGIN };
+  transport, tradeCost2, moneyStock, PRICE_SCALE, JORNAL, MARGIN, CROWN_STOCK, specialty2 };

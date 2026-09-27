@@ -49,7 +49,7 @@ function autoManageBuildings(p,owners){
     } else if(prof>BLDG_GAIN){                                       // vuelve a ganar → reactivar (reparando la parte degradada)
       const cond=(p.bCond&&p.bCond[b]!=null)?p.bCond[b]:1, frac=Math.max(0,1-cond);
       if(o==="corona"){const c={},base=costFor(p,b);for(const k in base)c[k]=Math.round(base[k]*frac);
-        if(canAfford(p.owner,c)){pay(p.owner,c);delete p.bOff[b];p.bCond[b]=1;}}
+        if(canAfford(p.owner,c)){pay(p.owner,c,"Reparaciones",BUILDINGS[b].label);delete p.bOff[b];p.bCond[b]=1;}}
       else{const rep=estateCostDinero(costFor(p,b))*frac;
         if((N.sWealth[o]||0)>=rep){if(rep>0){N.sWealth[o]-=rep;recFlow(p.owner,o,"Construcción",-rep);sink2(rep);}delete p.bOff[b];p.bCond[b]=1;}}
     }
@@ -172,7 +172,7 @@ function budgetManage(){
       if(x&&margin-x.up>REOPEN_SHARE*inc&&purse>BUDGET_MONTHS*(e.up+x.up)){
         const cond=(x.p.bCond&&x.p.bCond[x.b]!=null)?x.p.bCond[x.b]:1, frac=Math.max(0,1-cond);
         if(e.o==="corona"){const c={},base=costFor(x.p,x.b);for(const k in base)c[k]=Math.round(base[k]*frac);
-          if(!canAfford(e.n,c))continue; pay(e.n,c); sink2(c.dinero||0);}
+          if(!canAfford(e.n,c))continue; pay(e.n,c,"Reparaciones",BUILDINGS[x.b].label); sink2(c.dinero||0);}
         else{const rep=estateCostDinero(costFor(x.p,x.b))*frac; if(N.sWealth[e.o]<rep)continue;
           if(rep>0){N.sWealth[e.o]-=rep;recFlow(e.n,e.o,"Construcción",-rep);sink2(rep)}}
         delete x.p.bOff[x.b]; x.p.bCond[x.b]=1;

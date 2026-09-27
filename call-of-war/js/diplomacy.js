@@ -10,6 +10,7 @@
 // tensión (impulsos) a la víctima y a los vecinos.
 import { NPLAY, NATIONS, START_DATE } from "./config.js";
 import { S } from "./state.js";
+import { recCrown } from "./economy.js";
 
 const REL_MIN=-100, REL_MAX=100;
 // UMBRALES del campo que gatean las acciones (el eje es continuo; estos son los cortes de reglas).
@@ -195,6 +196,7 @@ function giftGold(a,b,amount){
   if(amt<=0)return{ok:false,reason:"sinfondos"};
   S.nations[a].res.dinero-=amt;
   S.nations[b].res.dinero=((S.nations[b].res.dinero)||0)+amt;
+  recCrown(a,"Diplomacia","Regalo a "+NATIONS[b].name,-amt);recCrown(b,"Diplomacia","Regalo de "+NATIONS[a].name,amt);
   const gain=GIFT_MAX*amt/(amt+GIFT_REF);
   const rel=addImpulse(a,b,"gift",gain);
   return{ok:true,given:amt,gain,rel};
