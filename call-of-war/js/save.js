@@ -94,9 +94,9 @@ function roundProsp(pr){ // barras de prosperidad por canal (2 decimales), o nul
 function saveGame(){
   if(!S.started||S.gameOver||S.player<0)return;
   try{
-    const s={v:4,t:Date.now(),hour:S.hour,player:S.player,armyIdSeq:S.armyIdSeq,
+    const s={v:4,t:Date.now(),econV2:!!S.econV2,hour:S.hour,player:S.player,armyIdSeq:S.armyIdSeq,
       wars:[...S.wars],truces:[...S.truces],rel:[...S.rel],embargoes:[...S.embargoes],claims:[...S.claims],pacts:[...S.pacts],coalitions:[...S.coalitions],coalSeq:S.coalSeq,leagues:S.leagues,leagueSeq:S.leagueSeq,roads:[...S.roads],roadQueue:S.roadQueue,reports:S.reports,
-      nations:S.nations.map(x=>({res:x.res,ai:x.ai,capital:x.capital,alive:x.alive,startProvs:x.startProvs,sWealth:x.sWealth,sRes:x.sRes,mkt:x.mkt,taxRate:x.taxRate,alcabala:x.alcabala,almojarifazgo:x.almojarifazgo,aggro:x.aggro,rivals:x.rivals})),
+      nations:S.nations.map(x=>({res:x.res,ai:x.ai,capital:x.capital,alive:x.alive,startProvs:x.startProvs,sWealth:x.sWealth,sRes:x.sRes,mkt:x.mkt,e2:x.e2,taxRate:x.taxRate,alcabala:x.alcabala,almojarifazgo:x.almojarifazgo,aggro:x.aggro,rivals:x.rivals})),
       provs:S.provs.map(p=>[p.owner,Math.round(p.morale*10)/10,p.buildings,p.buildQueue,p.recruitQueue,Math.round(p.pop||0),Math.round(p.sold||0),roundStore(p.store),p.occupier==null?-1:p.occupier,p.siege||null,p.bOwner||null,roundProsp(p.prosp),p.bOff||null,roundProsp(p.bCond)]),
       armies:S.armies.map(a=>({id:a.id,nation:a.nation,prov:a.prov,units:a.units,src:a.src,path:a.path,legDone:a.legDone,legTotal:a.legTotal,supply:a.supply})),
       mapCheck:S.provs.length+"|"+S.provs[0].name};
@@ -114,6 +114,7 @@ function continueGame(){
   const s=loadSaveMeta();
   if(!s)return;
   S.hour=s.hour;S.player=s.player;S.armyIdSeq=s.armyIdSeq;
+  S.econV2=!!s.econV2; // la partida guardada sigue con la economía con la que se empezó
   S.wars=new Map(s.wars);S.truces=new Map(s.truces);
   S.rel=new Map(s.rel||[]);S.relMonthKey=-1; // relaciones diplomáticas (v4 antiguos sin rel → vacío)
   S.embargoes=new Set(s.embargoes||[]);S.claims=new Set(s.claims||[]);S.pacts=new Map(s.pacts||[]);S.dipCd=new Map();S.dipSel=-1;

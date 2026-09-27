@@ -1451,5 +1451,8 @@ export {
   bOff, bCond, effLvl, buildingProfit, buildingOutput, degradeBuildings, sourceableSet, inputsSourceable, inputCoverOf, marketAccess, provFlete,
   prosperityTick, prospLevel, PROSP_LEVEL_PTS, PROSP_MAX_PTS, CHANNEL_GOODS, NAT_BONUS_PER_LEVEL,
   // exports para diagnóstico (tools/diag-paises.mjs): constantes y helpers de producción/consumo por bien
-  RESTYPE_RATE, LUX_NEED, isRawSpecialty, NEED_BASIC, YR_TICKS, TOOL_UP_JOB, alcoholSplit
+  RESTYPE_RATE, LUX_NEED, isRawSpecialty, NEED_BASIC, YR_TICKS, TOOL_UP_JOB, alcoholSplit,
+  // exports para economy2.js (Economía v2): constantes CALIBRADAS que se portan literalmente (design/economia-v2.md §7)
+  TRADE_KM, TRADE_SEA, TRADE_WAR, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN,
+  PROMO_RATE, targetBurgFrac, recBuy, START_WEALTH_PC
 };
