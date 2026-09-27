@@ -127,6 +127,14 @@ división). Donde está el tiempo:
   (campesino hasta 30 km, burgués más allá y entre reinos: concepto "Transporte" en la interfaz), y pay() de la corona
   apunta su gasto en el libro de sumideros. Queda −2%/año (histórico ~−0,6%/año, cronista).
 
-**Pendiente descubierto:** el precio semanal se calcula con la demanda **deseada**, no con la que se puede pagar:
+**Arreglado después (precio con demanda pagable):** antes, el precio semanal se calculaba con la demanda **deseada**, no con la que se puede pagar:
 los lujos se quedan en el techo ×3, casi nadie los compra y el comercio (que lleva solo a quien puede pagar) no los
 mueve. Especias: oferta mundial = demanda, pero 47% vendido.
+  → Ahora usa la demanda que **puede pagar** (comprado + lo que faltó con dinero en la mano) más lo exportado:
+  especias ×2,8 → ×2,0, pieles ×2,1 → ×1,5, caballos ×1,4 → ×0,8, armas ×2,2 → ×1,6. Lo vendido apenas se mueve.
+
+**El tapón real del comercio → paso 3.** El mercader diario solo trae lo que al importador le FALTÓ AYER (`B.gap`).
+Lo que llega se vende y se abre un hueco igual: en equilibrio el importador recibe la MITAD de lo que puede pagar
+(todos los importadores de especias traen ~87/mes con un hueco constante de ~2,85/día; Egipto con 2.300 en stock).
+Los CONTRATOS mensuales dimensionados con la demanda prevista (paso 3) lo resuelven de raíz. Probado y retirado:
+dimensionar el almacén del exportador con la demanda prevista no ayuda sin contratos y duplica lo que se tira.

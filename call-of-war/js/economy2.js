@@ -244,7 +244,8 @@ function dayOf(h){return Math.floor(h/24)}
 function isMarketDay(){return dayOf(S.hour)%MARKET_DAYS===0}
 // Fija el precio de la semana de un reino con lo acumulado desde el último mercado (N.e2.wk, por día):
 // objetivo = referencia × (demanda prevista ÷ oferta prevista) × factor de stock sobrante, y un paso de como mucho ±15%.
-// La demanda incluye lo que se EXPORTA y la oferta lo que se IMPORTA (el comercio es parte del mercado).
+// La demanda es la que PUEDE PAGAR (comprado + lo que faltó con dinero en la mano) más lo que se EXPORTA; la oferta,
+// lo entregado a la plaza más lo que se IMPORTA (el comercio es parte del mercado).
 // La primera vez (partida nueva o guardada antes de esto) se fija directamente al objetivo.
 function weeklyPrice(N){
   const wk=N.e2.wk, first=!N.e2.fc, fc=N.e2.fc||(N.e2.fc={d:{},s:{}}), days=wk.days;
@@ -493,12 +494,13 @@ function economyTick2(dt=24,doArb=true){
     for(const e of STRATA)for(const g in want[e])dem[g]=(dem[g]||0)+want[e][g];
     for(const r of grainReq[n])dem.comida=(dem.comida||0)+r.q;
     for(const o in factNeed[n])for(const g in factNeed[n][o])dem[g]=(dem[g]||0)+factNeed[n][o][g];
-    // PRECIO de la semana: se acumula la oferta y la demanda del día; el día de mercado se fija el de la semana que
-    // empieza (weeklyPrice). Entre mercados, todos compran y venden al precio fijado.
+    // PRECIO de la semana: el día de mercado se fija el de la semana que empieza (weeklyPrice) con lo acumulado en la
+    // anterior (tras las compras, abajo). Entre mercados, todos compran y venden al precio fijado.
     const wk=N.e2.wk||(N.e2.wk={d:{},s:{},days:0});
-    for(const g of GOODS2){wk.d[g]=(wk.d[g]||0)+(dem[g]||0);wk.s[g]=(wk.s[g]||0)+(supply[n][g]||0)}
-    wk.days+=dt/24;
-    if(!N.e2.fc||marketDay||!(N.mktPrice.comida>0))weeklyPrice(N);   // (sin precio: partida guardada antes de que se guardara)
+    if(!N.e2.fc||!(N.mktPrice.comida>0)){   // primera vez (o partida guardada sin precio): con la demanda DESEADA de hoy
+      if(!(wk.days>0)){for(const g of GOODS2){wk.d[g]=dem[g]||0;wk.s[g]=supply[n][g]||0}wk.days=dt/24}
+      weeklyPrice(N)}
+    else if(marketDay)weeklyPrice(N);
     const price={};
     for(const g of GOODS2)price[g]=N.mktPrice[g];
     // la plaza solo COMPRA lo que puede vender este tick o guardar (hasta CAP_MONTHS de demanda): la mercancía que no
@@ -558,6 +560,12 @@ function economyTick2(dt=24,doArb=true){
     // cobertura de insumos (la leen los talleres el próximo tick)
     for(const g in coverIn){const c=coverIn[g].need>0?coverIn[g].got/coverIn[g].need:1;
       N.e2.cover[g]=c; N.inputCover[g]=c}
+    // para el precio de la próxima semana: la oferta del día y la demanda que PUEDE PAGAR (lo comprado + lo que se habría
+    // comprado con el dinero en la mano si hubiera habido mercancía). Con la demanda DESEADA, un lujo que casi nadie
+    // puede pagar se quedaba en el techo ×3 para siempre, nadie lo compraba y el comercio (que solo lleva a quien puede
+    // pagar) no lo movía: especias amontonadas a ×0,5 en Egipto y a ×3 en el resto.
+    for(const g of GOODS2){wk.d[g]=(wk.d[g]||0)+(bought[n][g]||0)+(gapStock[g]||0);wk.s[g]=(wk.s[g]||0)+(supply[n][g]||0)}
+    wk.days+=dt/24;
     // cobertura de las TRES NECESIDADES por estamento (por valor), asentada ~1 mes
     const k=Math.min(1,COV_SMOOTH*dt);
     for(const e of STRATA)for(const t of TIERS){
