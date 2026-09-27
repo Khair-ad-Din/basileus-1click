@@ -227,7 +227,11 @@ const DIEZMO_KIND=0.10;
 const MARGIN=0.10;       // comisión del comerciante (burgués) sobre cada compra en la plaza
 const JORNAL=0.20;       // de lo que cobra un taller, esta parte va como jornal a los campesinos de su provincia
 const CAP_MONTHS=2;      // la plaza guarda como mucho tantos meses de demanda; el resto se tira
-const TRADE_SHARE=0.5;   // fracción del SOBRANTE de la plaza que sale al comercio exterior cada día
+// CONTRATOS DE COMERCIO (design/precios-cadencia.md §3): una vez al mes el mercader firma cuánto llevará cada día de un
+// reino a otro, con la PREVISIÓN de oferta y demanda (la que se puede pagar) y los precios de la semana; se entrega a
+// diario. Antes el mercader diario solo traía lo que al importador le FALTÓ AYER: lo traído se vendía y se abría un hueco
+// igual, así que el importador recibía la mitad de lo que podía pagar (especias: ~40% vendido con oferta = demanda).
+const CONTRACT_DAYS=30;  // cada cuántos días se renuevan los contratos (el mes del mercader; la muda, la feria)
 const TRADE_MIN=0.02;    // margen neto mínimo (fracción del precio de referencia) para que compense mover
 const COV_SMOOTH=1/720;  // ritmo (por hora) con que se asienta la cobertura de necesidades (~1 mes)
 // RELOJ SEMANAL — el DÍA DE MERCADO (design/precios-cadencia.md §2). El precio se fija una vez por semana y toda la
@@ -507,7 +511,8 @@ function economyTick2(dt=24,doArb=true){
     // acepta no se paga (si no, crearía dinero por bienes que se tiran). El grano rechazado vuelve a la despensa.
     const acc={},unsold={};
     for(const g of GOODS2){const sup=supply[n][g]||0;if(!sup){acc[g]=1;continue}
-      const room=(dem[g]||0)+Math.max(0,(dem[g]||0)/dt*730*CAP_MONTHS-(N.mkt[g]||0));
+      const dx=(dem[g]||0)+ctrOut(N,g)*dt/24;                           // su demanda + lo que tiene contratado para exportar hoy
+      const room=dx+Math.max(0,dx/dt*730*CAP_MONTHS-(N.mkt[g]||0));
       acc[g]=Math.min(1,room/sup);unsold[g]=(1-acc[g])*sup/dt*730}
     // la PLAZA paga a los productores (el dinero nace aquí)
     for(const d0 of deliv[n]){
@@ -584,7 +589,7 @@ function economyTick2(dt=24,doArb=true){
       N.e2.basket[e]=m/dt*730; N.e2.subsCost[e]=sm/dt*730}   // /mes: cesta completa y solo subsistencia
     N.prosp=N.e2.cov.burgues.vida;                             // el ascenso a burgués sigue a la vida diaria del burgués
     // la plaza no guarda más de CAP_MONTHS de demanda: el resto se tira
-    for(const g of GOODS2){const capS=(dem[g]||0)/dt*730*CAP_MONTHS, s=N.mkt[g]||0;
+    for(const g of GOODS2){const capS=((dem[g]||0)/dt*730+ctrOut(N,g)*730/24)*CAP_MONTHS, s=N.mkt[g]||0;
       if(s>capS){L.discard+=(s-capS)*price[g];N.mkt[g]=capS}}
     // demanda que se quedó sin cubrir POR FALTA DE MERCANCÍA: es lo único que un mercader puede venir a vender
     if(!N.e2.gap)N.e2.gap={};
@@ -634,45 +639,69 @@ function economyTick2(dt=24,doArb=true){
     const sc=soldCap(p),s=p.sold!=null?p.sold:sc;p.sold=s+(sc-s)*regen;
   }
 
-  // ---------------- COMERCIO ENTRE REINOS (arbitraje de muchos a muchos) ----------------
+  // ---------------- COMERCIO ENTRE REINOS: contratos mensuales, entrega diaria ----------------
   if(!doArb)return;
   kmSync2();
   // coste de cada PAR de reinos (km × mar × guerra; ∞ si embargo), 1 vez por tick; cada bien lo escala por su peso
   const live=[];for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(N&&N.alive&&N.e2)live.push(n)}
-  const K=live.length, pairF=new Float64Array(K*K);
+  const K=live.length, pairF=new Float64Array(K*K), idx=new Int16Array(NPLAY).fill(-1);
+  live.forEach((n,i)=>{idx[n]=i});
   for(let i=0;i<K;i++)for(let j=i+1;j<K;j++){const v=pairBase(live[i],live[j]);pairF[i*K+j]=v;pairF[j*K+i]=v}
-  for(const g of GOODS2){
-    const w=(TRADE_BULK[BULK2[g]]||1)*PRICE_SCALE, minM=TRADE_MIN*ref(g);   // coste = pairF × peso (el ÷precio y ×precio se cancelan)
-    // pn = lo que el mercader COBRA vendiendo en esa plaza: el precio menos la comisión del burgués y la alcabala, que
-    // pagará allí el consumidor (igual que a cualquier productor que entrega)
-    const node=live.map((n,i)=>{const N=S.nations[n],p=N.mktPrice[g]!=null?N.mktPrice[g]:ref(g);return{n,N,i,p,pn:p*(1-MARGIN-alcabalaOf(n)),alc:alcabalaOf(n)}});
-    // el mercader lleva SOLO lo que al destino le falta (su demanda sin cubrir) y SOLO lo que al origen le sobra:
-    // así la mercancía no rebota entre plazas cobrando margen en cada viaje
-    for(const B of node)B.gap=B.N.e2.gap?B.N.e2.gap[g]||0:0;
-    for(const A of node){
-      if(A.gap>0)continue;                                                      // quien no cubre su propia demanda no exporta
-      const cupo=(A.N.mkt[g]||0)*Math.min(1,TRADE_SHARE*dt/24); if(cupo<=1e-9)continue;
-      let tot=0;const cand=[];
-      for(const B of node){if(B===A||B.gap<=1e-9||B.pn-A.p<minM)continue;     // sin hueco que llenar, o ni sin flete compensaría
-        const cost=pairF[A.i*K+B.i]*w, m=B.pn-A.p-cost;
-        if(m>=minM){cand.push({B,cost,m});tot+=m}}
-      if(!cand.length)continue;
-      for(const c of cand){const B=c.B;const q=Math.min(cupo*(c.m/tot),B.gap);if(q<=1e-9)continue;B.gap-=q;
-        A.N.mkt[g]-=q; B.N.mkt[g]=(B.N.mkt[g]||0)+q;
+  if(dayOf(S.hour)%CONTRACT_DAYS===0||live.some(n=>!S.nations[n].e2.ctr))signContracts(live,pairF,idx);
+  for(const a of live){const A=S.nations[a],C=A.e2.ctr;if(!C)continue;
+    for(const g in C){const list=C[g];if(!list.length)continue;
+      const w=(TRADE_BULK[BULK2[g]]||1)*PRICE_SCALE, pA=A.mktPrice[g]!=null?A.mktPrice[g]:ref(g), aA=alcabalaOf(a);
+      for(let k=list.length-1;k>=0;k--){const c=list[k], b=c.b, B=S.nations[b], j=b<NPLAY?idx[b]:-1;
+        if(j<0||!B||!B.alive){list.splice(k,1);continue}                          // el reino ya no existe
+        const cost=pairF[idx[a]*K+j]*w; if(!isFinite(cost)){list.splice(k,1);continue} // EMBARGO: se cancela; la mercancía no sale
+        const pB=B.mktPrice[g]!=null?B.mktPrice[g]:ref(g), pn=pB*(1-MARGIN-alcabalaOf(b)), m=pn-pA-cost;
+        if(m<0)continue;                                                          // hoy no sale a cuenta (guerra, precios): no se envía
+        const q=Math.min(c.q*dt/24,A.mkt[g]||0); if(q<=1e-9)continue;
+        A.mkt[g]-=q; B.mkt[g]=(B.mkt[g]||0)+q;
         // El mercader COMPRA en la plaza de origen como cualquier comprador (paga allí la comisión y la alcabala) y VENDE
-        // en la de destino como cualquier productor (cobra el precio neto). Antes pagaba y cobraba el precio entero: la
-        // plaza de destino pagaba una comisión y una alcabala que nadie le devolvía (~5M/año de dinero de la nada).
-        {const v=q*A.p;A.N.e2.plaza+=v*(1-MARGIN-A.alc);A.N.sWealth.burgues+=v*MARGIN;A.N.res.dinero+=v*A.alc;A.N.alcabalaRate+=v*A.alc/dt;
-          addInc(A.N,"burgues",v*MARGIN);addInc(A.N,"corona",v*A.alc);recFlow(A.n,"burgues","Comisión de la plaza",v*MARGIN);recCrown(A.n,"Alcabala",LABEL2[g],v*A.alc)}
-        B.N.e2.plaza-=q*B.pn;
-        {const fr=q*c.cost;A.N.sWealth.burgues+=fr;addInc(A.N,"burgues",fr);recFlow(A.n,"burgues","Transporte",fr)} // el flete lo cobra el transportista del reino que exporta
-        const half=q*c.m*0.5, tA=half*almojOf(A.n), tB=half*almojOf(B.n);   // el mercader se queda el margen neto, menos la aduana
-        A.N.res.dinero+=tA; A.N.almojRate+=tA/dt; A.N.sWealth.burgues+=half-tA; addInc(A.N,"corona",tA); addInc(A.N,"burgues",half-tA); recFlow(A.n,"burgues","Comercio exterior",half-tA); recCrown(A.n,"Almojarifazgo",LABEL2[g],tA);
-        B.N.res.dinero+=tB; B.N.almojRate+=tB/dt; B.N.sWealth.burgues+=half-tB; addInc(B.N,"corona",tB); addInc(B.N,"burgues",half-tB); recFlow(B.n,"burgues","Comercio exterior",half-tB); recCrown(B.n,"Almojarifazgo",LABEL2[g],tB);
-        A.N.mktInfo[g].exp+=q/dt*730; B.N.mktInfo[g].imp+=q/dt*730;
-        A.N.e2.wk.d[g]=(A.N.e2.wk.d[g]||0)+q; B.N.e2.wk.s[g]=(B.N.e2.wk.s[g]||0)+q}   // para el precio de la próxima semana
+        // en la de destino como cualquier productor (cobra el precio neto): así ninguna plaza crea dinero.
+        {const v=q*pA;A.e2.plaza+=v*(1-MARGIN-aA);A.sWealth.burgues+=v*MARGIN;A.res.dinero+=v*aA;A.alcabalaRate+=v*aA/dt;
+          addInc(A,"burgues",v*MARGIN);addInc(A,"corona",v*aA);recFlow(a,"burgues","Comisión de la plaza",v*MARGIN);recCrown(a,"Alcabala",LABEL2[g],v*aA)}
+        B.e2.plaza-=q*pn;
+        {const fr=q*cost;A.sWealth.burgues+=fr;addInc(A,"burgues",fr);recFlow(a,"burgues","Transporte",fr)} // el flete lo cobra el transportista del reino que exporta
+        const half=q*m*0.5, tA=half*almojOf(a), tB=half*almojOf(b);          // el mercader se queda el margen neto, menos la aduana
+        A.res.dinero+=tA; A.almojRate+=tA/dt; A.sWealth.burgues+=half-tA; addInc(A,"corona",tA); addInc(A,"burgues",half-tA); recFlow(a,"burgues","Comercio exterior",half-tA); recCrown(a,"Almojarifazgo",LABEL2[g],tA);
+        B.res.dinero+=tB; B.almojRate+=tB/dt; B.sWealth.burgues+=half-tB; addInc(B,"corona",tB); addInc(B,"burgues",half-tB); recFlow(b,"burgues","Comercio exterior",half-tB); recCrown(b,"Almojarifazgo",LABEL2[g],tB);
+        A.mktInfo[g].exp+=q/dt*730; B.mktInfo[g].imp+=q/dt*730;
+        A.e2.wk.d[g]=(A.e2.wk.d[g]||0)+q; B.e2.wk.s[g]=(B.e2.wk.s[g]||0)+q}   // para el precio de la próxima semana
     }
   }
+}
+// Unidades/día que un reino tiene CONTRATADAS para exportar de un bien (su plaza las guarda además de su demanda).
+function ctrOut(N,g){const l=N.e2&&N.e2.ctr&&N.e2.ctr[g];if(!l)return 0;let t=0;for(const c of l)t+=c.q;return t}
+function ctrIn(n,g){let t=0;for(let a=0;a<NPLAY;a++){const A=S.nations[a];const l=A&&A.e2&&A.e2.ctr&&A.e2.ctr[g];if(l)for(const c of l)if(c.b===n)t+=c.q}return t}
+// FIRMA de los contratos del mes. Por bien: cada reino mira su hueco NETO de lo propio (la demanda que puede pagar,
+// prevista, menos lo que produce; sin contar sus contratos actuales). Le sobra → exportador; le falta → importador.
+// Los exportadores más baratos firman primero y cada uno vende donde más gana (margen neto de flete, comisión y alcabala)
+// hasta agotar su sobrante o cubrir el hueco del comprador. Precios: los de la semana (el retraso de la noticia).
+function signContracts(live,pairF,idx){
+  const K=live.length;
+  for(const n of live){const N=S.nations[n];N.e2.ctrPrev=N.e2.ctr||{};}
+  const inPrev=g=>{const t=new Float64Array(NPLAY);for(const a of live){const l=S.nations[a].e2.ctrPrev[g];if(l)for(const c of l)if(c.b<NPLAY)t[c.b]+=c.q}return t};
+  for(const n of live)S.nations[n].e2.ctr={};
+  for(const g of GOODS2){
+    const w=(TRADE_BULK[BULK2[g]]||1)*PRICE_SCALE, minM=TRADE_MIN*ref(g), imp=inPrev(g);
+    const node=live.map(n=>{const N=S.nations[n],fc=N.e2.fc,p=N.mktPrice[g]!=null?N.mktPrice[g]:ref(g);
+      const outQ=(N.e2.ctrPrev[g]||[]).reduce((t,c)=>t+c.q,0);
+      const D=Math.max(0,((fc&&fc.d[g])||0)-outQ), P=Math.max(0,((fc&&fc.s[g])||0)-imp[n]), st=N.mkt[g]||0;
+      const surplus=Math.max(0,P-D)+Math.max(0,st-D*COVER_TARGET)/CONTRACT_DAYS;   // lo que le sobra al día (+ el stock de más)
+      return {n,N,i:idx[n],p,pn:p*(1-MARGIN-alcabalaOf(n)),surplus,need:Math.max(0,D-P)}});
+    const sellers=node.filter(x=>x.surplus>1e-9).sort((x,y)=>x.p-y.p);
+    for(const A of sellers){
+      const cand=[];
+      for(const B of node){if(B===A||B.need<=1e-9)continue;
+        const cost=pairF[A.i*K+B.i]*w, m=B.pn-A.p-cost; if(m>=minM)cand.push({B,m})}
+      cand.sort((x,y)=>y.m-x.m);
+      for(const c of cand){if(A.surplus<=1e-9)break;const q=Math.min(A.surplus,c.B.need);
+        A.surplus-=q;c.B.need-=q;(A.N.e2.ctr[g]||(A.N.e2.ctr[g]=[])).push({b:c.B.n,q})}
+    }
+  }
+  for(const n of live)delete S.nations[n].e2.ctrPrev;
 }
 function inputCov(N,b){const D=BLD2[b];if(!D||!D.in)return 1;let c=1;for(const k in D.in){const v=N.e2.cover[k];if(v!=null&&v<c)c=v}return c}
 
@@ -681,4 +710,4 @@ function moneyStock(){let m=0,pl=0;for(let n=0;n<NPLAY;n++){const N=S.nations[n]
   if(N.sWealth)for(const k in N.sWealth)m+=N.sWealth[k];if(N.e2)pl+=N.e2.plaza}return{m,pl}}
 
 export { economyTick2, siteOK2, seedEstates2, upkeepScale, seedOwner2, seedWealth2, GOODS2, LABEL2, REF2, NEED2, WANT2, TIERS, BLD2, ESTATE_BUILDS2, buildingProfit2, buildingOutput2,
-  transport, tradeCost2, moneyStock, sinkAdd, ARTISAN_IN, isMarketDay, MARKET_DAYS, PRICE_SCALE, JORNAL, MARGIN, CROWN_STOCK, CROWN_STOCK_WANT, crownStockOut, specialty2, obsolete2 };
+  transport, tradeCost2, moneyStock, sinkAdd, ARTISAN_IN, ctrOut, ctrIn, isMarketDay, MARKET_DAYS, PRICE_SCALE, JORNAL, MARGIN, CROWN_STOCK, CROWN_STOCK_WANT, crownStockOut, specialty2, obsolete2 };

@@ -1,6 +1,6 @@
 # Precios y comercio por cadencia — "tres relojes"
 
-> Estado: pasos 1-2 **HECHOS** (2026-09-27, rama `economia-v2`); paso 3 (contratos mensuales) y 4 (hambruna) pendientes.
+> Estado: pasos 1-3 **HECHOS** (2026-09-27, rama `economia-v2`); paso 4 (hambruna) pendiente.
 > Ver "Resultado" al final.
 > Origen: la sonda de lujos e industria (3 años con la IA de obras) mostró que los talleres de un reino se abren y
 > cierran TODOS A LA VEZ cada ~2 meses, con el precio saltando entre ×0,5 y ×3. Sergio propone que precios y comercio
@@ -138,3 +138,14 @@ Lo que llega se vende y se abre un hueco igual: en equilibrio el importador reci
 (todos los importadores de especias traen ~87/mes con un hueco constante de ~2,85/día; Egipto con 2.300 en stock).
 Los CONTRATOS mensuales dimensionados con la demanda prevista (paso 3) lo resuelven de raíz. Probado y retirado:
 dimensionar el almacén del exportador con la demanda prevista no ayuda sin contratos y duplica lo que se tira.
+
+**Paso 3 — contratos** (`economy2.js` signContracts, entrega diaria en economyTick2): cada 30 días, por bien, cada
+reino calcula su hueco neto de lo propio (demanda pagable prevista − oferta propia, sin sus contratos). Los
+exportadores más baratos firman primero y venden donde más ganan (margen neto de flete, comisión y alcabala) hasta
+agotar su sobrante o cubrir el hueco. Entrega diaria de 1/30 con los precios de la semana (el retraso de la noticia);
+si ese día no sale a cuenta, no se envía. Embargo o reino desaparecido → contrato cancelado, la mercancía no sale.
+La plaza del exportador guarda también lo contratado. Contratos en `N.e2.ctr` (se guardan con la partida).
+Resultado a 3 años: especias ×2,0 → ×1,28 (52% vendido), pieles 39% → 59%, caballos 55% → 77%; lujo de la nobleza
+y el clero de Polonia de 0-3% a ~50%. Deflación −1,5%/año. Plazas ≈ −(stock + tirado): sin impresora.
+Pendiente: los burgueses de Venecia y Francia gastan más de lo que ingresan (calibración, no los contratos);
+lo tirado sube (~1,7M/año: stock guardado para contratos que no salen a cuenta).
