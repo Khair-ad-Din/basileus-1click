@@ -250,3 +250,22 @@ Norte importador · navegador: 0 errores JS, 2,6 s/día de juego (v1: 3,5).
 
 **Pendiente:** grano muy sobrado (la renta en especie que no se vende vuelve a la aldea — intencionado, pero conviene que la
 IU lo explique) · burgueses de Francia y Venecia justos · seda y especias escasas (lujo) · /ux de las 3 pantallas.
+
+## 13. La v2 explicada al jugador (base para /ux)
+
+Una regla: **el dinero nace cuando alguien vende a la plaza, y cada ducado que se paga lo cobra alguien.**
+
+- **Quién produce:** el campesino (grano —del que come primero—, algo de madera/hierro/carne/lienzo y la especialidad de
+  su provincia); el burgués-artesano (lienzo, paño, herramientas; armas en los centros armeros), que compra lana y hierro
+  en la plaza; los talleres (edificios) de un dueño: burgués, noble, clero o corona.
+- **De cada cosecha:** 10% de diezmo al clero y la renta a su señor (noble 28% · abadengo 22% · realengo 10%), en especie;
+  cada uno lo vende en la plaza (lo que no se vende se queda en la aldea). De lo que el campesino vende de su parte paga
+  el pecho (8%) a la corona. De cada compra en la plaza: 10% comisión al burgués y 8% alcabala a la corona. Transporte al
+  centro de comercio (más lejos, más se pierde). Taller: 20% de jornal a los campesinos, el resto a su dueño.
+- **Tres necesidades por estamento:** 🍞 Subsistencia (grano, sal, lienzo; si falta grano → hambre) · 🏠 Vida diaria (carne,
+  pescado, bebida, paño, herramientas, madera, piedra; cubierta → la población crece y el campesino asciende a burgués) ·
+  👑 Lujo, solo élites (seda, especias, pieles, caballos, armas; efecto de lealtad aún NO enganchado). Quien ahorra más de
+  un año de cesta pide más vida y lujo (hasta ×3).
+- **Precio** = precio normal × demanda ÷ oferta, entre ×0,5 y ×3. **Entre reinos:** el mercader lleva lo que le SOBRA a uno
+  a otro al que le FALTA y puede pagarlo, si la diferencia cubre el viaje (guerra ×3, embargo lo corta; aduana a la corona).
+- **Edificios:** cada dueño cierra lo que no puede pagar con su ingreso (se degrada y se demuele) y reabre si le sobra.
