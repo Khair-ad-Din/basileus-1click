@@ -1,6 +1,7 @@
 # Precios y comercio por cadencia — "tres relojes"
 
-> Estado: **DISEÑO en estudio** (2026-09-27). Rama `economia-v2`. Nada implementado.
+> Estado: pasos 1-2 **HECHOS** (2026-09-27, rama `economia-v2`); paso 3 (contratos mensuales) y 4 (hambruna) pendientes.
+> Ver "Resultado" al final.
 > Origen: la sonda de lujos e industria (3 años con la IA de obras) mostró que los talleres de un reino se abren y
 > cierran TODOS A LA VEZ cada ~2 meses, con el precio saltando entre ×0,5 y ×3. Sergio propone que precios y comercio
 > no se actualicen cada tick sino por semana o mes, con un buffer de oferta/demanda prevista.
@@ -108,3 +109,24 @@ división). Donde está el tiempo:
 4. Hambruna: A vs C en el arnés; decidir.
 5. /consejo sobre lujos y la receta de la herrería, con los datos ya estables.
 6. /ux: la ficha del bien debe mostrar el precio de la semana y los contratos del mes.
+
+## Resultado (2026-09-27)
+
+**Paso 1** (commit `df57aa4`): −43% de tiempo por día, salida idéntica byte a byte.
+
+**Paso 2** — reloj semanal (`economy2.js` weeklyPrice, `estates.js` estatesDaily/manageWorkshops/needMore):
+- La ola desaparece: los telares de Lituania pasan de 0 a ~120 en 3 años sin un solo cierre en bloque.
+- El factor de stock solo empuja el precio **a la baja**: la plaza vende cada día lo que compra, así que un bien
+  equilibrado nunca acumula stock; con un factor simétrico todo lo equilibrado se quedaba en ×1,5.
+- **La plaza imprimía dinero sin que el invariante lo viera** (cuenta el saldo de la plaza como dinero):
+  (1) el precio diario oscilante: compraba caro los días de ×3 y vendía barato los de ×0,5 (~20M/año); (2) las
+  importaciones: la plaza de destino pagaba el precio entero y solo recuperaba precio×(1−comisión−alcabala) (~5M/año).
+  Ahora el mercader compra en origen como un comprador y vende en destino como un productor. **Vara de control:
+  saldo de las plazas ≈ −(valor del stock + lo tirado).**
+- Al quedar neutra, afloró la deflación (−5%/año). Consejo del 2026-09-27: el flete lo cobra quien transporta
+  (campesino hasta 30 km, burgués más allá y entre reinos: concepto "Transporte" en la interfaz), y pay() de la corona
+  apunta su gasto en el libro de sumideros. Queda −2%/año (histórico ~−0,6%/año, cronista).
+
+**Pendiente descubierto:** el precio semanal se calcula con la demanda **deseada**, no con la que se puede pagar:
+los lujos se quedan en el techo ×3, casi nadie los compra y el comercio (que lleva solo a quien puede pagar) no los
+mueve. Especias: oferta mundial = demanda, pero 47% vendido.

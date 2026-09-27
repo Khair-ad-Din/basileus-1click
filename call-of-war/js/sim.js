@@ -9,7 +9,7 @@ import { drawRoads, paintBorders, repaintProvince } from "./render.js";
 import { saveGame } from "./save.js";
 import { economyTick2, seedOwner2, seedWealth2, seedEstates2, siteOK2, BLD2, obsolete2 } from "./economy2.js";
 // IA de obras y gestión de edificios de los ESTAMENTOS (y de la corona IA): vive en estates.js, sin DOM (la usa el arnés)
-import { estateBuild, budgetManage, profitOf, pickCrownBuild } from "./estates.js";
+import { estatesDaily, profitOf, pickCrownBuild } from "./estates.js";
 import { log, refreshBuildBar, refreshSide, refreshTop } from "./ui.js";
 
 // El núcleo económico/demográfico del tick vive en economy.js (economyTick), sin DOM, para
@@ -526,8 +526,7 @@ function hourTick(){
     economyTick2(24,true); // dt=24 (1 día); arbitraje TAMBIÉN diario (barato) para reponer gradual y evitar la oscilación mensual
     tsyTick(tsyBefore); // capa mensual: acumula el delta recurrente del jugador y publica la cifra "/mes"
     relTick(); // diplomacia: deriva mensual del campo de relaciones hacia su línea base (se autodispara al mes)
-    estateBuild(); // E2: los estamentos levantan su tipo de edificio con su riqueza (1 vez/día)
-    budgetManage(); // cada dueño cuadra sus cuentas (cierra lo que no puede pagar, reabre si va holgado)
+    estatesDaily(); // presupuesto a diario; obras y cierre/reapertura de talleres el DÍA DE MERCADO (semanal)
   }
   degradeBuildings(); // ciclo de vida: los edificios deshabilitados se degradan y, a condición 0, se destruyen
   // 2. construcción

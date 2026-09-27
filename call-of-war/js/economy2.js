@@ -14,7 +14,7 @@ import { NPLAY, BUILDINGS, UNITS, STRATA, TERRAINS } from "./config.js";
 import { S } from "./state.js";
 import { kmBetween, pxToLonLat, ensureMarketTopology } from "./mapgen.js";
 import { isEmbargoed, atWarPair } from "./diplomacy.js";
-import { BKEYS, isOccupied, effLvl, lvlOf, bOwnerOf, manorOf, taxRateOf, alcabalaOf, almojOf, harvestMul, terrMul, DIEZMO, terrCatMul, staffing, storeCap, armyFood, soldCap, provProdMul, ensureMarket, recFlow, recBuy, recCrown, YR_TICKS, TRADE_KM, TRADE_SEA, TRADE_WAR, TRADE_BULK, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN, PROMO_RATE, targetBurgFrac, monthKeyOf } from "./economy.js";
+import { BKEYS, ledger, sinkAdd, isOccupied, effLvl, lvlOf, bOwnerOf, manorOf, taxRateOf, alcabalaOf, almojOf, harvestMul, terrMul, DIEZMO, terrCatMul, staffing, storeCap, armyFood, soldCap, provProdMul, ensureMarket, recFlow, recBuy, recCrown, YR_TICKS, TRADE_KM, TRADE_SEA, TRADE_WAR, TRADE_BULK, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN, PROMO_RATE, targetBurgFrac, monthKeyOf } from "./economy.js";
 
 // ============================== CONSTANTES (todo lo tunable está aquí) ==============================
 const PRICE_SCALE=8;     // palanca GLOBAL de precios: iguala el dinero del comercio a la escala de costes de la v1
@@ -59,7 +59,10 @@ const BASE2={materiales:[0.02,"bosque"], piedra:[0.004,"extractivo"], metal:[0.0
              sal:[0.006,"mar"], pescado:[0.006,"mar"], petroleo:[0.0005,"ganado"]};
 // Ciudades-puerto de especias y ciudades sederas (su resType es de ciudad): el mercader las trae / el taller las teje,
 // por habitante y año. Alejandría, Beirut, Venecia, Génova… eran la puerta de entrada de las especias en Europa.
-const URBAN2={raros:0.05, seda:0.006};   // especias: solo por las puertas de entrada (SPICE_GATES), de ahí la tasa mayor
+const URBAN2={raros:0.4, seda:0.006};    // especias: solo por las puertas de entrada (SPICE_GATES), de ahí la tasa mayor.
+                         // 0,05 dejaba la oferta en el 23% de la demanda y el precio en el techo ×3; en 1444 la pimienta ya
+                         // había salido del pico de 1410-27 y Alejandría/Beirut ofrecían más (Ashtor; O'Rourke-Williamson):
+                         // objetivo ~×1 (consejo 2026-09-27)
 // Hierro: fuera de las 6 zonas mineras hay hierro de pantano y de ladera en casi todas partes (poco); en ellas, ×8.
 const IRON_ZONE2=8;
 // ESPECIALIDAD de la provincia (su resType de la v1, plegado a los 17 bienes) por campesino y año
@@ -89,7 +92,7 @@ const ARTISAN_MIX={lienzo:0.45, pano:0.2, herramientas:0.35};       // oficio co
 const ARTISAN_MIX_PANO={lienzo:0.1, pano:0.8, herramientas:0.1};   // ciudades pañeras (su especialidad es el paño):
                          // el paño fino se concentraba en Flandes, Italia e Inglaterra y desde allí se exportaba
 const ARTISAN_MIX_ARMS={armas:0.5, herramientas:0.35, pano:0.15};  // centros armeros (Milán-Brescia, Núremberg, Toledo…): la forja es su oficio
-const ARTISAN_IN={pano:{lana:1}, herramientas:{metal:1}, armas:{metal:2}};
+const ARTISAN_IN={pano:{lana:1}, herramientas:{metal:1}, armas:{metal:2}};   // (misma receta que BLD2)
 const POOR_LINE=0.5;     // por debajo de este % de vida diaria cubierta, parte de los burgueses vuelve a campesino
 // ============================== GEOGRAFÍA DE LOS RECURSOS (cronista, 2026-09-27) ==============================
 // Cajas [latMin,latMax,lonMin,lonMax]. Fuentes y razonamiento: design/economia-v2.md §12. Lo esencial:
@@ -106,7 +109,13 @@ const FISH_POINTS=[[55.2,56.3,12.3,14.6],[51.3,53.6,3.4,5.6],[59.8,63.5,4.3,7.5]
   [35.9,37.4,-7.6,-5.4],[36.5,38.4,12.2,15.8],[45.0,47.6,35.0,49.5]];   // Escania, Holanda-Zelanda, Noruega-Bergen, Islandia, East Anglia, almadrabas de Andalucía y Sicilia, Azov-Volga
 const SPICE_GATES=[[30.9,31.5,29.6,30.3],[33.2,34.1,35.2,36.6]];      // Alejandría · Beirut-Damasco
 const HORSE_POINTS=[[36.0,38.6,-7.6,-2.0],[40.4,41.9,15.0,18.6],[50.7,53.6,3.0,7.6],[45.8,48.6,17.8,22.6]]; // Andalucía, Apulia, Frisia-Flandes, Hungría (+ estepa por terreno)
-const IRON_EXTRA2=[[42.6,43.3,9.9,11.4],[50.5,51.4,7.5,8.5],[42.1,42.6,23.2,23.9]]; // Elba-Toscana, Siegerland-Westfalia, Samokov
+const IRON_EXTRA2=[[42.6,43.3,9.9,11.4],[50.5,51.4,7.5,8.5],[42.1,42.6,23.2,23.9], // Elba-Toscana, Siegerland-Westfalia, Samokov
+  [42.9,43.45,-3.4,-1.7],[49.2,49.8,11.4,12.3],[47.2,47.8,14.4,15.3],[59.4,60.8,14.0,16.2]];
+  // + País Vasco (ferrerías de Vizcaya-Guipúzcoa: Inglaterra importaba su hierro "casi todo de España", Childs 1981),
+  //   Alto Palatinado (Amberg-Sulzbach, Hammereinung 1387), Erzberg de Estiria, Bergslagen-Dalarna (hierro osmund).
+  //   Weald NO: su auge es posterior a 1490 (cronista, consejo 2026-09-27)
+const IRON_MINOR2=[[51.6,52.0,-2.8,-2.3]]; // Forest of Dean: el distrito férreo de Inglaterra, en declive (33 forjas hacia 1435)
+const IRON_MINOR_MUL=3;
 const ARMS_CENTERS=[[45.1,46.0,8.6,10.7],[49.0,49.9,10.6,11.6],[48.0,48.8,10.4,12.2],[48.4,48.8,12.9,13.6],[50.7,51.1,6.7,7.3],
   [39.6,40.1,-4.3,-3.7],[42.9,43.5,-3.3,-1.8]];                         // Milán-Brescia, Núremberg, Augsburgo-Landshut, Passau, Colonia, Toledo, Vizcaya
 const ARID_LOW=[[20,31.6,24,35.5],[27,37.5,-10,11.5]];                  // Egipto (Nilo) y Magreb: casi sin madera ni hierro
@@ -134,7 +143,7 @@ function geoMul(p,g){
     case "sal": return (p.coastal&&ll(p)[1]<SALT_SEA_LAT)?1:0;          // sal marina solo en el Sur; la de roca va aparte (SALT_POINTS)
     case "pescado": return inBox(p,FISH_POINTS)?FISH_ZONE_MUL:1;
     case "petroleo": return (inBox(p,HORSE_POINTS)||p.terrain==="estepa")?HORSE_ZONE_MUL:(inBox(p,ARID_LOW)?0.3:1);
-    case "metal": return inBox(p,ARID_LOW)?ARID_MUL:(((p.metalMul!=null&&p.metalMul>1)||inBox(p,IRON_EXTRA2))?IRON_ZONE2:1);
+    case "metal": return inBox(p,ARID_LOW)?ARID_MUL:(((p.metalMul!=null&&p.metalMul>1)||inBox(p,IRON_EXTRA2))?IRON_ZONE2:inBox(p,IRON_MINOR2)?IRON_MINOR_MUL:1);
     case "materiales": return inBox(p,ARID_LOW)?ARID_MUL:1;
     case "vino": return islamic(p)?ISLAM_DRINK:1;
   }
@@ -221,6 +230,39 @@ const CAP_MONTHS=2;      // la plaza guarda como mucho tantos meses de demanda; 
 const TRADE_SHARE=0.5;   // fracción del SOBRANTE de la plaza que sale al comercio exterior cada día
 const TRADE_MIN=0.02;    // margen neto mínimo (fracción del precio de referencia) para que compense mover
 const COV_SMOOTH=1/720;  // ritmo (por hora) con que se asienta la cobertura de necesidades (~1 mes)
+// RELOJ SEMANAL — el DÍA DE MERCADO (design/precios-cadencia.md §2). El precio se fija una vez por semana y toda la
+// semana se compra y vende a ese precio; lo que sobra o falta cada día lo absorbe el stock de la plaza (el buffer).
+// Antes se recalculaba cada día como demanda/(stock+oferta del día): era casi binario (×3 con la plaza vacía, ×0,5 en
+// cuanto quedaba algo) y todos los talleres de un reino se abrían y cerraban a la vez (la "ola de telares").
+const MARKET_DAYS=7;     // cada cuántos días hay mercado (el día de mercado semanal de las villas del XV)
+const FC_K=0.5;          // peso de la última semana en la PREVISIÓN de oferta y demanda (~2 semanas de memoria)
+const COVER_TARGET=30;   // días de demanda por encima de los cuales el stock de la plaza SOBRA…
+const COVER_EXP=0.3;     // …y empuja el precio a la baja (solo a la baja: la plaza vende cada día lo que compra, así
+const COVER_MIN=0.7;     // que un bien equilibrado nunca acumula stock; la escasez ya la marca demanda ÷ oferta)
+const PRICE_STEP=0.15;   // el precio se mueve como mucho ±15% por semana hacia su objetivo (×2 en ~5 semanas)
+function dayOf(h){return Math.floor(h/24)}
+function isMarketDay(){return dayOf(S.hour)%MARKET_DAYS===0}
+// Fija el precio de la semana de un reino con lo acumulado desde el último mercado (N.e2.wk, por día):
+// objetivo = referencia × (demanda prevista ÷ oferta prevista) × factor de stock sobrante, y un paso de como mucho ±15%.
+// La demanda incluye lo que se EXPORTA y la oferta lo que se IMPORTA (el comercio es parte del mercado).
+// La primera vez (partida nueva o guardada antes de esto) se fija directamente al objetivo.
+function weeklyPrice(N){
+  const wk=N.e2.wk, first=!N.e2.fc, fc=N.e2.fc||(N.e2.fc={d:{},s:{}}), days=wk.days;
+  if(!(days>0))return;
+  for(const g of GOODS2){
+    const d=(wk.d[g]||0)/days, s=(wk.s[g]||0)/days;
+    fc.d[g]=first||fc.d[g]==null?d:fc.d[g]+(d-fc.d[g])*FC_K;
+    fc.s[g]=first||fc.s[g]==null?s:fc.s[g]+(s-fc.s[g])*FC_K;
+    const D=fc.d[g], P=fc.s[g], stock=N.mkt[g]||0;
+    let r;
+    if(D<=1e-12)r=(P>0||stock>0)?0.5:1;          // nadie lo pide: por los suelos (o a la par si tampoco hay)
+    else if(P<=1e-12)r=3;                         // lo piden y no llega nada
+    else{const cover=stock/D; r=(D/P)*Math.max(COVER_MIN,Math.min(1,Math.pow(COVER_TARGET/Math.max(cover,1),COVER_EXP)))}
+    const target=ref(g)*Math.max(0.5,Math.min(3,r)), old=N.mktPrice[g];
+    N.mktPrice[g]=(first||!(old>0))?target:old*Math.max(1/(1+PRICE_STEP),Math.min(1+PRICE_STEP,target/old));
+  }
+  wk.d={};wk.s={};wk.days=0;
+}
 
 // ============================== helpers ==============================
 // MANTENIMIENTO DE LOS SERVICIOS según la GENTE a la que sirven. Un cuartel, un templo o un almacén rinden en
@@ -290,7 +332,14 @@ function ensure2(N){
   if(!N.e2.st)N.e2.st={prodV:0,soldV:0,grossV:0,campNet:0,jornal:0}; // contadores de calibración (el arnés los lee y resetea)
   for(const e of STRATA)if(!N.e2.cov[e])N.e2.cov[e]={subs:1,vida:1,lujo:1};
 }
-function ledger(){return S.e2L||(S.e2L={mint:0,sink:0,rescue:0,discard:0})}
+// (ledger y sinkAdd viven en economy.js: también los usa pay() de la corona)
+// TRANSPORTE (consejo 2026-09-27): el flete no se evapora, lo COBRA quien lleva la mercancía. De la provincia a su
+// centro de comercio, la primera jornada de carro (CART_KM) la hace el campesino de la aldea con sus bestias; más allá,
+// el arriero o carretero burgués. Entre reinos, el burgués del reino que exporta (galeras, cocas, recuas).
+// Fuentes: fin de las corveas c.1390-1420 (Bailey); transportistas regulares hacia 1450 (Sharpe); arrieros asalariados
+// en Castilla (Diago Hernando). Antes se perdía: era el mayor sumidero del juego (~17M/año) y la economía deflacionaba ~5%/año.
+const CART_KM=30;         // una jornada de carro (DISEÑO): hasta aquí el acarreo es del campesino
+function cartShare(p){const km=p.hubKm||0;return km<=CART_KM?1:CART_KM/km}   // parte del flete local que cobra el campesino
 function crownPayee(p){return isOccupied(p)?p.occupier:p.owner} // lo que es de la corona en una provincia ocupada, se lo lleva el ocupante
 // Producción ANUAL de un nivel de edificio v2 (a plena cobertura), para UI e IA.
 function bldYear(p,b,lvl){
@@ -406,7 +455,7 @@ function economyTick2(dt=24,doArb=true){
       const B=BUILDINGS[b], fx=B.fx||{}, o=bOwnerOf(p,b);
       // mantenimiento: dinero → sumidero; bienes → la corona los descuenta de su almacén, un estamento los paga
       if(B.up)for(const k in B.up){const a=B.up[k]/12*lvl*dt*upkeepScale(p,b);
-        if(k==="dinero"){if(o==="corona"){N.res.dinero-=a;recCrown(n,"Mantenimiento de edificios",B.label,-a)}else{N.sWealth[o]-=a;recFlow(n,o,"Mantenimiento de edificios",-a);upMonth[n][o]=(upMonth[n][o]||0)+a/dt*730}L.sink+=a}
+        if(k==="dinero"){if(o==="corona"){N.res.dinero-=a;recCrown(n,"Mantenimiento de edificios",B.label,-a)}else{N.sWealth[o]-=a;recFlow(n,o,"Mantenimiento de edificios",-a);upMonth[n][o]=(upMonth[n][o]||0)+a/dt*730}sinkAdd("Mantenimiento",a)}
         else if(o==="corona")N.res[k]=(N.res[k]||0)-a;}  // el mantenimiento en BIENES es del almacén de la corona (unidades de la v1); un estamento solo paga el dinero
       if(isOccupied(p))continue; // ocupada: no produce para su dueño
       // minas de plata/oro: el ÚNICO dinero que nace sin venta (acuñación), contado aparte
@@ -424,6 +473,7 @@ function economyTick2(dt=24,doArb=true){
   }
 
   // ---------------- MERCADO de cada reino: precio, cobro de productores, compras ----------------
+  const marketDay=isMarketDay();
   const bought=Array.from({length:NPLAY},()=>({}));
   for(let n=0;n<NPLAY;n++){
     const N=S.nations[n]; if(!N||!N.alive)continue;
@@ -443,11 +493,14 @@ function economyTick2(dt=24,doArb=true){
     for(const e of STRATA)for(const g in want[e])dem[g]=(dem[g]||0)+want[e][g];
     for(const r of grainReq[n])dem.comida=(dem.comida||0)+r.q;
     for(const o in factNeed[n])for(const g in factNeed[n][o])dem[g]=(dem[g]||0)+factNeed[n][o][g];
-    // PRECIO = referencia × demanda/oferta, acotado a ×0,5..×3
+    // PRECIO de la semana: se acumula la oferta y la demanda del día; el día de mercado se fija el de la semana que
+    // empieza (weeklyPrice). Entre mercados, todos compran y venden al precio fijado.
+    const wk=N.e2.wk||(N.e2.wk={d:{},s:{},days:0});
+    for(const g of GOODS2){wk.d[g]=(wk.d[g]||0)+(dem[g]||0);wk.s[g]=(wk.s[g]||0)+(supply[n][g]||0)}
+    wk.days+=dt/24;
+    if(!N.e2.fc||marketDay||!(N.mktPrice.comida>0))weeklyPrice(N);   // (sin precio: partida guardada antes de que se guardara)
     const price={};
-    for(const g of GOODS2){const sup=(N.mkt[g]||0)+(supply[n][g]||0), d=dem[g]||0;
-      const r=sup>0?(d>0?d/sup:0):(d>0?3:1);
-      price[g]=ref(g)*Math.max(0.5,Math.min(3,r)); N.mktPrice[g]=price[g]}
+    for(const g of GOODS2)price[g]=N.mktPrice[g];
     // la plaza solo COMPRA lo que puede vender este tick o guardar (hasta CAP_MONTHS de demanda): la mercancía que no
     // acepta no se paga (si no, crearía dinero por bienes que se tiran). El grano rechazado vuelve a la despensa.
     const acc={},unsold={};
@@ -460,8 +513,11 @@ function economyTick2(dt=24,doArb=true){
       const d=a<1?{...d0,q:d0.q*a}:d0; if(d.q<=0)continue;
       const p=d.p, val=d.q*price[d.g]*(1-MARGIN-alc), t=transport(p,d.g);
       const net=val*(1-t), toll=val*t*TOLL_FRAC;
-      N.e2.plaza-=net+toll;
-      {const m=pm(p);m.val[d.g]=(m.val[d.g]||0)+val;m.lost+=val*t*(1-TOLL_FRAC)}
+      const carry=val*t*(1-TOLL_FRAC), cs=cartShare(p);    // el flete: lo cobran los que transportan
+      N.e2.plaza-=net+toll+carry;
+      {const m=pm(p);m.val[d.g]=(m.val[d.g]||0)+val}
+      if(carry>0){pmPay(p,"campesino","Transporte",carry*cs);pay(n,"campesino",carry*cs,"Transporte");
+        if(cs<1){pmPay(p,"burgues","Transporte",carry*(1-cs));pay(n,"burgues",carry*(1-cs),"Transporte")}}
       N.mkt[d.g]=(N.mkt[d.g]||0)+d.q;
       if(toll>0){const m=manorOf(p);
         pmPay(p,m==="abadengo"?"clero":m==="solariego"?"nobleza":"corona","Portazgo",toll);
@@ -535,7 +591,7 @@ function economyTick2(dt=24,doArb=true){
 
   // ---------------- EJÉRCITO: mantenimiento y comida (como en la v1) ----------------
   for(const a of S.armies){if(a.nation>=NPLAY)continue;const R=S.nations[a.nation].res;
-    for(const k in a.units){const u=UNITS[k].up||{};for(const r in u){const v=u[r]*a.units[k]*dt;R[r]=(R[r]||0)-v;if(r==="dinero"){L.sink+=v;recCrown(a.nation,"Ejército",UNITS[k].label,-v)}}}
+    for(const k in a.units){const u=UNITS[k].up||{};for(const r in u){const v=u[r]*a.units[k]*dt;R[r]=(R[r]||0)-v;if(r==="dinero"){sinkAdd("Ejército",v);recCrown(a.nation,"Ejército",UNITS[k].label,-v)}}}
     const food=armyFood(a)*dt; if(food<=1e-9)continue;
     const forage=(a.supply==null?70:a.supply)/100;
     R.comida=Math.max(0,(R.comida||0)-food*(1-forage));
@@ -579,7 +635,9 @@ function economyTick2(dt=24,doArb=true){
   for(let i=0;i<K;i++)for(let j=i+1;j<K;j++){const v=pairBase(live[i],live[j]);pairF[i*K+j]=v;pairF[j*K+i]=v}
   for(const g of GOODS2){
     const w=(TRADE_BULK[BULK2[g]]||1)*PRICE_SCALE, minM=TRADE_MIN*ref(g);   // coste = pairF × peso (el ÷precio y ×precio se cancelan)
-    const node=live.map((n,i)=>{const N=S.nations[n];return{n,N,i,p:N.mktPrice[g]!=null?N.mktPrice[g]:ref(g)}});
+    // pn = lo que el mercader COBRA vendiendo en esa plaza: el precio menos la comisión del burgués y la alcabala, que
+    // pagará allí el consumidor (igual que a cualquier productor que entrega)
+    const node=live.map((n,i)=>{const N=S.nations[n],p=N.mktPrice[g]!=null?N.mktPrice[g]:ref(g);return{n,N,i,p,pn:p*(1-MARGIN-alcabalaOf(n)),alc:alcabalaOf(n)}});
     // el mercader lleva SOLO lo que al destino le falta (su demanda sin cubrir) y SOLO lo que al origen le sobra:
     // así la mercancía no rebota entre plazas cobrando margen en cada viaje
     for(const B of node)B.gap=B.N.e2.gap?B.N.e2.gap[g]||0:0;
@@ -587,17 +645,24 @@ function economyTick2(dt=24,doArb=true){
       if(A.gap>0)continue;                                                      // quien no cubre su propia demanda no exporta
       const cupo=(A.N.mkt[g]||0)*Math.min(1,TRADE_SHARE*dt/24); if(cupo<=1e-9)continue;
       let tot=0;const cand=[];
-      for(const B of node){if(B===A||B.gap<=1e-9||B.p-A.p<minM)continue;      // sin hueco que llenar, o ni sin flete compensaría
-        const cost=pairF[A.i*K+B.i]*w, m=B.p-A.p-cost;
+      for(const B of node){if(B===A||B.gap<=1e-9||B.pn-A.p<minM)continue;     // sin hueco que llenar, o ni sin flete compensaría
+        const cost=pairF[A.i*K+B.i]*w, m=B.pn-A.p-cost;
         if(m>=minM){cand.push({B,cost,m});tot+=m}}
       if(!cand.length)continue;
       for(const c of cand){const B=c.B;const q=Math.min(cupo*(c.m/tot),B.gap);if(q<=1e-9)continue;B.gap-=q;
         A.N.mkt[g]-=q; B.N.mkt[g]=(B.N.mkt[g]||0)+q;
-        A.N.e2.plaza+=q*A.p; B.N.e2.plaza-=q*B.p; L.sink+=q*c.cost;          // la plaza de origen vende, la de destino compra; el flete se pierde
+        // El mercader COMPRA en la plaza de origen como cualquier comprador (paga allí la comisión y la alcabala) y VENDE
+        // en la de destino como cualquier productor (cobra el precio neto). Antes pagaba y cobraba el precio entero: la
+        // plaza de destino pagaba una comisión y una alcabala que nadie le devolvía (~5M/año de dinero de la nada).
+        {const v=q*A.p;A.N.e2.plaza+=v*(1-MARGIN-A.alc);A.N.sWealth.burgues+=v*MARGIN;A.N.res.dinero+=v*A.alc;A.N.alcabalaRate+=v*A.alc/dt;
+          addInc(A.N,"burgues",v*MARGIN);addInc(A.N,"corona",v*A.alc);recFlow(A.n,"burgues","Comisión de la plaza",v*MARGIN);recCrown(A.n,"Alcabala",LABEL2[g],v*A.alc)}
+        B.N.e2.plaza-=q*B.pn;
+        {const fr=q*c.cost;A.N.sWealth.burgues+=fr;addInc(A.N,"burgues",fr);recFlow(A.n,"burgues","Transporte",fr)} // el flete lo cobra el transportista del reino que exporta
         const half=q*c.m*0.5, tA=half*almojOf(A.n), tB=half*almojOf(B.n);   // el mercader se queda el margen neto, menos la aduana
         A.N.res.dinero+=tA; A.N.almojRate+=tA/dt; A.N.sWealth.burgues+=half-tA; addInc(A.N,"corona",tA); addInc(A.N,"burgues",half-tA); recFlow(A.n,"burgues","Comercio exterior",half-tA); recCrown(A.n,"Almojarifazgo",LABEL2[g],tA);
         B.N.res.dinero+=tB; B.N.almojRate+=tB/dt; B.N.sWealth.burgues+=half-tB; addInc(B.N,"corona",tB); addInc(B.N,"burgues",half-tB); recFlow(B.n,"burgues","Comercio exterior",half-tB); recCrown(B.n,"Almojarifazgo",LABEL2[g],tB);
-        A.N.mktInfo[g].exp+=q/dt*730; B.N.mktInfo[g].imp+=q/dt*730}
+        A.N.mktInfo[g].exp+=q/dt*730; B.N.mktInfo[g].imp+=q/dt*730;
+        A.N.e2.wk.d[g]=(A.N.e2.wk.d[g]||0)+q; B.N.e2.wk.s[g]=(B.N.e2.wk.s[g]||0)+q}   // para el precio de la próxima semana
     }
   }
 }
@@ -608,4 +673,4 @@ function moneyStock(){let m=0,pl=0;for(let n=0;n<NPLAY;n++){const N=S.nations[n]
   if(N.sWealth)for(const k in N.sWealth)m+=N.sWealth[k];if(N.e2)pl+=N.e2.plaza}return{m,pl}}
 
 export { economyTick2, siteOK2, seedEstates2, upkeepScale, seedOwner2, seedWealth2, GOODS2, LABEL2, REF2, NEED2, WANT2, TIERS, BLD2, ESTATE_BUILDS2, buildingProfit2, buildingOutput2,
-  transport, tradeCost2, moneyStock, PRICE_SCALE, JORNAL, MARGIN, CROWN_STOCK, CROWN_STOCK_WANT, crownStockOut, specialty2, obsolete2 };
+  transport, tradeCost2, moneyStock, sinkAdd, ARTISAN_IN, isMarketDay, MARKET_DAYS, PRICE_SCALE, JORNAL, MARGIN, CROWN_STOCK, CROWN_STOCK_WANT, crownStockOut, specialty2, obsolete2 };

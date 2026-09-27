@@ -201,9 +201,10 @@ function almojOf(n){const N=S.nations[n];return N&&N.almojarifazgo!=null?Math.ma
 // nunca pasa del 85% (ancla: coste TOTAL de ruta sal Portugal→Brujas, mercader/cronista; no extrae más que el
 // valor). Es lo que de verdad DESINTEGRA el Este del mercado occidental (su grano remoto no compensa moverlo),
 // distinto del acceso (decisión 2, marketKm, "¿hay plaza local?"): capas separadas, variables distintas, NO doble
-// penalización (campesino#2). El grueso del flete EVAPORA (carretero, bestias, merma); solo TOLL_FRAC es portazgo.
+// penalización (campesino#2). El flete lo COBRA quien transporta (consejo 2026-09-27): TOLL_FRAC es portazgo del señor;
+// el resto, la primera jornada de carro, el campesino de la aldea (CART_KM) y más allá el arriero burgués (economy2.js).
 const FLETE_MAX=0.85;    // techo del flete (fracción del valor): ancla histórica, nunca extrae más que el valor del bien
-const TOLL_FRAC=0.15;    // porción del flete que queda como PORTAZGO del señor de origen (~15%, DISEÑO no dato: el cronista no halló cifra para 1444); el resto se pierde en el transporte
+const TOLL_FRAC=0.15;    // porción del flete que queda como PORTAZGO del señor de origen (~15%, DISEÑO no dato: el cronista no halló cifra para 1444); el resto lo cobran los transportistas
 // constantes del tick demográfico (las usa economy2.js)
 const SOLD_REGEN=0.0012;          // la soldadesca recupera este % del hueco hasta su techo, por tick
 const POP_GROWTH_BASE=0.008/8760; // crecimiento con la despensa llena ≈1.1%/año; escala con el llenado
@@ -382,7 +383,11 @@ function recCrown(n,cat,sub,amt){
   c[k]=(c[k]||0)+amt;
 }
 function pay(n,cost,cat,sub){for(const k in cost)S.nations[n].res[k]-=cost[k];
-  if(cost.dinero)recCrown(n,cat||"Gastos varios",sub,-cost.dinero)}
+  if(cost.dinero){recCrown(n,cat||"Gastos varios",sub,-cost.dinero);sinkAdd(cat||"Gastos varios",cost.dinero)}} // obras, reclutamiento, caminos, reparaciones: el dinero sale de la economía
+// LIBRO DE GRIFOS Y SUMIDEROS (S.e2L): mint = acuñación, sink = dinero que sale de la economía (by: por concepto),
+// rescue = estamentos rescatados a 0, discard = valor de lo que la plaza tira. El arnés comprueba con él el invariante.
+function ledger(){return S.e2L||(S.e2L={mint:0,sink:0,rescue:0,discard:0})}
+function sinkAdd(cat,v){if(!(v>0))return;const L=ledger();L.sink+=v;const b=L.by||(L.by={});b[cat]=(b[cat]||0)+v}
 function lvlOf(p,b){return p.buildings[b]||0}                          // nivel ESTRUCTURAL (existe, aunque esté deshabilitado)
 // ---- Ciclo de vida de edificios: DESHABILITAR / degradar / destruir / reparar ----
 // Un edificio deshabilitado no produce, no consume insumos, no exige dotación ni paga mantenimiento (libera
@@ -524,5 +529,5 @@ function recruitTime(p,u){
 }
 
 export {
-  BKEYS, fxKeys, canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, isOccupied, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, recruitable, moraleGrowth, MORALE_MIN, MORALE_HOSTILE, SOLD_FRAC, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, specialistCap, buildJobs, freeLabor, staffing, jobsOf, buildSlots, usedSlots, structPPF, JOBS_PER_LEVEL, ensureMarket, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, manorOf, canStaffIndustry, bOwnerOf, ESTATES_BUILD, TRADE_BULK, TERRAIN_CAT, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, monthKeyOf, resetTsyLedger, tsyTick, tsyAvail, tsyMonthBal, recFlow, recCrown, bOff, bCond, effLvl, degradeBuildings, YR_TICKS, TRADE_KM, TRADE_SEA, TRADE_WAR, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN, PROMO_RATE, targetBurgFrac, recBuy
+  BKEYS, fxKeys, ledger, sinkAdd, canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, isOccupied, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, recruitable, moraleGrowth, MORALE_MIN, MORALE_HOSTILE, SOLD_FRAC, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, specialistCap, buildJobs, freeLabor, staffing, jobsOf, buildSlots, usedSlots, structPPF, JOBS_PER_LEVEL, ensureMarket, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, manorOf, canStaffIndustry, bOwnerOf, ESTATES_BUILD, TRADE_BULK, TERRAIN_CAT, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, monthKeyOf, resetTsyLedger, tsyTick, tsyAvail, tsyMonthBal, recFlow, recCrown, bOff, bCond, effLvl, degradeBuildings, YR_TICKS, TRADE_KM, TRADE_SEA, TRADE_WAR, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN, PROMO_RATE, targetBurgFrac, recBuy
 };

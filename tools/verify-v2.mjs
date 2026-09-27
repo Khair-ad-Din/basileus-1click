@@ -86,7 +86,7 @@ for(let y=0;y<YEARS;y++){
   S.sFlow={};
   for(let d=0;d<365;d++){S.hour+=24;const pb=pechoCrown();tick();
     if(S.pmKey!==pmKey0){if(pmKey0!=null)checkBooks(pb);pmKey0=S.pmKey;pechoAt=pb}
-    if(AI){es.estateBuild();es.budgetManage();for(let h=0;h<24;h++)ec.degradeBuildings();
+    if(AI){es.estatesDaily();for(let h=0;h<24;h++)ec.degradeBuildings();
       for(const p of S.provs)if(p.buildQueue.length){const q=p.buildQueue[0];q.hoursLeft-=24;
         if(q.hoursLeft<=0){p.buildings[q.b]++;p.buildQueue.shift();if(q.owner)(p.bOwner||(p.bOwner={}))[q.b]=q.owner}}}}
   for(const n of alive()){const N=S.nations[n];for(const k in N.res)if(!isFinite(N.res[k]))nan=true;for(const k in N.sWealth)if(!isFinite(N.sWealth[k]))nan=true}
@@ -100,7 +100,9 @@ for(let y=0;y<YEARS;y++){
 }
 console.log(`\nNaN: ${nan?"⚠ SÍ":"✅ no"} · invariante del dinero: ${worstInv<1e-6?"✅":"⚠"} peor Δrel ${worstInv.toExponential(2)}`);
 console.log(`libros de cuentas (${monthsChecked} meses, ${names[S.player]}): provincia Σcobros+flete=Σvalor ${worstProvBook<1e-9?"✅":"⚠"} peor ${worstProvBook.toExponential(2)} · pecho provincias = pecho Tesorería ${worstPecho<1e-9?"✅":"⚠"} peor ${worstPecho.toExponential(2)}`);
-{const l=L();console.log(`grifos/sumideros acumulados: minas ${fmt(l.mint)} · rescates ${fmt(l.rescue)} · mantenimiento+flete ${fmt(l.sink)} · tirado de la plaza (valor) ${fmt(l.discard)}`)}
+{const l=L();console.log(`grifos/sumideros acumulados: minas ${fmt(l.mint)} · rescates ${fmt(l.rescue)} · sumidero ${fmt(l.sink)} · tirado de la plaza (valor) ${fmt(l.discard)}`);
+  console.log(`  sumidero por concepto: `+Object.entries(l.by||{}).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k} ${fmt(v)}`).join(" · ")+
+    ` · saldo de las plazas ${fmt(e2.moneyStock().pl)}`)}
 
 // ---- por nación (último año) ----
 console.log(`\nNación            pobl.  corona Δ/mes   riqueza/hab: camp  burg  clero  nob`+"   cobertura (subs/vida/lujo): camp · burg · clero · nob");

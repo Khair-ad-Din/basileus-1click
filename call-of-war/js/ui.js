@@ -1224,6 +1224,10 @@ const CROWN_CAT={
   "Gastos varios":["·","Otros pagos de la corona."],
   "Otros":["❔","Movimientos del tesoro sin apunte en el libro."]
 };
+// Conceptos de las cuentas de los ESTAMENTOS que necesitan explicación (icono + tooltip; el resto se lee solo).
+const TIP_TRANSPORTE="Llevar la mercancía hasta el centro de comercio. La primera jornada de carro (30 km) la cobran los campesinos de la aldea; más allá, los arrieros burgueses. Entre reinos, el flete lo cobran los burgueses del reino que exporta.";
+const FLOW_CAT={"Transporte":["🛤",TIP_TRANSPORTE]};
+const flowLabel=c=>{const x=FLOW_CAT[c];return x?"<span data-tip=\""+ta(x[1])+"\" style='cursor:help'>"+x[0]+" "+c+"</span>":c};
 function crownRate(kind){const n=S.player;return kind==="feudal"?taxRateOf(n):kind==="alcabala"?alcabalaOf(n):almojOf(n)}
 // El libro que se enseña: el mes CERRADO (estable); en el primer mes de partida, el que va en curso.
 function crownBook(which){ // which: "prev"|"cur" (por defecto, lo elegido en la Tesorería)
@@ -1418,7 +1422,7 @@ function renderEstate2(body,N,e){
   const ks=Object.keys(fl).filter(c=>Math.abs(fl[c])>=0.5);
   const inc=ks.filter(c=>fl[c]>0).sort((a,b)=>fl[b]-fl[a]),exp=ks.filter(c=>fl[c]<0).sort((a,b)=>fl[a]-fl[b]);
   let net=0;for(const c of ks)net+=fl[c];
-  const row=c=>"<div class='trow'><span>"+c+"</span><b class='"+(fl[c]<0?"neg":"pos")+"'>"+sgnE(fl[c])+" "+resImg("dinero")+"</b></div>";
+  const row=c=>"<div class='trow'><span>"+flowLabel(c)+"</span><b class='"+(fl[c]<0?"neg":"pos")+"'>"+sgnE(fl[c])+" "+resImg("dinero")+"</b></div>";
   h+="<div class='tbook' style='margin-top:10px'><div class='tsec'>Ingresos"+(S.sFlowPrev?"":" · este mes")+"</div>"+(inc.length?inc.map(row).join(""):"<div class='trow tdim'>—</div>")+
     "<div class='tsec'>Gastos</div>"+(exp.length?exp.map(row).join(""):"<div class='trow tdim'>—</div>")+
     "<div class='ttotal'><span>Balance del mes</span><b class='"+(net<0?"neg":"pos")+"'>"+sgnE(net)+" "+resImg("dinero")+"</b></div></div>";
@@ -1522,6 +1526,7 @@ function tradeRow2(p){ // su centro de comercio y lo que cuesta llevar allí cad
   const hub=(p.hubOf!=null&&p.hubOf>=0)?S.provs[p.hubOf]:null, km=Math.round(p.hubKm||0);
   const rows=[["Centro de comercio",hub?hub.name+(km?" · "+km+" km":""):"—"]];
   for(const g of ["comida","lana","pano","seda"])rows.push(["Flete "+gLabel(g).toLowerCase(),pctE(transport(p,g))+"% del valor"]);
+  rows.push(["Lo cobran",km<=30?"los campesinos (acarreo)":"campesinos y arrieros burgueses"]);
   const val=!hub?"—":hub.id===p.id?"Centro de comercio":"→ "+hub.name+" <span class='e2sub'>"+km+" km</span>";
   return "<div class='prow' data-tiph=\""+ta(tipRows("Comercio",rows))+"\" style='cursor:help'><span>🛤 Comercio</span><b>"+val+"</b></div>";
 }
@@ -1552,7 +1557,7 @@ function yieldBar2(p,b,w){ // barra apilada: a quién va el dinero que paga la p
   for(const k of WHO_ORDER){const v=b.who[k]||0;if(v<=0)continue;seg+="<i style='display:block;height:100%;width:"+(100*v/tot).toFixed(2)+"%;background:"+WHO_COL[k]+"'></i>"}
   if(b.m.lost>0)seg+="<i style='display:block;height:100%;width:"+(100*b.m.lost/tot).toFixed(2)+"%;background:#4a4f55'></i>";
   const rows=WHO_ORDER.filter(k=>(b.who[k]||0)>=0.5).map(k=>["<span style='color:"+WHO_COL[k]+"'>■</span> "+whoLabel(k),nfE(b.who[k])+" 🪙"]);
-  if(b.m.lost>=0.5)rows.push(["<span style='color:#6a7077'>■</span> Flete (se pierde)",nfE(b.m.lost)+" 🪙"]);
+  if(b.m.lost>=0.5)rows.push(["<span style='color:#6a7077'>■</span> Flete",nfE(b.m.lost)+" 🪙"]);
   return "<span data-tiph=\""+ta(tipRows("A quién va lo que paga la plaza",rows,["Total",nfE(b.val)+" 🪙"]))+"\" style='display:inline-flex;width:"+(w||110)+"px;height:8px;border-radius:3px;overflow:hidden;background:#241a14;vertical-align:middle;cursor:help'>"+seg+"</span>";
 }
 function yieldRows2(p){ // "Rinde": el valor que la provincia lleva a la plaza, repartido, y lo que te toca a ti
@@ -1571,7 +1576,7 @@ function provEcoWinHTML(p){ // ventana Economía: el mismo libro que la Tesorer�
   if(path&&b.m.pay[path]){ // detalle de un cobrador
     const cs=b.m.pay[path],ks=Object.keys(cs).sort((x,y)=>cs[y]-cs[x]);
     h+="<div class='tcrumb'><span class='tcrumbi' onclick=\"provEcoDrill(null)\">Economía</span> › <b class='tcrumbc'>"+whoIcon(path,p.owner)+" "+whoLabel(path)+"</b></div>";
-    for(const c of ks)h+="<div class='trow'><span>"+c+"</span><b class='pos'>"+sgnE(cs[c])+" "+resImg("dinero")+"</b></div>";
+    for(const c of ks)h+="<div class='trow'><span>"+flowLabel(c)+"</span><b class='pos'>"+sgnE(cs[c])+" "+resImg("dinero")+"</b></div>";
     return h+"<div class='ttotal'><span>Total · "+whoLabel(path)+"</span><b class='pos'>"+sgnE(b.who[path])+" "+resImg("dinero")+"</b></div></div>";
   }
   h+="<div class='trow thead'><span>Producción</span><span>u/mes · 🪙 plaza</span></div>";
@@ -1580,7 +1585,7 @@ function provEcoWinHTML(p){ // ventana Economía: el mismo libro que la Tesorer�
   h+="<div class='tsec'>Quién cobra</div>";
   for(const w of WHO_ORDER){const v=b.who[w]||0;if(v<0.5)continue;
     h+="<div class='trow click' onclick=\"provEcoDrill('"+w+"')\"><span>"+whoIcon(w,p.owner)+" "+whoLabel(w)+" <span class='tarrow'>›</span></span><b>"+barE(pctE(v/(b.val||1)),50)+" <span class='pos'>"+sgnE(v)+"</span> "+resImg("dinero")+"</b></div>"}
-  if(b.m.lost>=0.5)h+="<div class='trow' data-tip='Lo que cuesta llevar la mercancía hasta el centro de comercio: se pierde'><span>🛤 Flete</span><b class='neg'>−"+nfE(b.m.lost)+" "+resImg("dinero")+"</b></div>";
+  if(b.m.lost>=0.5)h+="<div class='trow' data-tip='Lo que costó llevar la mercancía hasta el centro de comercio'><span>🛤 Flete</span><b class='neg'>−"+nfE(b.m.lost)+" "+resImg("dinero")+"</b></div>";
   h+="<div class='ttotal'><span>Pagado en la plaza</span><b>"+nfE(b.val)+" "+resImg("dinero")+"</b></div></div>";
   // talleres de la provincia: dueño, lo que sacan y si están cerrados
   const bs=Object.keys(p.buildings).filter(x=>(p.buildings[x]||0)>0&&(BLD2[x]||(BUILDINGS[x].fx&&BUILDINGS[x].fx.prodAdd)));

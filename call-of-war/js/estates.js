@@ -3,13 +3,13 @@
 // Movido tal cual desde sim.js (2026-09-26); lo nuevo es budgetManage (v2): cada dueño cuadra sus cuentas.
 import { NPLAY, BUILDINGS } from "./config.js";
 import { S } from "./state.js";
-import { BKEYS, lvlOf, bOwnerOf, buildMax, usedSlots, buildSlots, freeLabor, buildJobs, JOBS_PER_LEVEL, costFor, timeFor, canAfford, pay, recFlow, isOccupied, ESTATES_BUILD, bOff, buildBlock } from "./economy.js";
-import { ESTATE_BUILDS2, buildingProfit2, buildingOutput2, upkeepScale, siteOK2, crownStockOut } from "./economy2.js";
+import { BKEYS, sinkAdd, lvlOf, bOwnerOf, buildMax, usedSlots, buildSlots, freeLabor, buildJobs, JOBS_PER_LEVEL, costFor, timeFor, canAfford, pay, recFlow, isOccupied, ESTATES_BUILD, bOff, buildBlock } from "./economy.js";
+import { ESTATE_BUILDS2, buildingProfit2, buildingOutput2, upkeepScale, siteOK2, crownStockOut, isMarketDay } from "./economy2.js";
 // La IA de obras usa la rentabilidad y la producción de la economía (economy2.js, design/economia-v2.md)
 const profitOf=(p,b,l,o)=>buildingProfit2(p,b,l,o);
 const outputOf=(p,b,l)=>buildingOutput2(p,b,l);
 // el dinero que un estamento gasta en obras sale de la economía → sumidero contado (invariante del dinero)
-function sink2(v){if(v>0){const L=S.e2L||(S.e2L={mint:0,sink:0,rescue:0,discard:0});L.sink+=v}}
+function sink2(v,cat="Obras y reparaciones"){sinkAdd(cat,v)}
 
 /* ---- Construcción autónoma de los ESTAMENTOS (E2) ----
  * Cada estamento levanta SU tipo de edificio en las provincias donde tiene presencia, pagándolo de su
@@ -25,26 +25,54 @@ function estateCostDinero(cost){let t=0;for(const k in cost)t+=cost[k]*(BUILD_MA
 // (reparando) las que vuelven a ser rentables. Histéresis (deadband) para no oscilar. Solo fábricas de producción.
 const BLDG_LOSS=-120, BLDG_GAIN=100; // umbrales mensuales en ducados: tolera pérdidas pequeñas (no apagar toda una industria por poco); apaga solo lo claramente ruinoso; reactiva sobre +100/mes
 const ESTATE_FILLER=250; // puntuación de la infraestructura sin ingreso directo (gremio/lonja/almacén/puerto): relleno cuando no hay fábrica más rentable
-const SUPPLY_MARGIN=1.15; // la IA construye una fábrica SOLO si la capacidad (construida + EN OBRA) del bien aún no cubre la demanda del reino × este margen. Así calcula cuántas hacen falta (demanda/producción-por-fábrica) y no sobre-construye pese al lag de 4 meses de obra.
-function autoManageBuildings(p,owners){
-  const N=S.nations[p.owner]; if(!N)return;
-  for(const b of BKEYS){
-    if(!(p.buildings[b]>0))continue;
-    const o=bOwnerOf(p,b); if(owners.indexOf(o)<0)continue;         // solo edificios de estos dueños (el jugador gestiona su corona a mano)
-    const B=BUILDINGS[b],fx=B.fx; if(!(B.inputs||(fx&&fx.prodAdd)))continue; // solo FÁBRICAS de producción (la infra/multiplicadores no se auto-apaga)
-    const prof=profitOf(p,b), off=!!(p.bOff&&p.bOff[b]);
-    if(!off){
-      if(prof<BLDG_LOSS){(p.bOff||(p.bOff={}))[b]=true;if(!p.bCond)p.bCond={};if(p.bCond[b]==null)p.bCond[b]=1;} // pierde → apagar
-    } else if(prof>BLDG_GAIN){                                       // vuelve a ganar → reactivar (reparando la parte degradada)
-      const cond=(p.bCond&&p.bCond[b]!=null)?p.bCond[b]:1, frac=Math.max(0,1-cond);
-      if(o==="corona"){const c={},base=costFor(p,b);for(const k in base)c[k]=Math.round(base[k]*frac);
-        if(canAfford(p.owner,c)){pay(p.owner,c,"Reparaciones",BUILDINGS[b].label);delete p.bOff[b];p.bCond[b]=1;}}
-      else{const rep=estateCostDinero(costFor(p,b))*frac;
-        if((N.sWealth[o]||0)>=rep){if(rep>0){N.sWealth[o]-=rep;recFlow(p.owner,o,"Construcción",-rep);sink2(rep);}delete p.bOff[b];p.bCond[b]=1;}}
+const SUPPLY_MARGIN=1.15; // la IA construye una fábrica SOLO si la oferta prevista del bien (+ talleres cerrados y EN OBRA) aún no cubre la demanda del reino × este margen
+// ESCALONADO (design/precios-cadencia.md): todos los talleres de un reino ven el MISMO precio, así que con un umbral
+// común se apagaban todos a la vez, la oferta se hundía, el precio saltaba a ×3 y se encendían todos otra vez (la "ola
+// de telares": Lituania, 175 telares abiertos/cerrados cada ~2 meses). Ahora, cada día de mercado, cada reino cierra
+// como mucho este % de sus talleres de un tipo (primero los que más pierden) y reabre igual (primero los que más ganan).
+const MANAGE_SHARE=0.25;
+function reopen(p,b,o,N){                                            // reactivar, reparando la parte degradada
+  const cond=(p.bCond&&p.bCond[b]!=null)?p.bCond[b]:1, frac=Math.max(0,1-cond);
+  if(o==="corona"){const c={},base=costFor(p,b);for(const k in base)c[k]=Math.round(base[k]*frac);
+    if(canAfford(p.owner,c)){pay(p.owner,c,"Reparaciones",BUILDINGS[b].label);delete p.bOff[b];p.bCond[b]=1;}}   // (pay apunta el sumidero)
+  else{const rep=estateCostDinero(costFor(p,b))*frac;
+    if((N.sWealth[o]||0)>=rep){if(rep>0){N.sWealth[o]-=rep;recFlow(p.owner,o,"Construcción",-rep);sink2(rep);}delete p.bOff[b];p.bCond[b]=1;}}
+}
+function manageWorkshops(){
+  const groups=new Map();                                            // "nación|taller" → abiertos, cerrados y candidatos
+  for(const p of S.provs){
+    if(p.owner>=NPLAY||p.wasteland||isOccupied(p))continue;
+    const N=S.nations[p.owner]; if(!N||!N.sWealth)continue;
+    for(const b of BKEYS){
+      if(!(p.buildings[b]>0))continue;
+      const o=bOwnerOf(p,b); if(o==="corona"&&!N.ai)continue;       // el jugador gestiona su corona a mano
+      const B=BUILDINGS[b],fx=B.fx; if(!(B.inputs||(fx&&fx.prodAdd)))continue; // solo FÁBRICAS de producción (la infra/multiplicadores no se auto-apaga)
+      const k=p.owner+"|"+b; let G=groups.get(k); if(!G){G={N,open:0,closed:0,lose:[],win:[]};groups.set(k,G)}
+      const prof=profitOf(p,b);
+      if(!bOff(p,b)){G.open++;if(prof<BLDG_LOSS)G.lose.push({p,b,o,prof})}
+      else{G.closed++;if(prof>BLDG_GAIN)G.win.push({p,b,o,prof})}
     }
   }
+  for(const G of groups.values()){
+    G.lose.sort((x,y)=>x.prof-y.prof);
+    const nc=Math.min(G.lose.length,Math.max(1,Math.ceil(G.open*MANAGE_SHARE)));
+    for(let i=0;i<nc;i++){const{p,b}=G.lose[i];(p.bOff||(p.bOff={}))[b]=true;if(!p.bCond)p.bCond={};if(p.bCond[b]==null)p.bCond[b]=1}
+    G.win.sort((x,y)=>y.prof-x.prof);
+    const nr=Math.min(G.win.length,Math.max(1,Math.ceil(G.closed*MANAGE_SHARE)));
+    for(let i=0;i<nr;i++){const{p,b,o}=G.win[i];reopen(p,b,o,G.N)}
+  }
 }
-function pickEstateBuild(p,e,N,cap,dem){ // el edificio del repertorio del estamento MÁS RENTABLE que aún HAGA FALTA aquí
+// ¿Hace falta MÁS capacidad de un bien en un reino? La OFERTA PREVISTA cuenta todo lo que llega a la plaza (campo,
+// artesanos, importación: la previsión semanal de economy2) más los talleres CERRADOS y EN OBRA (que se pueden abrir o
+// están al llegar). Antes solo se miraba la producción del día: en la fase en que los talleres estaban cerrados parecía
+// que faltaba y se construían más (Lituania: 175 telares, 3× la demanda de paño).
+let _need=null;                                                      // por reino: {sup, dem} al mes, del último día de mercado
+function needMore(n,g){
+  const x=_need&&_need[n]&&_need[n][g];
+  if(!x){const mi=S.nations[n].mktInfo&&S.nations[n].mktInfo[g];return !mi||(mi.prod||0)<(mi.dem||0)*SUPPLY_MARGIN} // sin previsión aún
+  return x.sup<x.dem*SUPPLY_MARGIN;
+}
+function pickEstateBuild(p,e,N){ // el edificio del repertorio del estamento MÁS RENTABLE que aún HAGA FALTA aquí
   let best=null,bestScore=-Infinity;
   if(usedSlots(p)>=buildSlots(p))return null;              // sin hueco (se miraba por candidato; no cambia dentro)
   for(const b of ESTATE_BUILDS2[e]){
@@ -64,8 +92,7 @@ function pickEstateBuild(p,e,N,cap,dem){ // el edificio del repertorio del estam
     // PREVISIÓN DE DEMANDA: ¿la capacidad (construida + EN OBRA) del bien ya cubre la demanda del reino? entonces NO hace
     // falta otra fábrica (aunque el precio siga alto por el lag de obra). Así la IA calcula cuántas hacen falta y no se pasa.
     const outG=outputOf(p,b,1).g; // el bien que de verdad vende (cervecería → bebida)
-    if(outG&&(cap[outG]||0)>=(dem[outG]||0)*SUPPLY_MARGIN)continue;
-    if(outG){const mi=N.mktInfo&&N.mktInfo[outG];if(mi&&(mi.prod||0)>=(mi.dem||0)*SUPPLY_MARGIN)continue} // v2: la oferta TOTAL del bien (campo + artesanos + talleres) ya cubre la demanda
+    if(outG&&!needMore(p.owner,outG))continue;
     // PUNTUAR por RENTABILIDAD y elegir la mejor: fábricas/comercio por su beneficio mensual esperado (skip si no renta);
     // la infra sin ingreso directo (gremio/lonja/almacén/puerto), relleno de baja prioridad. Así, entre lo que hace falta,
     // la IA persigue lo más escaso/caro (p.ej. fustán) → completa las cadenas donde de verdad hacen falta.
@@ -100,8 +127,8 @@ function pickCrownBuild(p){
     if(treas<(costFor(p,b).dinero||0)*ESTATE_BUILD_KEEP)continue; // mismo colchón que un estamento
     let score;
     if(B.inputs||fx.prodAdd){
-      if(!crownStockOut(p,b,1)){const g=buildingOutput2(p,b,1).g,mi=g&&N.mktInfo&&N.mktInfo[g];   // lo que VENDE: ¿hace falta más?
-        if(mi&&(mi.prod||0)>=(mi.dem||0)*SUPPLY_MARGIN)continue}
+      if(!crownStockOut(p,b,1)){const g=buildingOutput2(p,b,1).g;   // lo que VENDE: ¿hace falta más?
+        if(g&&!needMore(n,g))continue}
       score=buildingProfit2(p,b,lvlOf(p,b)+1,"corona"); if(score<=0)continue;
     }else{
       const upM=(B.up&&B.up.dinero?B.up.dinero/12*730*upkeepScale(p,b):0);
@@ -113,29 +140,31 @@ function pickCrownBuild(p){
   return best;
 }
 function estateBuild(){
-  // por reino: CAPACIDAD de producción (construida + EN OBRA) de cada bien, y su DEMANDA → la IA calcula cuántas fábricas faltan
-  const cap=Array.from({length:NPLAY},()=>({})), dem=Array.from({length:NPLAY},()=>({}));
+  manageWorkshops();                                   // primero se cierra/reabre lo que pierde/gana (escalonado)
+  // por reino: oferta PREVISTA de cada bien (lo que llega a la plaza + talleres cerrados + en obra) y su demanda, al mes
+  const M=730/24, cl=Array.from({length:NPLAY},()=>({}));   // cl: capacidad de talleres CERRADOS y EN OBRA
   for(const p of S.provs){
     if(p.owner>=NPLAY||p.wasteland)continue; const n=p.owner;
-    for(const b of BKEYS){if(!(p.buildings[b]>0))continue;const o=outputOf(p,b);if(o.g)cap[n][o.g]=(cap[n][o.g]||0)+o.q;}       // capacidad construida
-    if(p.buildQueue)for(const q of p.buildQueue){const o=outputOf(p,q.b,1);if(o.g)cap[n][o.g]=(cap[n][o.g]||0)+o.q;}                // + capacidad EN OBRA (1 nivel)
+    for(const b of BKEYS){if(!(p.buildings[b]>0)||!bOff(p,b))continue;const o=outputOf(p,b);if(o.g)cl[n][o.g]=(cl[n][o.g]||0)+o.q;}
+    if(p.buildQueue)for(const q of p.buildQueue){const o=outputOf(p,q.b,1);if(o.g)cl[n][o.g]=(cl[n][o.g]||0)+o.q;}
   }
-  for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(N&&N.mktInfo)for(const g in N.mktInfo)dem[n][g]=N.mktInfo[g].dem||0;}
+  _need=Array.from({length:NPLAY},()=>null);
+  for(let n=0;n<NPLAY;n++){const N=S.nations[n];const fc=N&&N.e2&&N.e2.fc;if(!fc)continue;const o={};
+    for(const g in fc.d)o[g]={sup:(fc.s[g]||0)*M+(cl[n][g]||0),dem:(fc.d[g]||0)*M};_need[n]=o}
   for(const p of S.provs){
     if(p.owner>=NPLAY||p.wasteland||isOccupied(p))continue;
     const N=S.nations[p.owner];if(!N||!N.sWealth)continue;
-    autoManageBuildings(p, N.ai?["burgues","clero","nobleza","corona"]:["burgues","clero","nobleza"]); // corona solo si IA; el jugador la gestiona a mano
     if(p.buildQueue.length||usedSlots(p)>=buildSlots(p)||!p.pops)continue; // ya no CONSTRUIR más aquí (pero la auto-gestión de arriba sí corre)
     // el estamento con MÁS presencia (población) en la provincia intenta primero
     const order=ESTATES_BUILD.slice().sort((a,b)=>(p.pops[b]||0)-(p.pops[a]||0));
     for(const e of order){
       if(!(p.pops[e]>0))continue;                        // sin presencia, no construye aquí
-      const b=pickEstateBuild(p,e,N,cap[p.owner],dem[p.owner]);
+      const b=pickEstateBuild(p,e,N);
       if(!b)continue;
       const bcost=estateCostDinero(costFor(p,b));
       N.sWealth[e]-=bcost;recFlow(p.owner,e,"Construcción",-bcost);sink2(bcost);      // paga la obra de su riqueza
       p.buildQueue.push({b,hoursLeft:timeFor(p,b),owner:e});
-      const o=outputOf(p,b,1);if(o.g)cap[p.owner][o.g]=(cap[p.owner][o.g]||0)+o.q; // suma la capacidad recién encolada → las demás provincias ya la cuentan (no todas construyen lo mismo a la vez)
+      const o=outputOf(p,b,1),x=o.g&&_need[p.owner]&&_need[p.owner][o.g];if(x)x.sup+=o.q; // suma la capacidad recién encolada → las demás provincias ya la cuentan (no todas construyen lo mismo a la vez)
       break;                                             // una obra por provincia
     }
   }
@@ -147,7 +176,7 @@ function estateBuild(){
  * dinero, CIERRA el edificio que menos le rinde (primero las fábricas con pérdidas y los servicios que solo cuestan:
  * cuartel, templo, fortaleza; una fábrica que gana solo se cierra si ya no queda caja). Lo cerrado no paga
  * mantenimiento, se degrada y en ~4 años se demuele nivel a nivel (degradeBuildings). Si vuelve a ir HOLGADO,
- * reabre (reparando) el servicio cerrado; las fábricas las reabre autoManageBuildings cuando vuelven a ganar. */
+ * reabre (reparando) el servicio cerrado; las fábricas las reabre manageWorkshops (el día de mercado) cuando vuelven a ganar. */
 const BUDGET_MONTHS=3;    // reserva deseada: meses de mantenimiento en caja
 const REOPEN_MONTHS=9;    // holgura (meses de mantenimiento en caja) para que un estamento levante un servicio nuevo
 const REOPEN_SHARE=0.2;   // reabre un servicio cerrado si, pagándolo, aún le sobra este % de su ingreso
@@ -192,7 +221,7 @@ function budgetManage(){
       if(x&&margin-x.up>REOPEN_SHARE*inc&&purse>BUDGET_MONTHS*(e.up+x.up)){
         const cond=(x.p.bCond&&x.p.bCond[x.b]!=null)?x.p.bCond[x.b]:1, frac=Math.max(0,1-cond);
         if(e.o==="corona"){const c={},base=costFor(x.p,x.b);for(const k in base)c[k]=Math.round(base[k]*frac);
-          if(!canAfford(e.n,c))continue; pay(e.n,c,"Reparaciones",BUILDINGS[x.b].label); sink2(c.dinero||0);}
+          if(!canAfford(e.n,c))continue; pay(e.n,c,"Reparaciones",BUILDINGS[x.b].label);}   // (pay apunta el sumidero)
         else{const rep=estateCostDinero(costFor(x.p,x.b))*frac; if(N.sWealth[e.o]<rep)continue;
           if(rep>0){N.sWealth[e.o]-=rep;recFlow(e.n,e.o,"Construcción",-rep);sink2(rep)}}
         delete x.p.bOff[x.b]; x.p.bCond[x.b]=1;
@@ -202,5 +231,13 @@ function budgetManage(){
   }
 }
 
-export { estateBuild, pickCrownBuild, budgetManage, autoManageBuildings, pickEstateBuild, estateCostDinero, profitOf, outputOf,
+// Lo que los dueños hacen CADA DÍA: el presupuesto (cerrar lo que no pueden pagar) a diario; las obras y el
+// cierre/reapertura de talleres por rentabilidad, el DÍA DE MERCADO (semanal), con el precio ya fijado para la semana.
+// Lo llaman el juego (sim.js) y el arnés (tools/verify-v2.mjs): así se mide lo mismo que corre.
+function estatesDaily(){
+  if(isMarketDay())estateBuild();
+  budgetManage();
+}
+
+export { estatesDaily, estateBuild, pickCrownBuild, budgetManage, manageWorkshops, pickEstateBuild, estateCostDinero, profitOf, outputOf,
   BUILD_MAT_PRICE, BUDGET_MONTHS };
