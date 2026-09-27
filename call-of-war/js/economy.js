@@ -12,6 +12,13 @@ import { isEmbargoed, atWarPair } from "./diplomacy.js";
 // saquea una fracción. p.occupier===-1 (o indefinido) = la controla su dueño. ----
 function isOccupied(p){return p.occupier>=0&&p.occupier!==p.owner}
 
+// Claves de BUILDINGS precalculadas (el catálogo no cambia tras cargar config.js). Recorrer un array es ~3× más rápido
+// que for-in, y cada efecto (prodMul, mano, moral…) solo lo tienen unos pocos edificios: provProdMul recorría los 56
+// tipos por provincia y tick (~50 ms/día). Mismo orden que BUILDINGS → mismas sumas, bit a bit.
+const BKEYS=Object.keys(BUILDINGS);
+const FX_KEYS={};for(const b of BKEYS){const fx=BUILDINGS[b].fx||{};for(const k in fx)(FX_KEYS[k]||(FX_KEYS[k]=[])).push(b)}
+const fxKeys=k=>FX_KEYS[k]||[];
+
 /* ===================== POPs Fase 1: constantes ======================
  * La población es ahora el motor: paga impuestos, aporta la soldadesca (el cupo
  * movilizable) y crece. Ver [[basileus-pop-economy-vision]]. */
@@ -29,7 +36,7 @@ function stratFrac(p,k){return (p.pops&&p.pop>0)?Math.max(0,((p.pops[k]||0)/p.po
 function soldCap(p){
   if(!p||p.wasteland||p.owner>=NPLAY)return 0;
   let bonus=1;
-  for(const b in BUILDINGS){const fx=BUILDINGS[b].fx;if(fx.mano)bonus+=fx.mano*lvlOf(p,b)}
+  for(const b of fxKeys("mano"))bonus+=BUILDINGS[b].fx.mano*lvlOf(p,b);
   bonus+=NOBLE_LEVY*stratFrac(p,"nobleza"); // Fase D: la nobleza (clase militar) amplía la leva
   return (p.pop||0)*SOLD_FRAC*bonus;
 }
@@ -231,7 +238,7 @@ function canStaffIndustry(p,b){return !!p&&!p.wasteland&&specialistCap(p)>=jobsO
 let _bjGen=0;
 function buildJobs(p){
   if(p._bjGen===_bjGen)return p._bj;
-  let j=0;for(const b in BUILDINGS)j+=effLvl(p,b)*jobsOf(b);
+  let j=0;for(const b of BKEYS)j+=effLvl(p,b)*jobsOf(b);
   p._bj=j; p._bjGen=_bjGen; return j;
 }
 function freeLabor(p){return Math.max(0,specialistCap(p)-(p.mob||0))}    // libres tras descontar movilizados
@@ -244,7 +251,7 @@ const SLOT_BASE=5;          // huecos mínimos de cualquier provincia habitada
 const POP_PER_SLOT=8000;    // +1 hueco por cada tanto de población
 const SLOT_MAX=40;          // tope de huecos (gran metrópoli)
 function buildSlots(p){if(!p||p.wasteland||p.owner>=NPLAY)return 0;return Math.min(SLOT_MAX,SLOT_BASE+Math.floor((p.pop||0)/POP_PER_SLOT))}
-function usedSlots(p){let s=0;for(const b in BUILDINGS)s+=lvlOf(p,b);return s} // cada nivel ocupa un hueco
+function usedSlots(p){let s=0;const B=p.buildings;for(let i=0;i<BKEYS.length;i++)s+=B[BKEYS[i]]||0;return s} // cada nivel ocupa un hueco
 
 function nn(v){return (Math.round(v*100)/100).toString().replace(/\.?0+$/,"")||"0"} // 2 decimales, sin ceros de cola
 function canAfford(n,cost){
@@ -397,7 +404,7 @@ function timeFor(p,b){
   return Math.max(24,Math.round(h));
 }
 function buildSpeedBonus(p){
-  let s=0;for(const b in BUILDINGS){const fx=BUILDINGS[b].fx;if(fx.buildSpeed)s+=fx.buildSpeed*effLvl(p,b)}
+  let s=0;for(const b of fxKeys("buildSpeed"))s+=BUILDINGS[b].fx.buildSpeed*effLvl(p,b);
   return Math.min(0.6,s);
 }
 // Sin límite por edificio (los HUECOS de construcción por población limitan el total): las obras
@@ -416,11 +423,11 @@ function buildBlock(p,b){
   return null;
 }
 function provProdMul(p){
-  let m=1;for(const b in BUILDINGS){const fx=BUILDINGS[b].fx;if(fx.prodMul)m+=fx.prodMul*effLvl(p,b)}
+  let m=1;for(const b of fxKeys("prodMul"))m+=BUILDINGS[b].fx.prodMul*effLvl(p,b);
   return m;
 }
 function provDefMul(p){
-  let m=1;for(const b in BUILDINGS){const fx=BUILDINGS[b].fx;if(fx.def)m+=fx.def*effLvl(p,b)}
+  let m=1;for(const b of fxKeys("def"))m+=BUILDINGS[b].fx.def*effLvl(p,b);
   return m;
 }
 /* ---- Moral: factor de productividad ganado con edificios (Fase 3) ----
@@ -434,7 +441,7 @@ function provDefMul(p){
 const MORALE_MIN=15;        // suelo de moral (una provincia hostil no cae por debajo)
 const MORALE_HOSTILE=2.0;   // moral/mes que drena cada provincia vecina enemiga en guerra
 function moraleGrowth(p){   // crecimiento de moral/mes por los edificios de moral de ESTA provincia
-  let g=0;for(const b in BUILDINGS){const fx=BUILDINGS[b].fx;if(fx.moral)g+=fx.moral*lvlOf(p,b)}
+  let g=0;for(const b of fxKeys("moral"))g+=BUILDINGS[b].fx.moral*lvlOf(p,b);
   g+=CLERO_MORALE*stratFrac(p,"clero"); // Fase D: el clero legitima → moral extra donde abunda (catedrales)
   return g;
 }
@@ -517,5 +524,5 @@ function recruitTime(p,u){
 }
 
 export {
-  canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, isOccupied, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, recruitable, moraleGrowth, MORALE_MIN, MORALE_HOSTILE, SOLD_FRAC, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, specialistCap, buildJobs, freeLabor, staffing, jobsOf, buildSlots, usedSlots, structPPF, JOBS_PER_LEVEL, ensureMarket, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, manorOf, canStaffIndustry, bOwnerOf, ESTATES_BUILD, TRADE_BULK, TERRAIN_CAT, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, monthKeyOf, resetTsyLedger, tsyTick, tsyAvail, tsyMonthBal, recFlow, recCrown, bOff, bCond, effLvl, degradeBuildings, YR_TICKS, TRADE_KM, TRADE_SEA, TRADE_WAR, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN, PROMO_RATE, targetBurgFrac, recBuy
+  BKEYS, fxKeys, canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, isOccupied, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, recruitable, moraleGrowth, MORALE_MIN, MORALE_HOSTILE, SOLD_FRAC, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, specialistCap, buildJobs, freeLabor, staffing, jobsOf, buildSlots, usedSlots, structPPF, JOBS_PER_LEVEL, ensureMarket, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, manorOf, canStaffIndustry, bOwnerOf, ESTATES_BUILD, TRADE_BULK, TERRAIN_CAT, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, monthKeyOf, resetTsyLedger, tsyTick, tsyAvail, tsyMonthBal, recFlow, recCrown, bOff, bCond, effLvl, degradeBuildings, YR_TICKS, TRADE_KM, TRADE_SEA, TRADE_WAR, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN, PROMO_RATE, targetBurgFrac, recBuy
 };

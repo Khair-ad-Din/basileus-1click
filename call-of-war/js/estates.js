@@ -3,7 +3,7 @@
 // Movido tal cual desde sim.js (2026-09-26); lo nuevo es budgetManage (v2): cada dueño cuadra sus cuentas.
 import { NPLAY, BUILDINGS } from "./config.js";
 import { S } from "./state.js";
-import { lvlOf, bOwnerOf, buildMax, usedSlots, buildSlots, freeLabor, buildJobs, JOBS_PER_LEVEL, costFor, timeFor, canAfford, pay, recFlow, isOccupied, ESTATES_BUILD, bOff, buildBlock } from "./economy.js";
+import { BKEYS, lvlOf, bOwnerOf, buildMax, usedSlots, buildSlots, freeLabor, buildJobs, JOBS_PER_LEVEL, costFor, timeFor, canAfford, pay, recFlow, isOccupied, ESTATES_BUILD, bOff, buildBlock } from "./economy.js";
 import { ESTATE_BUILDS2, buildingProfit2, buildingOutput2, upkeepScale, siteOK2, crownStockOut } from "./economy2.js";
 // La IA de obras usa la rentabilidad y la producción de la economía (economy2.js, design/economia-v2.md)
 const profitOf=(p,b,l,o)=>buildingProfit2(p,b,l,o);
@@ -28,7 +28,7 @@ const ESTATE_FILLER=250; // puntuación de la infraestructura sin ingreso direct
 const SUPPLY_MARGIN=1.15; // la IA construye una fábrica SOLO si la capacidad (construida + EN OBRA) del bien aún no cubre la demanda del reino × este margen. Así calcula cuántas hacen falta (demanda/producción-por-fábrica) y no sobre-construye pese al lag de 4 meses de obra.
 function autoManageBuildings(p,owners){
   const N=S.nations[p.owner]; if(!N)return;
-  for(const b in p.buildings){
+  for(const b of BKEYS){
     if(!(p.buildings[b]>0))continue;
     const o=bOwnerOf(p,b); if(owners.indexOf(o)<0)continue;         // solo edificios de estos dueños (el jugador gestiona su corona a mano)
     const B=BUILDINGS[b],fx=B.fx; if(!(B.inputs||(fx&&fx.prodAdd)))continue; // solo FÁBRICAS de producción (la infra/multiplicadores no se auto-apaga)
@@ -46,6 +46,7 @@ function autoManageBuildings(p,owners){
 }
 function pickEstateBuild(p,e,N,cap,dem){ // el edificio del repertorio del estamento MÁS RENTABLE que aún HAGA FALTA aquí
   let best=null,bestScore=-Infinity;
+  if(usedSlots(p)>=buildSlots(p))return null;              // sin hueco (se miraba por candidato; no cambia dentro)
   for(const b of ESTATE_BUILDS2[e]){
     if(lvlOf(p,b)>0&&bOwnerOf(p,b)!==e)continue;          // ya existe y es de otro (o de la corona) → no lo toco
     if(lvlOf(p,b)>=buildMax(p,b))continue;
@@ -54,7 +55,6 @@ function pickEstateBuild(p,e,N,cap,dem){ // el edificio del repertorio del estam
     if(B.urban&&!p.urban)continue;
     if(B.resReq&&p.resType!==B.resReq)continue;
     if(!siteOK2(p,b))continue;                            // el taller va donde está su materia
-    if(usedSlots(p)>=buildSlots(p))continue;             // sin hueco
     if(B.req){let ok=true;for(const r in B.req)if(lvlOf(p,r)<B.req[r]){ok=false;break}if(!ok)continue}
     const fx=B.fx,economic=fx.prodAdd||fx.goldAdd||fx.prodMul; // productivos: solo donde se pueda dotar
     if(economic&&freeLabor(p)<buildJobs(p)+JOBS_PER_LEVEL)continue;
@@ -117,7 +117,7 @@ function estateBuild(){
   const cap=Array.from({length:NPLAY},()=>({})), dem=Array.from({length:NPLAY},()=>({}));
   for(const p of S.provs){
     if(p.owner>=NPLAY||p.wasteland)continue; const n=p.owner;
-    for(const b in p.buildings){if(!(p.buildings[b]>0))continue;const o=outputOf(p,b);if(o.g)cap[n][o.g]=(cap[n][o.g]||0)+o.q;}       // capacidad construida
+    for(const b of BKEYS){if(!(p.buildings[b]>0))continue;const o=outputOf(p,b);if(o.g)cap[n][o.g]=(cap[n][o.g]||0)+o.q;}       // capacidad construida
     if(p.buildQueue)for(const q of p.buildQueue){const o=outputOf(p,q.b,1);if(o.g)cap[n][o.g]=(cap[n][o.g]||0)+o.q;}                // + capacidad EN OBRA (1 nivel)
   }
   for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(N&&N.mktInfo)for(const g in N.mktInfo)dem[n][g]=N.mktInfo[g].dem||0;}
@@ -156,7 +156,7 @@ const TREND_K=0.1;        // ritmo de la media de la variación diaria de la caj
 let _upC=null,_upH=-1;
 function ownerUpkeepMonth(n,o){ // (una pasada por día, cacheada)
   if(_upH!==S.hour||!_upC){_upH=S.hour;_upC=new Map();
-    for(const p of S.provs){if(p.owner>=NPLAY)continue;for(const b in p.buildings)if(p.buildings[b]>0&&!bOff(p,b)){const k=p.owner+"|"+bOwnerOf(p,b);_upC.set(k,(_upC.get(k)||0)+upkeepMonth(p,b))}}}
+    for(const p of S.provs){if(p.owner>=NPLAY)continue;for(const b of BKEYS)if(p.buildings[b]>0&&!bOff(p,b)){const k=p.owner+"|"+bOwnerOf(p,b);_upC.set(k,(_upC.get(k)||0)+upkeepMonth(p,b))}}}
   return _upC.get(n+"|"+o)||0;
 }
 function upkeepMonth(p,b){const u=BUILDINGS[b].up;return u&&u.dinero?u.dinero/12*(p.buildings[b]||0)*730*upkeepScale(p,b):0}
@@ -166,7 +166,7 @@ function budgetManage(){
   const inv=new Map();                                   // "nación|dueño" → {mantenimiento abierto/mes, abiertos, cerrados}
   for(const p of S.provs){
     if(p.owner>=NPLAY||p.wasteland)continue; const N=S.nations[p.owner]; if(!N||!N.alive||!N.sWealth)continue;
-    for(const b in p.buildings){
+    for(const b of BKEYS){
       if(!(p.buildings[b]>0))continue; const o=bOwnerOf(p,b);
       if(o==="corona"&&!N.ai)continue;                   // la corona del jugador la gestiona él
       const k=p.owner+"|"+o; let e=inv.get(k); if(!e){e={n:p.owner,o,up:0,open:[],closed:[]};inv.set(k,e)}

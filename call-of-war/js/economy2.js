@@ -14,7 +14,7 @@ import { NPLAY, BUILDINGS, UNITS, STRATA, TERRAINS } from "./config.js";
 import { S } from "./state.js";
 import { kmBetween, pxToLonLat, ensureMarketTopology } from "./mapgen.js";
 import { isEmbargoed, atWarPair } from "./diplomacy.js";
-import { isOccupied, effLvl, lvlOf, bOwnerOf, manorOf, taxRateOf, alcabalaOf, almojOf, harvestMul, terrMul, DIEZMO, terrCatMul, staffing, storeCap, armyFood, soldCap, provProdMul, ensureMarket, recFlow, recBuy, recCrown, YR_TICKS, TRADE_KM, TRADE_SEA, TRADE_WAR, TRADE_BULK, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN, PROMO_RATE, targetBurgFrac, monthKeyOf } from "./economy.js";
+import { BKEYS, isOccupied, effLvl, lvlOf, bOwnerOf, manorOf, taxRateOf, alcabalaOf, almojOf, harvestMul, terrMul, DIEZMO, terrCatMul, staffing, storeCap, armyFood, soldCap, provProdMul, ensureMarket, recFlow, recBuy, recCrown, YR_TICKS, TRADE_KM, TRADE_SEA, TRADE_WAR, TRADE_BULK, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN, PROMO_RATE, targetBurgFrac, monthKeyOf } from "./economy.js";
 
 // ============================== CONSTANTES (todo lo tunable está aquí) ==============================
 const PRICE_SCALE=8;     // palanca GLOBAL de precios: iguala el dinero del comercio a la escala de costes de la v1
@@ -401,7 +401,7 @@ function economyTick2(dt=24,doArb=true){
         if(ins)for(const k in ins)fn[k]=(fn[k]||0)+q*ins[k]}}
     // EDIFICIOS
     const st=staffing(p), mul=1+(provProdMul(p)-1)*st, terr=(TERRAINS[p.terrain]||{prod:1}).prod;
-    for(const b in p.buildings){
+    for(const b of BKEYS){
       const lvl=effLvl(p,b); if(!lvl)continue;
       const B=BUILDINGS[b], fx=B.fx||{}, o=bOwnerOf(p,b);
       // mantenimiento: dinero → sumidero; bienes → la corona los descuenta de su almacén, un estamento los paga

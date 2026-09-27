@@ -1,7 +1,7 @@
 // sim.js
 import { BUILDINGS, GARR_CITADEL, GARR_FORT, GARR_MIN, GOLD_PER_WS, LEVY_RAISE_HOURS, NATIONS, NEUTRAL, NPLAY, RES_BUILDING, RES_KEYS, SIEGE_BASE_H, START_STOCK, TERRAINS, UNITS, WAR_LOCK_HOURS, WS_BATTLE, WS_DUCHY_BASE, WS_DUCHY_PER, isSea, EMBARK_HOURS } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyDef, armyHp, armySpd, bOwnerOf, buildBlock, buildJobs, buildMax, buildSlots, canAfford, canStaffIndustry, costFor, ESTATES_BUILD, foodFill, storeCap, SUBS_BASICS, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor, usedSlots, tsyTick, recFlow, recCrown, specialistCap, jobsOf, degradeBuildings } from "./economy.js";
+import { fxKeys, armyAtk, armyCount, armyDef, armyHp, armySpd, bOwnerOf, buildBlock, buildJobs, buildMax, buildSlots, canAfford, canStaffIndustry, costFor, ESTATES_BUILD, foodFill, storeCap, SUBS_BASICS, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor, usedSlots, tsyTick, recFlow, recCrown, specialistCap, jobsOf, degradeBuildings } from "./economy.js";
 import { relTick, getRel, THRESH, conquestFanout, insult, fabricateClaim, hasClaim, duchyOwner, sameLeague, hasPact, nationNeighbors, rivalsOf, isRival, sharedRivals, MAX_RIVALS, canPact, formPact, leagueOf, canApplyLeague, applyToLeague, createLeague, leaveLeague, resolveApplication, MAX_LEAGUE } from "./diplomacy.js";
 import { aiOpenWar } from "./council.js";
 import { buildDuchies, hasRoad, roadLvl, isDuchyCap, kmBetween, roadKey } from "./mapgen.js";
@@ -614,7 +614,7 @@ function hourTick(){
     // Así una provincia conquistada (moral baja) hay que "ganársela" construyendo.
     const realmG=new Float64Array(NPLAY);
     for(const p of S.provs){const n=p.owner;if(n>=NPLAY||p.wasteland)continue;
-      for(const b in BUILDINGS){const fx=BUILDINGS[b].fx;if(fx.realmMoral)realmG[n]+=fx.realmMoral*(p.buildings[b]||0)}}
+      for(const b of fxKeys("realmMoral"))realmG[n]+=BUILDINGS[b].fx.realmMoral*(p.buildings[b]||0);}
     for(const p of S.provs){
       if(p.wasteland||p.owner>=NPLAY)continue;
       let hostile=0;
