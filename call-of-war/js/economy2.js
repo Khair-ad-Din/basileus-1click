@@ -7,17 +7,14 @@
 // en dinero (edificios y ejército) y el flete del comercio entre reinos. El arnés (tools/verify-v2.mjs) comprueba:
 //      Σ(tesoros + riqueza de estamentos) + Σ plazas + sumideros − grifos = constante.
 //
-// Se activa con S.econV2 (ver sim.js). La v1 (economy.js) queda intacta hasta que v2 se juegue mejor.
+// Es la ÚNICA economía del juego (la v1 se borró el 2026-09-27); economy.js conserva lo compartido (despensa, tasas, libros…).
 // Unidades: 1 unidad = lo que come UNA persona en UN año de grano. Rates "por persona y año"; el tick multiplica
 // por f = dt/YR_TICKS. Precios de referencia en ducados/unidad (grano = 1 × PRICE_SCALE).
 import { NPLAY, BUILDINGS, UNITS, STRATA, TERRAINS } from "./config.js";
 import { S } from "./state.js";
 import { kmBetween, pxToLonLat, ensureMarketTopology } from "./mapgen.js";
 import { isEmbargoed, atWarPair } from "./diplomacy.js";
-import { isOccupied, effLvl, lvlOf, bOwnerOf, manorOf, taxRateOf, alcabalaOf, almojOf, repartoRates, harvestMul, terrMul, DIEZMO,
-  terrCatMul, staffing, storeCap, armyFood, soldCap, provProdMul, ensureMarket, recFlow, recBuy, recCrown, YR_TICKS,
-  TRADE_KM, TRADE_SEA, TRADE_WAR, TRADE_BULK, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE,
-  SOLD_REGEN, PROMO_RATE, targetBurgFrac, monthKeyOf } from "./economy.js";
+import { isOccupied, effLvl, lvlOf, bOwnerOf, manorOf, taxRateOf, alcabalaOf, almojOf, harvestMul, terrMul, DIEZMO, terrCatMul, staffing, storeCap, armyFood, soldCap, provProdMul, ensureMarket, recFlow, recBuy, recCrown, YR_TICKS, TRADE_KM, TRADE_SEA, TRADE_WAR, TRADE_BULK, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN, PROMO_RATE, targetBurgFrac, monthKeyOf } from "./economy.js";
 
 // ============================== CONSTANTES (todo lo tunable está aquí) ==============================
 const PRICE_SCALE=8;     // palanca GLOBAL de precios: iguala el dinero del comercio a la escala de costes de la v1
@@ -76,6 +73,7 @@ const FOLD2={vino:"vino",uva:"vino",sedacruda:"seda",sal:"sal",petroleo:"petrole
 const BLD_VALUE=1500;    // (6000 rendía ~4× un taller de la v1 y se amortizaba en semanas: se construían por todas partes)
 const BLD2={
   aserradero:{out:"materiales",raw:"bosque"}, cantera:{out:"piedra",raw:"extractivo"}, mina:{out:"metal",raw:"extractivo"},
+  granja:{out:"comida",raw:"cereal"},   // explotación directa del señor (reserva, granja cisterciense): su grano es de su DUEÑO
   salina:{out:"sal"}, vinedo:{out:"vino"}, majuelo:{out:"vino"}, cerveceria:{out:"vino",in:{comida:0.5}},
   telar:{out:"pano",in:{lana:1},v:1.5}, telarLino:{out:"lienzo"}, linar:{out:"lienzo"}, fustaneria:{out:"lienzo"},
   algodonal:{out:"lienzo"}, sederia:{out:"seda",v:4}, morera:{out:"seda"}, especiar:{out:"raros",v:4}, canaveral:{out:"raros"},
@@ -170,6 +168,7 @@ function specialty2(p){const s=[],add=g=>{if(s.indexOf(g)<0)s.push(g)};
   return s}
 // Lo que la CORONA produce en sus propios edificios para sus obras y su ejército NO va a la plaza: va a su almacén.
 const CROWN_STOCK=new Set(["materiales","piedra","metal","comida","petroleo"]);
+const CROWN_STOCK_WANT=3000;   // unidades en el almacén de la corona por debajo de las cuales le HACE FALTA producir ese bien
 // DUEÑO de los talleres sembrados al arrancar (el del resType de cada provincia). En la v1 eran todos de la corona
 // porque su producción iba a su almacén; en la v2 se VENDE, y una corona dueña de toda la industria sería 5× más rica
 // que en la v1 y dejaría sin oficio a burgueses y nobles. Cada uno, a su dueño histórico. La corona: regalías (minas).
@@ -294,10 +293,25 @@ function bldYear(p,b,lvl){
   return {g:D.out, q:lvl*BLD_VALUE*(D.v||1)/REF2[D.out]*mor*st*terr, in:D.in||null};
 }
 // Beneficio MENSUAL de un edificio (al precio actual): venta neta de transporte y jornal − insumos − mantenimiento.
-function buildingProfit2(p,b,lvlArg){
+// Lo que un taller de la CORONA manda a su almacén (unidades/mes; misma fórmula que la pasada A), o null si vende.
+function crownStockOut(p,b,lvl){
+  const fx=BUILDINGS[b].fx||{}; if(!fx.prodAdd)return null;
+  const ks=Object.keys(fx.prodAdd).filter(k=>CROWN_STOCK.has(k)); if(!ks.length)return null;
+  const mor=(p.morale||0)/100, st=staffing(p), terr=(TERRAINS[p.terrain]||{prod:1}).prod, mul=1+(provProdMul(p)-1)*st, o={};
+  for(const k of ks)o[k]=fx.prodAdd[k]*lvl*terr*mor*st*mul*(YR_TICKS/12);
+  return o;
+}
+// Beneficio MENSUAL de un edificio PARA SU DUEÑO. owner: quién lo tendría (por defecto, el dueño actual si ya existe).
+// Si es de la corona y su producto va al ALMACÉN, no se vende: vale su precio en la plaza SOLO mientras al almacén le
+// falte ese bien (por debajo de CROWN_STOCK_WANT); si el almacén va sobrado, el taller solo cuesta su mantenimiento.
+function buildingProfit2(p,b,lvlArg,owner){
   const lvl=lvlArg!=null?lvlArg:(p.buildings[b]||0); if(!lvl)return 0;
   const N=S.nations[p.owner]; const pr=g=>(N&&N.mktPrice&&N.mktPrice[g]!=null)?N.mktPrice[g]:ref(g);
-  const B=BUILDINGS[b], y=bldYear(p,b,lvl); let v=0;
+  const B=BUILDINGS[b], o=owner||(lvlOf(p,b)>0?bOwnerOf(p,b):null);
+  const upM=(B.up&&B.up.dinero)?B.up.dinero/12*lvl*(YR_TICKS/12)*upkeepScale(p,b):0;
+  if(o==="corona"){const so=crownStockOut(p,b,lvl);
+    if(so){let v=0;for(const k in so)if(N&&(N.res[k]||0)<CROWN_STOCK_WANT)v+=so[k]*pr(k);return v-upM}}
+  const y=bldYear(p,b,lvl); let v=0;
   if(y){v+=y.q*pr(y.g)*(1-MARGIN-alcabalaOf(p.owner))*(1-transport(p,y.g))*(1-JORNAL);
     if(y.in)for(const k in y.in)v-=y.q*y.in[k]*pr(k);}
   if(B.fx&&B.fx.prodAdd&&B.fx.prodAdd.dinero)v+=B.fx.prodAdd.dinero*lvl*YR_TICKS;
@@ -348,7 +362,7 @@ function economyTick2(dt=24,doArb=true){
     // GRANO: el campesino come de su despensa; lo que desborda va a la plaza; si se vacía, pide comprar
     if(!p.store)p.store={};
     const cap=storeCap(p,"comida"); if(p.store.comida==null)p.store.comida=cap*0.6;
-    const gprod=c*GRAIN_YIELD*terrMul(p,"comida")*(1+0.4*lvlOf(p,"granja"))*harvestMul(p)*f;
+    const gprod=c*GRAIN_YIELD*terrMul(p,"comida")*harvestMul(p)*f;   // (la Granja ya no lo multiplica: es la explotación de su dueño, BLD2)
     const sh=harvestShares(p), kept=1-sh.tithe-sh.rent;   // DIEZMO y RENTA en especie sobre TODA la cosecha
     if(gprod>0){deliv[n].push({p,g:"comida",q:gprod*sh.tithe,kind:"tithe"},{p,g:"comida",q:gprod*sh.rent,kind:"rent",owner:sh.lord})} // la décima del grano, al granero del clero
     p.store.comida+=gprod*kept-c*f; N.e2.st.prodV+=gprod*REF2.comida; pmProd(p,"comida",gprod);
@@ -447,7 +461,7 @@ function economyTick2(dt=24,doArb=true){
         pmPay(p,m==="abadengo"?"clero":m==="solariego"?"nobleza":"corona","Portazgo",toll);
         if(m==="abadengo")pay(n,"clero",toll,"Portazgo");else if(m==="solariego")pay(n,"nobleza",toll,"Portazgo");
         else{pay(crownPayee(p),"corona",toll,"Portazgo",p.name);const C=S.nations[crownPayee(p)];if(C)C.tollRate+=toll/dt}}
-      if(d.kind==="camp"){const rr=repartoRates(p,taxRateOf(n));
+      if(d.kind==="camp"){
         N.e2.st.soldV+=d.q*REF2[d.g]; N.e2.st.campNet+=net*(1-taxRateOf(n)); N.e2.st.grossV+=d.q*price[d.g];
         // diezmo y renta ya se cobraron EN ESPECIE: sobre lo que vende de SU parte, el campesino solo paga el pecho
         const tax=taxRateOf(n); pay(crownPayee(p),"corona",net*tax,"Pecho",p.name); pmPay(p,"corona","Pecho",net*tax); pmPay(p,"campesino","Ventas en la plaza",net*(1-tax)); pay(n,"campesino",net*(1-tax),"Ventas en la plaza")}
@@ -588,4 +602,4 @@ function moneyStock(){let m=0,pl=0;for(let n=0;n<NPLAY;n++){const N=S.nations[n]
   if(N.sWealth)for(const k in N.sWealth)m+=N.sWealth[k];if(N.e2)pl+=N.e2.plaza}return{m,pl}}
 
 export { economyTick2, siteOK2, seedEstates2, upkeepScale, seedOwner2, seedWealth2, GOODS2, LABEL2, REF2, NEED2, WANT2, TIERS, BLD2, ESTATE_BUILDS2, buildingProfit2, buildingOutput2,
-  transport, tradeCost2, moneyStock, PRICE_SCALE, JORNAL, MARGIN, CROWN_STOCK, specialty2 };
+  transport, tradeCost2, moneyStock, PRICE_SCALE, JORNAL, MARGIN, CROWN_STOCK, CROWN_STOCK_WANT, crownStockOut, specialty2 };

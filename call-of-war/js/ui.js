@@ -1,21 +1,14 @@
 // ui.js
 import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, RES_DESC, RES_ICON, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, WAR_LOCK_HOURS, terrainFx, STRATA, STRATA_INFO, RES_ART, RES_CAT } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildingYield, buildJobs, buildMax, buildSlots, canAfford, costFor, employedIn, foodBalance, foodCap, foodCons, foodFill, harvestMul, subsProd, subsCons, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationEconomy, nationLedger, nationProvCount, nationStrength, provBreakdown, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, MKT_GOODS, MKT_TRADE, MKT_PRICE, BASICS, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, resetTsyLedger, tsyAvail, tsyMonthBal, BONUS_BIEN, PROSP_CHANNELS, prospLevel, PROSP_LEVEL_PTS, PROSP_MAX_PTS, CHANNEL_GOODS, NAT_BONUS_PER_LEVEL, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, buildingProfit, sourceableSet, inputsSourceable, marketAccess, provFlete, inputCoverOf, isRawSpecialty, RESTYPE_RATE, buildingOutput, provProdMul, YR_TICKS, manorOf, MANOR_RENT, bOwnerOf } from "./economy.js";
+import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildJobs, buildMax, buildSlots, canAfford, costFor, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationProvCount, nationStrength, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, resetTsyLedger, tsyAvail, tsyMonthBal, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, provProdMul, YR_TICKS, manorOf, MANOR_RENT, bOwnerOf } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
 import { GOODS2, LABEL2, REF2, NEED2, WANT2, BLD2, PRICE_SCALE, CROWN_STOCK, specialty2, siteOK2, transport, buildingProfit2, buildingOutput2, upkeepScale } from "./economy2.js";
 import { canvas, clampPan } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
 import { armiesIn, atWar, duchyValue, fortGarrison, occupiedDuchiesBy, tryBuild, tryRecruit, tryRoad, warscore, coalitionOf, coalScore, coalCededDuchies } from "./sim.js";
-import { getRel, relTier, THRESH, canDeclareWar, canInsult, isEmbargoed, hasClaim, relBreakdown, hasPact, canPact,
-  MAX_LEAGUE, leagueOf, leagueById, sameLeague, canApplyLeague, MAX_RIVALS, rivalsOf, isRival, canRival,
-  NAP_BONUS, ALLY_BONUS } from "./diplomacy.js";
+import { getRel, relTier, THRESH, canDeclareWar, canInsult, isEmbargoed, hasClaim, relBreakdown, hasPact, canPact, MAX_LEAGUE, leagueOf, leagueById, sameLeague, canApplyLeague, MAX_RIVALS, rivalsOf, isRival, canRival, NAP_BONUS, ALLY_BONUS } from "./diplomacy.js";
 
-// Metadata de las CATEGORÍAS de bienes (orden, icono, etiqueta), reutilizada por el Mercado, la Tesorería y
-// el panel del reino para agrupar los bienes por categoría. 'moneda' (Ducados) va aparte (su propia pestaña).
-const RESCAT_META=[["cereal","🌾","Cereal"],["cultivo","🍇","Cultivo"],["ganado","🐑","Ganadería"],
-  ["bosque","🪵","Bosque"],["extractivo","⛏","Minería"],["mar","🐟","Mar"],
-  ["manufactura","🏭","Manufacturas"],["comercio","🌶","Comercio lejano"]];
 
 function log(msg){
   const el=document.getElementById("log");
@@ -27,108 +20,6 @@ function log(msg){
 }
 function fmt(v){return v>=10000?(v/1000).toFixed(1)+"k":Math.floor(v)}
 function fmtPop(n){return Math.round(n||0).toLocaleString("es-ES")}
-// duración de juego → texto que PREFIERE meses (hasta 2 años; luego años), para no chocar con el
-// resto de la UI que razona en meses. ticks de juego (1 tick = 1 hora, 730 ≈ 1 mes, 8760 = 1 año).
-function foodMonths(ticks){
-  const m=ticks/730;
-  if(m<24)return Math.round(m)+(Math.round(m)===1?" mes":" meses");
-  return (m/12).toFixed(1).replace(".0","")+" años";
-}
-function foodLine(p){ // despensa de comida: llenado, balance como % del consumo, cuánto AGUANTA la reserva; cosecha en fila propia
-  if(p.wasteland)return "";
-  const fill=foodFill(p),consT=foodCons(p),balT=foodBalance(p);
-  const balPct=consT>0?Math.round(balT/consT*100):0;   // balance como % del consumo (sin unidad de tiempo)
-  const cap=foodCap(p),store=fill*cap;
-  const hv=Math.round((harvestMul(p)-1)*100);
-  const hvRow=hv>=5?"<div class='tl'><span class='pos'>🌾 Buena cosecha +"+hv+"%</span></div>"
-    :hv<=-5?"<div class='tl'><span class='neg'>🌾 Mala cosecha "+hv+"%</span></div>"
-    :"<div class='tl' style='color:#9aa3ad'>🌾 Cosecha normal</div>";
-  if(p.famine)return "<div class='tl'><b class='neg'>"+uiIcon('despensa')+" ⚠ HAMBRUNA</b> · despensa de comida vacía</div>"+hvRow;
-  let extra;                                            // cuánto aguanta / cuánto tarda en llenarse (duración, no tasa)
-  if(Math.abs(balPct)<1)extra=" · estable";
-  else if(balT<0)extra=" · aguanta ~"+foodMonths(store/-balT);
-  else if(fill<0.99)extra=" · se llena en ~"+foodMonths((cap-store)/balT);
-  else extra=" · llena";
-  const pct="<span class='"+(balPct<0?"neg":"pos")+"'>"+(balPct>=0?"+":"")+balPct+"%</span>";
-  return "<div class='tl'>"+uiIcon('despensa')+" Despensa "+Math.round(fill*100)+"% · "+pct+extra+"</div>"+hvRow;
-}
-// Sección "Reservas" (categoría propia, como Balance): TODO el grano local en la MISMA unidad que el
-// consumo de las tropas (grano/mes), con desglose producción campesina / consumo población / consumo
-// tropas, el neto, el crecimiento anual, la despensa y cuánto aguanta o tarda en llenarse.
-// Ventana dedicada de PROSPERIDAD (pestaña propia, como Construir/Caminos/Ejércitos). Muestra TODOS los canales con su
-// barra de XP (0..3), tendencia (▲/▼/=), y por canal los BIENES que lo alimentan con ✓ (excedente) o ✗ (falta), más la
-// satisfacción actual vs el umbral del siguiente nivel → el jugador ve qué excedentes necesita para activar cada modificador.
-const PROSP_META=[
-  ["natalidad","🍞","Natalidad","+ crecimiento de población",true],
-  ["campoProd","🌾","Productividad del campo","+ producción agrícola",false],
-  ["indProd","🏭","Productividad industrial","+ producción de fábricas",false],
-  ["moral","⛪","Moral y prestigio","+ moral (contento, legitimidad)",false],
-  ["militar","⚔","Poder militar","+ ejército / leva",false],
-];
-function prosperityWinHTML(p){
-  const N=S.nations[S.player], pr=p.prosp||{}, minfo=(N&&N.mktInfo)||{};
-  const ROMAN=["","I","II","III"];
-  let h="<div class='winh'>"+uiIcon('poblacion')+" Prosperidad"+iInfo("Cada bien que la provincia consigue en EXCEDENTE (✓, precio ≤ referencia) suma +1 punto al mes a SU barra; si falta (✗), −1. Niveles: I = 12 pts (1 año seguido) · II = 36 (3 años) · III = 60 (5 años). Cada nivel logrado de cada bien da un bonus pequeño que STACKEA con los demás bienes del mismo tipo. De momento solo la Natalidad aplica efecto.")+"</div>";
-  for(const[ch,ico,lab,eff,active]of PROSP_META){
-    const goods=CHANNEL_GOODS[ch]||[];
-    // efecto del canal (natalidad: crecimiento de población anual = Σ niveles × bono, con su máximo posible)
-    let effLine;
-    if(active){let cur=0;for(const g of goods)cur+=prospLevel(pr[g]||0)*NAT_BONUS_PER_LEVEL;const max=goods.length*3*NAT_BONUS_PER_LEVEL;
-      effLine="<span style='color:var(--pos)'>+"+(cur*100).toFixed(2)+"%</span> / +"+(max*100).toFixed(2)+"% al año";}
-    else effLine="<i>próximamente</i>";
-    h+="<div style='margin:9px 0 2px;display:flex;align-items:center;gap:7px;border-top:1px solid #2f363d;padding-top:7px'>"+
-       "<span style='font-size:15px'>"+ico+"</span><b style='flex:1'>"+lab+"</b></div>";
-    h+="<div style='font-size:10px;color:#7a828b;margin:0 0 3px 22px'>"+eff+": "+effLine+"</div>";
-    for(const g of goods){
-      const pts=pr[g]||0, lvl=prospLevel(pts);
-      const price=(minfo[g]&&minfo[g].price!=null)?minfo[g].price:(MKT_PRICE[g]||1), ref=MKT_PRICE[g]||1, ok=price<=ref*1.08;
-      const fillLvl=lvl>=3?3:lvl+1;                                   // nivel-objetivo (I→II→III); en máx queda III
-      const prev=lvl>0?PROSP_LEVEL_PTS[lvl-1]:0, next=lvl<3?PROSP_LEVEL_PTS[lvl]:PROSP_MAX_PTS;
-      const frac=lvl>=3?1:(pts-prev)/(next-prev);
-      h+="<div style='display:flex;align-items:center;gap:6px;font-size:11px;margin:1px 0 1px 22px'>"+
-         "<span title='"+ta(RES_LABEL[g]||g)+"'>"+resImg(g)+"</span>"+
-         "<span style='width:12px;color:"+(ok?"var(--pos)":"var(--neg)")+"' title='"+(ok?"excedente (+1/mes)":"falta (−1/mes)")+"'>"+(ok?"✓":"✗")+"</span>"+
-         "<span style='width:42px;text-align:right;color:#9aa3ad'>"+pts+"/"+next+"</span>"+
-         "<span style='flex:1;height:7px;background:#2a2f36;border-radius:4px;overflow:hidden'><span style='display:block;height:100%;width:"+Math.round(frac*100)+"%;background:"+(lvl>=1?"var(--pos)":"#7a828b")+"'></span></span>"+
-         "<b style='width:20px;text-align:center;color:"+(lvl>=1?"var(--pos)":"#7a828b")+"'>"+ROMAN[fillLvl]+"</b></div>";
-    }
-  }
-  return h;
-}
-function reservesSection(p){
-  if(p.wasteland)return "";
-  const prodM=subsProd(p,"comida")*730, consM=subsCons(p,"comida")*730, troopM=troopDrainOn(p)*730;
-  const netM=prodM-consM-troopM, netT=netM/730;
-  const cap=foodCap(p), fill=foodFill(p), store=fill*cap;
-  const hv=Math.round((harvestMul(p)-1)*100);
-  let dur;
-  if(p.famine)dur="<b class='neg'>⚠ HAMBRUNA</b>";
-  else if(Math.abs(netM)<0.5)dur="estable";
-  else if(netM<0)dur="aguanta ~"+foodMonths(store/-netT);
-  else if(fill<0.99)dur="se llena en ~"+foodMonths((cap-store)/netT);
-  else dur="llena";
-  let h="<div class='bsec'>Reservas de grano <span class='u'>/mes</span>"+iInfo("El grano LOCAL de la provincia: lo producen sus campesinos y lo consumen su población y las tropas que forrajean aquí (o en las vecinas). El neto llena o vacía la despensa; si se agota en un mal año, hay hambruna. Misma unidad (grano/mes) que el consumo de las tropas.")+"</div>";
-  h+="<div class='prow'><span>🌾 Producción "+iInfo("Los campesinos trabajan la tierra: población × fertilidad del terreno × granjas × cosecha del año.")+"</span><b class='pos'>+"+fmt(prodM)+"</b></div>";
-  h+="<div class='prow'><span>"+uiIcon('poblacion')+" Consumo población</span><b class='neg'>−"+fmt(consM)+"</b></div>";
-  if(troopM>0.5)h+="<div class='prow'><span>"+uiIcon('espadas')+" Consumo tropas</span><b class='neg'>−"+fmt(troopM)+"</b></div>";
-  h+="<div class='prow' style='border-top:1px solid #3a4047;margin-top:2px;padding-top:3px'><span>Neto</span>"+
-     "<b class='"+(netM<0?"neg":"pos")+"'>"+(netM>=0?"+":"")+fmt(netM)+"/mes · "+(netM>=0?"+":"")+fmt(netM*12)+"/año</b></div>";
-  h+="<div class='prow'><span>🥖 Despensa "+Math.round(fill*100)+"% <span style='color:#7a828b'>("+fmt(store)+"/"+fmt(cap)+")</span></span><b>"+dur+"</b></div>";
-  const hvTxt=hv>=5?"<b class='pos'>+"+hv+"%</b>":hv<=-5?"<b class='neg'>"+hv+"%</b>":"<b style='color:#9aa3ad'>normal</b>";
-  h+="<div class='prow'><span>🌾 Cosecha del año</span>"+hvTxt+"</div>";
-  return h;
-}
-function reservesLine(p){ // reservas locales de los demás bienes básicos de subsistencia (madera/piedra/hierro)
-  if(p.wasteland)return "";
-  const parts=[];
-  for(const k of SUBS_BASICS){
-    if(k==="comida")continue; // la comida ya va en foodLine
-    const cap=storeCap(p,k);if(cap<=0)continue;
-    parts.push(resImg(k)+" "+Math.round(storeOf(p,k)/cap*100)+"%");
-  }
-  if(!parts.length)return "";
-  return "<div class='tl' style='color:#9aa3ad'>🏚 Reservas locales · "+parts.join(" · ")+"</div>";
-}
 function siegeLine(p){ // guarnición del fuerte y progreso de asedio en curso
   if(p.wasteland)return "";
   let s="";
@@ -141,21 +32,6 @@ function siegeLine(p){ // guarnición del fuerte y progreso de asedio en curso
   }
   return s;
 }
-function slotsLine(p){ // huecos de construcción (crecen con la población, modelo EU5)
-  if(p.wasteland)return "";
-  const used=usedSlots(p),tot=buildSlots(p);
-  const col=used>=tot?"#e0a17a":used>=tot-1?"#d9c07a":"#9aa3ad";
-  return "<div class='tl'>🏗 Edificios <span style='color:"+col+"'>"+used+"/"+tot+"</span> <span style='color:#7a828b'>(el cupo crece con la población)</span></div>";
-}
-function laborLine(p){ // dotación de los edificios: puestos exigidos vs mano de obra libre
-  if(p.wasteland)return "";
-  const jobs=buildJobs(p);
-  if(jobs<=0)return "";
-  const st=Math.round(staffing(p)*100);
-  const col=st>=90?"#8fbf78":st>=50?"#d9c07a":"#e0a17a";
-  const mob=(p.mob||0)>1?" · "+fmtPop(p.mob)+" movilizados":"";
-  return "<div class='tl'>🔨 Dotación <span style='color:"+col+"'>"+st+"%</span> <span style='color:#9aa3ad'>("+fmtPop(freeLabor(p))+" trab. / "+fmtPop(jobs)+" puestos"+mob+")</span></div>";
-}
 function fmtDur(h){ // horas de juego -> texto legible
   if(h>=8760)return (h/8760).toFixed(1).replace(".0","")+" años";
   if(h>=720)return Math.round(h/730)+" meses";
@@ -166,7 +42,7 @@ function fmtDur(h){ // horas de juego -> texto legible
 function uiIcon(name,big){return "<img class='uic"+(big?" big":"")+"' src='assets/ui/"+name+".png' alt=''>"}
 // icono de recurso: sprite de assets/res para los 11 bienes de stock; emoji para plata/oro (sin sprite)
 // nombre de un bien: en la v2 algunas claves de la v1 cambian de sentido (ganado=Carne, vino=Bebida, petroleo=Caballos…)
-function gLabel(k){return (S.econV2&&LABEL2[k])||RES_LABEL[k]||k}
+function gLabel(k){return LABEL2[k]||RES_LABEL[k]||k}
 function resImg(k){
   return RES_ART.has(k) // ¿tiene sprite .png? si no, se pinta con su emoji (bienes nuevos)
     ?"<img class='ric' src='assets/res/"+k+".png' alt='"+gLabel(k)+"' title='"+gLabel(k)+"'>"
@@ -175,29 +51,15 @@ function resImg(k){
 function buildResBar(){
   const bar=document.getElementById("resbar");
   if(bar.dataset.built)return;
-  // El topbar es ahora un RESUMEN DE TESORERÍA (solo ducados): stock + ingresos/gastos FIJOS y la ALCÁBALA
-  // acumulada (variable, se cobra a fin de mes). Las materias primas viven en Tesorería › Inventario y en el Mercado.
+  // El topbar es el RESUMEN DE TESORERÍA: el tesoro y el balance REAL del mes (libro de la corona) — la misma suma que la Tesorería
   const sep="<span class='barsep'></span>",hdr=t=>"<span class='reshdr'>"+t+"</span>";
-  if(S.econV2){ // v2: el balance REAL del tesoro (libro de la corona, mes cerrado) — la misma suma que la Tesorería
-    const tsy=" style='cursor:pointer' onclick='openTreasury()'";
-    bar.innerHTML=
-      "<span class='res' title='Ducados del tesoro — lo que puedes gastar este mes'>"+resImg('dinero')+"<b id='t_duc'>0</b> <small class='reslab'>ducados</small></span>"+sep+
-      "<span id='t_hdr'>"+hdr("Mes pasado")+"</span>"+
-      "<span class='res'"+tsy+" title='Impuestos, rentas y ventas de la corona. Clic: Tesorería'><small class='reslab'>Ingresos</small> <b id='t_inc' class='pos'>0</b></span>"+
-      "<span class='res'"+tsy+" title='Ejército, edificios, obras y reclutas. Clic: Tesorería'><small class='reslab'>Gastos</small> <b id='t_exp' class='neg'>0</b></span>"+
-      "<span class='res'"+tsy+" title='Cuánto creció o menguó el tesoro. Clic: Tesorería'><small class='reslab'>Balance</small> <b id='t_net'>0</b></span>"+sep+
-      "<span class='res' title='Soldadesca del reino (cupo movilizable disponible)'>"+uiIcon('soldadesca')+"<b id='t_mano'>0</b></span>";
-    bar.dataset.built="1";
-    return;
-  }
+  const tsy=" style='cursor:pointer' onclick='openTreasury()'";
   bar.innerHTML=
     "<span class='res' title='Ducados del tesoro — lo que puedes gastar este mes'>"+resImg('dinero')+"<b id='t_duc'>0</b> <small class='reslab'>ducados</small></span>"+sep+
-    hdr("Fijo")+
-    "<span class='res' title='Ingreso FIJO y predecible: impuestos feudales + producción de la corona + minas'><small class='reslab'>Ingresos</small> <b id='t_inc' class='pos'>0</b> <small class='reslab'>/mes</small></span>"+
-    "<span class='res' title='Gastos: mantenimiento del ejército + necesidades de la población'><small class='reslab'>Gastos</small> <b id='t_exp' class='neg'>0</b> <small class='reslab'>/mes</small></span>"+
-    "<span class='res' title='Balance neto FIJO (ingresos − gastos). No incluye la alcábala, que es variable.'><small class='reslab'>Balance</small> <b id='t_net'>0</b> <small class='reslab'>/mes</small></span>"+sep+
-    hdr("Variable")+
-    "<span class='res' title='Alcábala: 8% sobre las ventas del mercado nacional. Es VARIABLE por naturaleza, así que se acumula tick a tick y se cobra entera a fin de mes.'><small class='reslab'>Alcábala</small> <b id='t_alc' class='pos'>0</b> <small class='reslab'>acum.</small></span>"+sep+
+    "<span id='t_hdr'>"+hdr("Mes pasado")+"</span>"+
+    "<span class='res'"+tsy+" title='Impuestos, rentas y ventas de la corona. Clic: Tesorería'><small class='reslab'>Ingresos</small> <b id='t_inc' class='pos'>0</b></span>"+
+    "<span class='res'"+tsy+" title='Ejército, edificios, obras y reclutas. Clic: Tesorería'><small class='reslab'>Gastos</small> <b id='t_exp' class='neg'>0</b></span>"+
+    "<span class='res'"+tsy+" title='Cuánto creció o menguó el tesoro. Clic: Tesorería'><small class='reslab'>Balance</small> <b id='t_net'>0</b></span>"+sep+
     "<span class='res' title='Soldadesca del reino (cupo movilizable disponible)'>"+uiIcon('soldadesca')+"<b id='t_mano'>0</b></span>";
   bar.dataset.built="1";
 }
@@ -214,19 +76,14 @@ function refreshTop(){
     return;
   }
   buildResBar();
-  // Resumen de tesorería (ducados). Ingreso/gasto FIJO en vivo (refleja tus decisiones al instante), de la
-  // misma fuente que la Tesorería; la ALCÁBALA (variable) va aparte como acumulado del mes.
-  let inc=0,exp=0,net=0;
-  if(S.econV2){const cb=crownBook("prev");inc=cb.inc;exp=cb.exp;net=cb.net;
-    const hd=document.getElementById("t_hdr");if(hd)hd.innerHTML="<span class='reshdr'>"+(cb.cur?"Este mes":"Mes pasado")+"</span>"}
-  else{for(const it of nationLedger(S.player)){if(it.res!=="dinero")continue;if(it.amt>=0)inc+=it.amt;else exp+=it.amt}
-    inc*=MONTH_TICKS;exp*=MONTH_TICKS;net=inc+exp}
+  // Resumen de tesorería: el libro de la corona del mes cerrado (economy.js recCrown)
+  const cb=crownBook("prev"),inc=cb.inc,exp=cb.exp,net=cb.net;
+  {const hd=document.getElementById("t_hdr");if(hd)hd.innerHTML="<span class='reshdr'>"+(cb.cur?"Este mes":"Mes pasado")+"</span>"}
   const setV=(id,txt,cls)=>{const el=document.getElementById(id);if(!el)return;el.textContent=txt;if(cls!=null)el.className=cls};
   setV("t_duc",fmt(tsyAvail(S.player,"dinero")));
   setV("t_inc","+"+fmt(inc),"pos");
   setV("t_exp",(exp<-0.5?"−":"")+fmt(Math.abs(exp)),"neg");
   setV("t_net",(net>=0?"+":"−")+fmt(Math.abs(net)),net<0?"neg":"pos");
-  setV("t_alc","+"+fmt(S.tsyAlc||0),"pos");
   let realmSold=0;for(const p of S.provs)if(p.owner===S.player&&!p.wasteland&&!isOccupied(p))realmSold+=soldAvail(p);
   setV("t_mano",fmt(realmSold));
 }
@@ -237,59 +94,6 @@ function costStr(cost,mano){
   return parts.join(", ");
 }
 function n1(v){return (Math.round(v*10)/10).toString().replace(/\.0$/,"")}
-function fxText(B){
-  const fx=B.fx,t=[];
-  if(fx.prodAdd)for(const k in fx.prodAdd)t.push("+"+n1(fx.prodAdd[k])+" "+RES_SHORT[k]);
-  if(fx.prodMul)t.push("+"+Math.round(fx.prodMul*100)+"% prod");
-  if(fx.goldAdd)t.push("+"+n1(fx.goldAdd)+" Duc");
-  if(fx.mano)t.push("+"+Math.round(fx.mano*100)+"% soldadesca");
-  if(fx.store)t.push("+"+Math.round(fx.store*100)+"% reservas");
-  if(fx.def)t.push("+"+Math.round(fx.def*100)+"% defensa");
-  if(fx.moral)t.push("+"+n1(fx.moral)+" moral/mes");
-  if(fx.realmMoral)t.push("+"+n1(fx.realmMoral)+" moral/mes al reino");
-  if(fx.buildSpeed)t.push("obras -"+Math.round(fx.buildSpeed*100)+"%");
-  if(fx.seaMarch)t.push("marcha marítima");
-  if(B.unlock)t.push("desbloquea tropas");
-  return t.join(" · ");
-}
-// Desglose EU4 del cálculo VIVO de un beneficio (para el tooltip al hover del valor verde):
-// base · terreno · moral · dotación · afinidad = total.
-function yieldTip(y){
-  let t=(RES_LABEL[y.res]||y.res)+" — producción de un nivel /mes\n\n";
-  for(const s of y.steps)t+="  "+s[0]+": "+s[1]+"\n";
-  t+="  ─────────────\n  = "+n1(y.amt)+" "+(RES_LABEL[y.res]||y.res)+"/mes";
-  return t;
-}
-// Beneficios de un edificio para la tarjeta: una LÍNEA por beneficio (verde), producción VIVA con
-// su icono de recurso y su DESGLOSE al hover; los % también en verde. Los empleos van en su fila.
-function benefitHTML(p,b){
-  const B=BUILDINGS[b],fx=B.fx,lines=[];
-  for(const y of buildingYield(p,b))
-    lines.push("<div class='bl' data-tip=\""+ta(yieldTip(y))+"\">±"+n1(y.amt)+" "+resImg(y.res)+(y.mul?" <span class='mul'>+"+y.mul+"%</span>":"")+"</div>");
-  if(fx.prodMul)lines.push("<div class='bl'>+"+Math.round(fx.prodMul*100)+"% a la producción</div>");
-  if(fx.mano)lines.push("<div class='bl'>+"+Math.round(fx.mano*100)+"% soldadesca</div>");
-  if(fx.store)lines.push("<div class='bl'>+"+Math.round(fx.store*100)+"% despensa</div>");
-  if(fx.def)lines.push("<div class='bl'>+"+Math.round(fx.def*100)+"% defensa</div>");
-  if(fx.moral)lines.push("<div class='bl'>+"+n1(fx.moral)+" moral/mes</div>");
-  if(fx.realmMoral)lines.push("<div class='bl'>+"+n1(fx.realmMoral)+" moral al reino</div>");
-  if(fx.buildSpeed)lines.push("<div class='bl'>obras -"+Math.round(fx.buildSpeed*100)+"%</div>");
-  if(fx.seaMarch)lines.push("<div class='bl eff'>marcha marítima</div>");
-  if(B.unlock)lines.push("<div class='bl eff'>desbloquea tropas</div>");
-  return lines.join("");
-}
-// efectos que NO son producción de recurso (la producción viva se muestra aparte en la tarjeta)
-function fxOtherText(B){
-  const fx=B.fx,t=[];
-  if(fx.mano)t.push("+"+Math.round(fx.mano*100)+"% soldadesca");
-  if(fx.store)t.push("+"+Math.round(fx.store*100)+"% reservas");
-  if(fx.def)t.push("+"+Math.round(fx.def*100)+"% defensa");
-  if(fx.moral)t.push("+"+n1(fx.moral)+" moral/mes");
-  if(fx.realmMoral)t.push("+"+n1(fx.realmMoral)+" al reino");
-  if(fx.buildSpeed)t.push("obras -"+Math.round(fx.buildSpeed*100)+"%");
-  if(fx.seaMarch)t.push("marcha marítima");
-  if(B.unlock)t.push("desbloquea tropas");
-  return t.join(" · ");
-}
 function costLine(c,owner){
   return Object.keys(c).map(k=>{
     const no=owner!=null&&tsyAvail(owner,k)<c[k];
@@ -364,13 +168,6 @@ function defBreak(p){
   if(T.def!==1)t+="  terreno ("+T.label+"): x"+n1(T.def)+" (aparte, en combate)";
   return t;
 }
-function netBreak(bd,res){
-  let t=RES_LABEL[res]+" — desglose /mes\n";
-  for(const it of bd.income)if(it.res===res&&Math.abs(it.amt)>0.005)t+="  +"+n1(it.amt)+"  "+it.label+"\n";
-  for(const it of bd.upkeep)if(it.res===res&&Math.abs(it.amt)>0.005)t+="  -"+n1(it.amt)+"  "+it.label+"\n";
-  t+="  = "+(bd.net[res]>=0?"+":"")+n1(bd.net[res])+" neto";
-  return t;
-}
 // ---- Ficha de provincia — DETALLE (abajo-izquierda, estilo EU4) ----
 function refreshProvPanel(){
   const panel=document.getElementById("provPanel");
@@ -383,76 +180,27 @@ function refreshProvPanel(){
   let statusIco="";
   if(realmCap)statusIco=" <span data-tip=\"Capital del reino\" style='color:#e8c24a'>★</span>";
   else if(duchyCap)statusIco=" <span data-tip=\"Capital de ducado\" style='color:#c9b06a;font-size:12px'>◼</span>";
-  const v2=S.econV2&&!p.wasteland&&p.owner<NPLAY;
-  let s="<div class='ph'><h4 style='font-size:15px;color:#fff;margin:0;display:flex;justify-content:space-between;align-items:center'><span>"+p.name+statusIco+"</span>"+(v2?manorIcon(p):"")+"</h4></div><div class='bsum'>";
+  const lord=!p.wasteland&&p.owner<NPLAY;
+  let s="<div class='ph'><h4 style='font-size:15px;color:#fff;margin:0;display:flex;justify-content:space-between;align-items:center'><span>"+p.name+statusIco+"</span>"+(lord?manorIcon(p):"")+"</h4></div><div class='bsum'>";
   if(p.wasteland){
     s+="<div class='tl'>"+TERRAINS[p.terrain].label+"</div>"+
        "<div class='prow'><span class='dim'>Territorio impracticable: nadie puede reclamarlo ni atravesarlo.</span></div></div>";
     panel.innerHTML=s;panel.className="show";panel.style.display="block";return;
   }
-  // Identidad agrupada arriba: reino + ducado juntos
-  if(v2)s+="<div class='tl'>"+(p.owner!==S.player?nameChip(p.owner):escOf(p.owner)+" "+NATIONS[p.owner].name)+
+  // Identidad: reino (clicable → diplomacia si es otro) + ducado
+  s+="<div class='tl'>"+(p.owner!==S.player&&p.owner<NPLAY?nameChip(p.owner):escOf(p.owner)+" "+NATIONS[p.owner].name)+
      (p.duchy>=0&&S.duchies[p.duchy]?" <span style='color:#5c636b'>|</span> "+uiIcon('ducado')+" "+S.duchies[p.duchy].name:"")+"</div>";
-  else s+="<div class='tl'><span class='chip' style='background:"+NATIONS[p.owner].color+"'></span> "+NATIONS[p.owner].name+
-     (p.duchy>=0&&S.duchies[p.duchy]?" <span style='color:#5c636b'>|</span> "+uiIcon('ducado')+" "+S.duchies[p.duchy].name:"")+
-     ((S.player>=0&&p.owner!==S.player&&p.owner<NPLAY&&S.nations[p.owner]&&S.nations[p.owner].alive)
-       ?" <button class='bbtn sm' onclick='openDiplo("+p.owner+")' title='Diplomacia con "+NATIONS[p.owner].name+"'>🕊 Diplomacia</button>":"")+"</div>";
-  if(isOccupied(p))s+="<div class='tl' style='color:#e0a17a'>⚔ Ocupada por <span class='chip' style='background:"+NATIONS[p.occupier].color+"'></span> "+NATIONS[p.occupier].name+"</div>";
-  if(v2){const sp=specialty2(p);
-    s+="<div class='tl'>"+(p.urban?"Ciudad":"Campo")+(sp.length?" · "+sp.map(g=>resImg(g)+" "+gLabel(g)).join(" · "):"")+"</div>";}
-  else{const good=p.urban?("Ciudad"+(p.resType?" · "+RES_LABEL[p.resType]:"")):(p.resType?RES_LABEL[p.resType]:"Sin especial");
-    s+="<div class='tl'>"+(p.resType?resImg(p.resType)+" ":"")+good+"</div>";}
+  if(isOccupied(p))s+="<div class='tl' style='color:#e0a17a'>⚔ Ocupada por "+escOf(p.occupier)+" "+NATIONS[p.occupier].name+"</div>";
+  const sp=specialty2(p);
+  s+="<div class='tl'>"+(p.urban?"Ciudad":"Campo")+(sp.length?" · "+sp.map(g=>resImg(g)+" "+gLabel(g)).join(" · "):"")+"</div>";
   s+=terrainVocationHTML(p);
-  if(v2){s+=provStats2(p,own)+siegeLine(p)+(own?tradeRow2(p):"")+pantryRow2(p)+produceRow2(p)+(own?yieldRows2(p):"");}
-  else{
-  s+="<div class='prow'><span>"+uiIcon('poblacion')+" Población"+iInfo("Habitantes: trabajan la tierra (producción base), dotan los edificios, pagan impuestos y aportan la soldadesca. Crece con el excedente de comida.")+"</span>"+
-     statv(fmtPop(p.pop),"Población: "+fmtPop(p.pop)+" hab\nCrece con la despensa llena; cae en hambruna.")+"</div>";
-  s+="<div class='prow'><span>🙂 Moral"+iInfo("Factor de PRODUCTIVIDAD: al 100% los pops rinden al máximo; por debajo, reducen su producción. No se recupera sola: la hacen crecer los edificios de moral (templo, catedral).")+"</span>"+
-     statv(Math.round(p.morale)+"%",moraleBreak(p))+"</div>";
-  if(own){
-    s+="<div class='prow'><span>"+uiIcon('soldadesca')+" Soldadesca"+iInfo("Cupo de población movilizable para reclutar (≈2% de la pop × edificios militares). Se regenera con el tiempo.")+"</span>"+
-       statv(fmtPop(soldAvail(p))+"/"+fmtPop(soldCap(p)),"Soldadesca disponible: "+fmtPop(soldAvail(p))+"\nTecho: "+fmtPop(soldCap(p))+"  (de "+fmtPop(p.pop)+" hab)")+"</div>";
-    if(buildJobs(p)>0)s+="<div class='prow'><span>"+uiIcon('trabajo')+" Dotación"+iInfo("Los edificios producen según los trabajadores empleados. Dotación = mano de obra libre / puestos exigidos; por debajo del 100% la producción de edificios baja.")+"</span>"+
-       statv(Math.round(staffing(p)*100)+"%",dotBreak(p))+"</div>";
-    s+="<div class='prow'><span>"+uiIcon('edificios')+" Edificios"+iInfo("Huecos de construcción de la provincia: crecen con su población. Cuanta más gente, más edificios puede sostener.")+"</span>"+
-       statv(usedSlots(p)+"/"+buildSlots(p),slotBreak(p))+"</div>";
-  }
-  s+=siegeLine(p); // la despensa/cosecha se muestra ahora en la sección "Reservas" (abajo)
-  if(own){
-    const bd=provBreakdown(p);
-    s+="<div class='bsec'>Balance <span class='u'>/mes</span>"+iInfo("Ingresos menos mantenimiento de la provincia, por recurso. Pasa el ratón por un valor para ver de dónde sale.")+"</div>";
-    const nk=Object.keys(bd.net).filter(k=>Math.abs(bd.net[k])>0.005).sort((a,b)=>bd.net[b]-bd.net[a]);
-    if(!nk.length)s+="<div class='prow'><span class='dim'>Sin balance neto.</span></div>";
-    for(const k of nk)s+="<div class='prow'><span>"+resImg(k)+" "+RES_LABEL[k]+"</span>"+
-      "<span class='statv "+(bd.net[k]<0?"neg":"pos")+"' data-tip=\""+ta(netBreak(bd,k))+"\">"+(bd.net[k]>=0?"+":"")+n1(bd.net[k])+"</span></div>";
-    const dm=provDefMul(p);
-    if(dm>1)s+="<div class='prow'><span>"+uiIcon('defensa')+" Defensa"+iInfo("Multiplicador de defensa en batalla y asedio, por castillo/ciudadela. El terreno multiplica aparte.")+"</span>"+
-       statv("+"+Math.round((dm-1)*100)+"%",defBreak(p))+"</div>";
-    // Fase 2: comercio de la provincia — acceso al mercado, flete al centro, portazgo (todo tras la "i"/tooltip)
-    {const acc=Math.round(marketAccess(p)*100),flete=Math.round(provFlete(p)*100),toll=(p.tollIncome||0)*MONTH_TICKS;
-     const plaza=(p.marketOf>=0&&S.provs[p.marketOf])?S.provs[p.marketOf]:null,hub=(p.hubOf>=0&&S.provs[p.hubOf])?S.provs[p.hubOf]:null;
-     const mlab={realengo:"corona",abadengo:"clero",solariego:"noble"}[manorOf(p)]||"señor";
-     const tip="Plaza local: "+(plaza?plaza.name+" ("+Math.round(p.marketKm||0)+" km)":"—")+
-       "\nCentro de comercio: "+(hub?hub.name+" ("+Math.round(p.hubKm||0)+" km)":"—")+
-       "\nAcceso al mercado: "+acc+"%\nFlete al centro: "+flete+"%"+(toll>0.05?"\nPortazgo al "+mlab+": +"+n1(toll)+"🪙/mes":"");
-     s+="<div class='prow'><span>🏪 Comercio"+iInfo("Acceso al mercado: cuánto de lo que produce el campesino llega a venderse (baja con la distancia a la plaza). El flete es el coste de llevar el excedente al centro de comercio; el portazgo, la renta que el señor cobra de ese tránsito.")+"</span>"+
-       statv(acc+"%",tip)+"</div>";}
-  }else{
-    const blist=Object.keys(BUILDINGS).filter(b=>lvlOf(p,b)>0);
-    if(blist.length){
-      s+="<div class='bsec'>Construcciones</div>";
-      for(const b of blist)s+="<div class='prow'><span>"+BUILDINGS[b].icon+" "+BUILDINGS[b].label+"</span><b>"+(BUILDINGS[b].unique?"✓":lvlOf(p,b))+"</b></div>";
-    }
-  }
-  s+=reservesSection(p); // Reservas de grano local (categoría propia, en grano/mes como las tropas)
-  }
-  if(v2&&!own){const blist=Object.keys(BUILDINGS).filter(b=>lvlOf(p,b)>0);
+  s+=provStats2(p,own)+siegeLine(p)+(own?tradeRow2(p):"")+pantryRow2(p)+produceRow2(p)+(own?yieldRows2(p):"");
+  if(!own){const blist=Object.keys(BUILDINGS).filter(b=>lvlOf(p,b)>0);
     if(blist.length)s+="<div class='bsec'>Construcciones</div><div style='display:flex;flex-wrap:wrap;gap:2px 12px'>"+blist.map(b=>"<span>"+BUILDINGS[b].icon+" "+BUILDINGS[b].label+(BUILDINGS[b].unique?"":" ×"+lvlOf(p,b))+"</span>").join("")+"</div>";}
   const here=armiesIn(p.id);
   if(here.length){
     s+="<div class='bsec'>Ejércitos</div>";
-    for(const a of here)s+="<div class='prow'><span><span class='chip' style='background:"+NATIONS[a.nation].color+"'></span> "+
-      Math.round(armyCount(a))+" u</span><b class='dim'>"+NATIONS[a.nation].name+"</b></div>";
+    for(const a of here)s+="<div class='prow'><span>"+escOf(a.nation)+" "+Math.round(armyCount(a))+" u</span><b class='dim'>"+NATIONS[a.nation].name+"</b></div>";
   }
   s+="</div>";
   panel.innerHTML=s;panel.className="show";panel.style.display="block";
@@ -461,7 +209,6 @@ function refreshProvPanel(){
 function buildTilesHTML(p){
   const showAll=S.buildFilter==="all";
   const cList=showAll?BUILD_CATS:BUILD_CATS.filter(c=>c[0]===S.buildFilter);
-  const src=sourceableSet(); // para avisar de fábricas sin fuente de insumo (una vez por render)
   let cats="<div class='bcats'>";
   for(const[cat,label]of cList){
     let tiles="";
@@ -469,8 +216,8 @@ function buildTilesHTML(p){
       const B=BUILDINGS[b];if(B.cat!==cat)continue;
       if(B.resReq&&p.resType!==B.resReq)continue; // mina de plata/oro: solo donde hay yacimiento
       const lvl=lvlOf(p,b),max=buildMax(p,b),inQ=p.buildQueue.some(q=>q.b===b);
-      if(S.econV2&&!lvl&&goldOnly(B))continue; // v2: el oro "de la nada" (mercado, lonja) ya no rinde: no se ofrece
-      const block=inQ?null:(buildBlock(p,b)||(S.econV2?siteBlock2(p,b):null));
+      if(!lvl&&goldOnly(B))continue; // v2: el oro "de la nada" (mercado, lonja) ya no rinde: no se ofrece
+      const block=inQ?null:(buildBlock(p,b)||siteBlock2(p,b));
       const maxed=lvl>=max;
       let cls="btile";
       if(inQ)cls+=" building";else if(maxed)cls+=" done";else if(block)cls+=" locked";
@@ -490,11 +237,10 @@ function buildTilesHTML(p){
       const off=lvl>0&&!!(p.bOff&&p.bOff[b]);
       let ctrl="";
       if(lvl>0){
-        const isEco=!!(B.fx&&(B.fx.prodAdd||B.fx.goldAdd))||!!B.inputs;
-        const prof=(S.econV2?!!(BLD2[b]||(B.fx&&B.fx.prodAdd)):isEco)?(S.econV2?bldEcon2(p,b,lvl).profit:buildingProfit(p,b)):null;
+        const prof=(BLD2[b]||(B.fx&&B.fx.prodAdd))?bldEcon2(p,b,lvl).profit:null;
         const profTxt=prof!=null?"<span class='"+(prof>=0?"pos":"neg")+"' style='font-weight:bold'>"+(prof>=0?"+":"−")+fmt(Math.abs(prof))+"🪙/mes</span>":"<span></span>";
         const bs="display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:11px;margin-top:5px;padding:3px 7px;border-radius:5px;cursor:pointer;";
-        const own2=S.econV2?bOwnerOf(p,b):"corona";
+        const own2=bOwnerOf(p,b);
         if(own2!=="corona"){ // v2: el taller de un estamento lo gestiona su dueño (lo cierra si no le rinde)
           ctrl="<div style='"+bs+"background:#262b31' data-tip=\""+ta("De "+STRATA_INFO[own2].label.toLowerCase()+": lo gestiona su dueño"+(off?" (ahora cerrado)":""))+"\">"+
             profTxt+"<span style='color:#9aa3ad;white-space:nowrap'>"+STRATA_INFO[own2].icon+(off?" cerrado":"")+"</span></div>";
@@ -509,23 +255,12 @@ function buildTilesHTML(p){
             profTxt+"<span style='color:#9aa3ad;white-space:nowrap'>⏸ Off</span></div>";
         }
       }
-      // hint de FÁBRICAS: aviso si el insumo no tiene fuente (gate), o rentabilidad esperada del próximo nivel
-      let hint="";
-      const isFact=!!(B.inputs||(B.fx&&B.fx.prodAdd));
-      if(S.econV2){if((BLD2[b]||(B.fx&&B.fx.prodAdd))&&!maxed&&!inQ&&!block)hint=nextHint2(p,b,lvl)}
-      else if(isFact&&!maxed&&!inQ){
-        if(B.inputs&&!inputsSourceable(b,src))
-          hint="<div style='font-size:10px;color:#d0913a'>⚠ sin fuente de "+Object.keys(B.inputs).filter(k=>!src.has(k)).map(k=>RES_LABEL[k]||k).join("/")+"</div>";
-        else{const ep=Math.round(buildingProfit(p,b,lvl+1));
-          hint="<div style='font-size:10px;color:"+(ep>=0?"#8aa478":"#c9776a")+"'>≈ "+(ep>=0?"+":"−")+fmt(Math.abs(ep))+"🪙/mes "+(lvl>0?"el sig. nivel":"si la construyes")+"</div>";}
-      }
-      // Fase 2: cobertura de insumos de una fábrica CONSTRUIDA (por qué rinde menos de lo esperado)
-      let cover="";
-      if(!S.econV2&&B.inputs&&lvl>0){const cv=inputCoverOf(p,b);if(cv<0.98)cover="<div style='font-size:10px;color:"+(cv<0.6?"#c0563e":"#d0913a")+"'>🏭 insumo "+Math.round(cv*100)+"%</div>";}
+      // lo que añade el SIGUIENTE nivel (marginal), con la rentabilidad v2 del dueño
+      const hint=((BLD2[b]||(B.fx&&B.fx.prodAdd))&&!maxed&&!inQ&&!block)?nextHint2(p,b,lvl):"";
       tiles+="<div class='"+cls+"'"+onclick+(off?" style='opacity:.62'":"")+" data-tip=\""+ta(B.desc)+"\">"+
         "<img class='bic' src='assets/buildings/"+b+".png' alt='"+B.label+"' title='"+B.label+"' onerror=\"this.replaceWith(bemoji('"+B.icon+"'))\">"+
         "<div class='th'><span class='nm'>"+B.label+"</span>"+lvBadge+"</div>"+
-        "<div class='ben'>"+(S.econV2?benefitHTML2(p,b,lvl):benefitHTML(p,b))+jobsHtml+hint+cover+"</div>"+ctrl+
+        "<div class='ben'>"+benefitHTML2(p,b,lvl)+jobsHtml+hint+"</div>"+ctrl+
         "<div class='foot2'>"+upStr+foot+"</div></div>";
     }
     cats+="<div class='bcat'><div class='lab'>"+label+"</div><div class='btiles'>"+tiles+"</div></div>";
@@ -595,7 +330,7 @@ function refreshProvTabs(){
   const p=S.provs[S.selProv];
   const own=p.owner===S.player&&!p.wasteland&&!isOccupied(p);
   if(!own){el.className="";el.style.display="none";return}
-  const tabs=[["build","trabajo","Construir"],["roads","caminos","Caminos"],["army","espadas","Ejércitos"]].concat(S.econV2?[["eco","pergamino","Economía"]]:[["prosp","poblacion","Prosperidad"]]); // v2: la prosperidad la sustituye la cobertura de las 3 necesidades (Estamentos)
+  const tabs=[["build","trabajo","Construir"],["roads","caminos","Caminos"],["army","espadas","Ejércitos"],["eco","pergamino","Economía"]];
   el.innerHTML=tabs.map(t=>"<div class='ptab"+(S.provTab===t[0]?" on":"")+"' onclick='setProvTab(\""+t[0]+"\")'>"+
     uiIcon(t[1],true)+"<span class='lb'>"+t[2]+"</span></div>").join("");
   el.className="show";el.style.display="flex";
@@ -607,7 +342,7 @@ function refreshProvWin(){
   if(S.selArmy||S.selProv<0){hide();return}
   const p=S.provs[S.selProv];
   const own=p.owner===S.player&&!p.wasteland&&!isOccupied(p);
-  if(!own||!S.provTab||(S.econV2&&S.provTab==="prosp")||(!S.econV2&&S.provTab==="eco")){hide();return}
+  if(!own||!S.provTab){hide();return}
   if(S.provTab==="build"){
     renderBuildTabs();
     const scroll=win.scrollLeft;
@@ -618,7 +353,6 @@ function refreshProvWin(){
   tabs.className="";tabs.style.display="none";
   let body;
   if(S.provTab==="roads")body="<div class='winh'>"+uiIcon('caminos')+" Caminos</div>"+roadsHTML(p);
-  else if(S.provTab==="prosp")body=prosperityWinHTML(p);
   else if(S.provTab==="eco")body=provEcoWinHTML(p);
   else body="<div class='winh'>"+uiIcon('espadas')+" Ejércitos y reclutamiento</div>"+armyHTML(p);
   win.innerHTML="<div class='winbody'>"+body+"</div>";
@@ -628,112 +362,22 @@ function refreshProvWin(){
 function refreshBuildBar(){refreshProvPanel();refreshProvTabs();refreshProvWin();}
 // menú del reino (arriba-izquierda, estilo EU4): escudo + botonera de ajustes del reino
 /* ============================= Tesorería (libro mayor navegable) =============================
- * Panel con dos pestañas: TESORO (balance de Ducados por categoría) e INVENTARIO (el resto de
- * recursos, cada uno en modo balance). Cada categoría es clicable y abre su detalle (desglosado
- * por sub-categorías) con el total abajo, que verifica la suma. Datos: nationLedger(). */
-function tsyAgg(list,field){ // agrega los ítems por un campo (group o sub o res) → [{key,amt}]
-  const m=new Map();
-  for(const x of list)m.set(x[field],(m.get(x[field])||0)+x.amt);
-  return [...m].map(([key,amt])=>({key,amt})).filter(r=>Math.abs(r.amt)>0.005);
-}
-function tsySum(list){let s=0;for(const x of list)s+=x.amt;return s}
-function tsyRow(label,amt,res,drillKey){ // fila de categoría; drillKey!=null → clicable a su detalle
-  const drill=drillKey!=null;
-  const attrs=drill?" class='trow click' onclick=\"treasuryDrill('"+drillKey+"')\"":" class='trow'";
-  return "<div"+attrs+"><span>"+label+(drill?" <span class='tarrow'>›</span>":"")+"</span>"+
-    "<b class='"+(amt<0?"neg":"pos")+"'>"+(amt>=0?"+":"")+n1(amt)+" "+resImg(res)+"</b></div>";
-}
-function tsyTotal(label,amt,res){ // fila de TOTAL (verifica la suma de las filas de arriba)
-  return "<div class='ttotal'><span>"+label+"</span><b class='"+(amt<0?"neg":"pos")+"'>"+(amt>=0?"+":"")+n1(amt)+" "+resImg(res)+"</b></div>";
-}
+ * Dos pestañas: TESORO (el libro de la corona por partidas; cada una abre su detalle, y el total verifica la
+ * suma) y ALMACÉN (lo que guarda la corona para obras y ejército). Ver refreshTreasury2 (bloque v2, abajo). */
 function tsyCrumb(path){ // migas de pan de navegación (volver a niveles superiores)
-  let h="<span class='tcrumbi' onclick='treasuryBack(0)'>"+(S.treasuryTab==="tesoro"?"🪙 Tesoro":"📦 Inventario")+"</span>";
+  let h="<span class='tcrumbi' onclick='treasuryBack(0)'>"+(S.treasuryTab==="tesoro"?"🪙 Tesoro":"📦 Almacén")+"</span>";
   for(let i=0;i<path.length;i++){
     const label=(S.treasuryTab==="inv"&&i===0)?RES_LABEL[path[i]]:path[i];
     h+=" › "+(i===path.length-1?"<b class='tcrumbc'>"+label+"</b>":"<span class='tcrumbi' onclick='treasuryBack("+(i+1)+")'>"+label+"</span>");
   }
   return "<div class='tcrumb'>"+h+"</div>";
 }
-function tsyTesoro(items){ // pestaña TESORO: balance de Ducados
-  const dm=items.filter(x=>x.res==="dinero"),path=S.treasuryPath;
-  let h="";
-  if(path.length===0){
-    const g=tsyAgg(dm,"group");
-    const inc=g.filter(x=>x.amt>0).sort((a,b)=>b.amt-a.amt);
-    const exp=g.filter(x=>x.amt<0).sort((a,b)=>a.amt-b.amt);
-    h+="<div class='tsec'>Ingresos</div>";
-    h+=inc.length?inc.map(x=>tsyRow(x.key,x.amt,"dinero",x.key)).join(""):"<div class='trow tdim'>Sin ingresos</div>";
-    h+="<div class='tsec'>Gastos</div>";
-    h+=exp.length?exp.map(x=>tsyRow(x.key,x.amt,"dinero",x.key)).join(""):"<div class='trow tdim'>Sin gastos</div>";
-    h+=tsyTotal("Balance neto (fijo)",tsySum(dm),"dinero");
-    // la ALCÁBALA (variable) no entra en el balance fijo: se acumula el mes y se cobra al cierre
-    if((S.tsyAlc||0)>0.5)h+="<div class='trow' style='margin-top:6px;border-top:1px solid #3a4047;padding-top:6px'>"+
-      "<span>⏳ Alcábala acumulada <small style='color:#7a828b'>· se cobra a fin de mes</small></span>"+
-      "<b class='pos'>+"+n1(S.tsyAlc)+" "+resImg('dinero')+"</b></div>";
-  }else{
-    const group=path[0],sel=dm.filter(x=>x.group===group);
-    const subs=tsyAgg(sel,"sub").sort((a,b)=>Math.abs(b.amt)-Math.abs(a.amt));
-    h+=tsyCrumb([group]);
-    h+=subs.map(x=>tsyRow(x.key,x.amt,"dinero",null)).join("");
-    h+=tsyTotal("Total · "+group,tsySum(sel),"dinero");
-  }
-  return h;
-}
-function tsyInv(items){ // pestaña INVENTARIO: el resto de recursos, en balance
-  const inv=items.filter(x=>x.res!=="dinero"),path=S.treasuryPath;
-  let h="";
-  if(path.length===0){
-    const byRes=tsyAgg(inv,"res");
-    h+="<div class='trow thead'><span>Recurso</span><span>Stock · balance/mes</span></div>";
-    let any=false;
-    const rowOf=k=>{
-      const net=(byRes.find(r=>r.key===k)||{amt:0}).amt,stock=tsyAvail(S.player,k);
-      if(Math.abs(net)<0.005&&stock<0.5)return"";
-      any=true;
-      return "<div class='trow click' onclick=\"treasuryDrill('"+k+"')\"><span>"+resImg(k)+" "+RES_LABEL[k]+" <span class='tarrow'>›</span></span>"+
-        "<b><span class='tstock'>"+fmt(stock)+"</span> <span class='"+(net<0?"neg":"pos")+"'>"+(net>=0?"+":"")+n1(net)+"</span></b></div>";
-    };
-    // agrupado POR CATEGORÍA (cereal, cultivo, ganadería, bosque, minería, mar, manufacturas, comercio)
-    for(const[cat,ico,lab]of RESCAT_META){
-      const rows=RES_KEYS.filter(k=>k!=="dinero"&&RES_CAT[k]===cat).map(rowOf).filter(Boolean).join("");
-      if(rows)h+="<div class='tsec'>"+ico+" "+lab+"</div>"+rows;
-    }
-    if(!any)h+="<div class='trow tdim'>Sin recursos ni movimientos.</div>";
-  }else if(path.length===1){
-    const res=path[0],sel=inv.filter(x=>x.res===res);
-    const g=tsyAgg(sel,"group");
-    const inc=g.filter(x=>x.amt>0).sort((a,b)=>b.amt-a.amt);
-    const exp=g.filter(x=>x.amt<0).sort((a,b)=>a.amt-b.amt);
-    h+=tsyCrumb([res]);
-    h+="<div class='tsec'>Producción</div>";
-    h+=inc.length?inc.map(x=>tsyRow(x.key,x.amt,res,x.key)).join(""):"<div class='trow tdim'>—</div>";
-    h+="<div class='tsec'>Consumo</div>";
-    h+=exp.length?exp.map(x=>tsyRow(x.key,x.amt,res,x.key)).join(""):"<div class='trow tdim'>—</div>";
-    h+=tsyTotal("Balance neto · "+RES_LABEL[res],tsySum(sel),res);
-  }else{
-    const res=path[0],group=path[1],sel=inv.filter(x=>x.res===res&&x.group===group);
-    const subs=tsyAgg(sel,"sub").sort((a,b)=>Math.abs(b.amt)-Math.abs(a.amt));
-    h+=tsyCrumb([res,group]);
-    h+=subs.map(x=>tsyRow(x.key,x.amt,res,null)).join("");
-    h+=tsyTotal("Total · "+group,tsySum(sel),res);
-  }
-  return h;
-}
 function refreshTreasury(){
   const ov=document.getElementById("treasuryOverlay");
   if(!ov||ov.style.display!=="flex")return;
   const body=document.getElementById("treasuryBody");
   if(S.player<0){body.innerHTML="<p style='text-align:center;color:#9aa3ad'>Estás en modo observador. Toma el mando de una nación (desde el <b>Registro</b>) para ver su tesorería.</p>";return}
-  if(S.econV2){refreshTreasury2(body);return}
-  const N=NATIONS[S.player];
-  // el libro mayor rinde importes por tick; se escalan a /mes para que la magnitud y los signos
-  // cuadren con el balance "/mes" del topbar (la capa de presentación mensual)
-  const items=nationLedger(S.player).map(it=>({...it,amt:it.amt*MONTH_TICKS}));
-  const tab=(k,lab)=>"<span class='ttab"+(S.treasuryTab===k?" on":"")+"' onclick=\"setTreasuryTab('"+k+"')\">"+lab+"</span>";
-  let h="<div class='tsyhead'><span class='chip' style='background:"+N.color+"'></span> "+N.name+"</div>";
-  h+="<div class='ttabs'>"+tab("tesoro","🪙 Tesoro")+tab("inv","📦 Inventario")+"</div>";
-  h+="<div class='tbook'>"+(S.treasuryTab==="tesoro"?tsyTesoro(items):tsyInv(items))+"</div>";
-  body.innerHTML=h;
+  refreshTreasury2(body);
 }
 function buildRealmMenu(){
   if(S.player<0)return;
@@ -763,32 +407,19 @@ function buildRealmMenu(){
 function refreshMetricsLog(){
   const el=document.getElementById("side");
   if(S.player<0||!S.started){el.style.display="none";return}
-  const ne=nationEconomy(S.player),N=NATIONS[S.player];
+  const N=NATIONS[S.player];
+  let nprov=0,troops=0;for(const p of S.provs)if(p.owner===S.player&&!p.wasteland)nprov++;for(const a of S.armies)if(a.nation===S.player)troops+=armyCount(a);
   let realmPop=0;for(const p of S.provs)if(p.owner===S.player&&!p.wasteland)realmPop+=p.pop||0;
   let h="<div class='mlog'><span class='sh' style='background:"+N.color+"'></span>"+
-    "<div><b>"+N.name+"</b><div style='color:#9aa3ad;font-size:11px'>"+ne.provs+" provincias · "+uiIcon('poblacion')+" "+fmtPop(realmPop)+"<br>"+ne.troops+" tropas</div></div></div>";
-  if(S.econV2){ // v2: balance real del tesoro (libro de la corona) + almacén de la corona
+    "<div><b>"+N.name+"</b><div style='color:#9aa3ad;font-size:11px'>"+nprov+" provincias · "+uiIcon('poblacion')+" "+fmtPop(realmPop)+"<br>"+Math.round(troops)+" tropas</div></div></div>";
+  // balance real del tesoro (libro de la corona) + almacén de la corona
+  {
     const cb=crownBook("prev");
     h+="<h3 style='cursor:pointer' onclick='openTreasury()'>Tesorería del reino <span style='color:#7a828b;font-weight:normal'>"+(cb.cur?"este mes":"mes pasado")+"</span></h3>";
     const kpi=(lab,v)=>"<div class='kpi'><span>"+lab+"</span><span class='v "+(v<0?"neg":"pos")+"'>"+(v>=0?"+":"−")+fmt(Math.abs(v))+"</span></div>";
     h+=kpi(resImg("dinero")+" Ingresos",cb.inc)+kpi(resImg("dinero")+" Gastos",cb.exp)+kpi("<b>Balance</b>",cb.net);
     const R=S.nations[S.player].res,ks=Object.keys(R).filter(k=>k!=="dinero"&&Math.abs(tsyMonthBal(k))>=0.5);
     if(ks.length){h+="<div class='kpicat'>📦 Almacén de la corona</div>";for(const k of ks)h+=kpi(resImg(k)+" "+gLabel(k),tsyMonthBal(k))}
-  }else{
-  h+="<h3>Tesorería del reino <span style='color:#7a828b;font-weight:normal'>/mes</span></h3>";
-  const bal={};for(const k of RES_KEYS)bal[k]=(ne.res[k]||0)*MONTH_TICKS; // tasa mensual EN VIVO (refleja tus decisiones al instante; alcábala suavizada)
-  const kpiRow=(k,v)=>"<div class='kpi'><span>"+resImg(k)+" "+RES_LABEL[k]+"</span><span class='v "+(v<0?"neg":"pos")+"'>"+(v>=0?"+":"")+n1(v)+"</span></div>";
-  let anyBal=false;
-  if(Math.abs(bal.dinero||0)>0.05){h+=kpiRow("dinero",bal.dinero);anyBal=true;} // Ducados primero (ingreso FIJO)
-  if((S.tsyAlc||0)>0.5){h+="<div class='kpi'><span>⏳ Alcábala <small style='color:#7a828b'>acum.</small></span><span class='v pos'>+"+n1(S.tsyAlc)+"</span></div>";anyBal=true;} // variable: se cobra a fin de mes
-  for(const[cat,ico,lab]of RESCAT_META){ // el resto AGRUPADO por categoría
-    const ks=RES_KEYS.filter(k=>k!=="dinero"&&RES_CAT[k]===cat&&Math.abs(bal[k]||0)>0.05).sort((a,b)=>bal[b]-bal[a]);
-    if(!ks.length)continue;
-    anyBal=true;
-    h+="<div class='kpicat'>"+ico+" "+lab+"</div>";
-    for(const k of ks)h+=kpiRow(k,bal[k]);
-  }
-  if(!anyBal)h+="<div class='kpi'><span class='dim' style='color:#7a828b'>Sin balance neto.</span></div>";
   }
   const mine=S.armies.filter(a=>a.nation===S.player);
   h+="<h3>Ejércitos desplegados <span style='color:#7a828b;font-weight:normal'>"+mine.length+"</span></h3>";
@@ -930,12 +561,6 @@ function refreshSide(){
   refreshBuildBar();
   refreshArmyPanel();
   refreshArmyWin();
-}
-// Desglose de la relación como texto para el tooltip ("Frontera −10 · Insultos −8 · Conquista (rencor) −24").
-function relTip(a,b){
-  const bd=relBreakdown(a,b);
-  if(!bd.length)return "Sin tensión ni concordia (0)";
-  return bd.map(x=>x.label+" "+(x.v>0?"+":"−")+Math.abs(Math.round(x.v))).join(" · ");
 }
 // Barra visual del campo compartido Tensión↔Concordia (−100..+100). El 0 es el centro; la barra
 // se llena a la IZQUIERDA en rojo (tensión) o a la DERECHA en verde/azul (concordia).
@@ -1314,10 +939,8 @@ function ledgerRows(){
   const rows=[];
   for(let n=0;n<NPLAY;n++){
     if(!S.nations[n].alive)continue;
-    // ingreso /mes para comparar naciones: fijo + alcábala PROYECTADA (aquí sí, como tasa, porque no hay acumulado por nación)
-    const E2=S.nations[n].e2;
-    const income=S.econV2?((E2&&E2.inc&&E2.inc.corona)||0) // v2: ingreso medio mensual de la corona (impuestos, rentas, ventas)
-      :((nationEconomy(n).res.dinero||0)+(S.nations[n].alcabalaRate||0))*MONTH_TICKS;
+    // ingreso medio mensual de la corona (impuestos, rentas, ventas) para comparar naciones
+    const E2=S.nations[n].e2, income=(E2&&E2.inc&&E2.inc.corona)||0;
     rows.push({n,name:NATIONS[n].name,color:NATIONS[n].color,provs:provsBy[n],pop:popBy[n],
       troops:Math.round(troopsBy[n]),str:Math.round(strBy[n]),income,
       pc:popBy[n]>0?income*1e5/popBy[n]:0}); // riqueza per cápita: ducados netos/mes por 100.000 hab
@@ -1477,90 +1100,16 @@ function refreshEstates(){
   const ov=document.getElementById("estatesOverlay");
   if(!ov||ov.style.display!=="flex")return;
   const body=document.getElementById("estatesBody");
-  if(S.player<0){body.innerHTML="<p style='text-align:center;color:#9aa3ad'>Estás en modo observador. Toma el mando de una nación (desde el <b>Registro</b>) para ver sus estamentos.</p>";return}
-  if(S.econV2){refreshEstates2(body);return}
-  const N=NATIONS[S.player],NA=S.nations[S.player];
-  const cnt={};let pop=0;for(const k of STRATA)cnt[k]=0;
-  const owned={corona:{}};for(const k of STRATA)owned[k]={}; // edificios (niveles) por dueño
-  for(const p of S.provs){
-    if(p.owner!==S.player||p.wasteland||isOccupied(p))continue;
-    pop+=p.pop||0;
-    if(p.pops)for(const k of STRATA)cnt[k]+=p.pops[k]||0;
-    for(const b in p.buildings){const lv=p.buildings[b]||0;if(!lv)continue;const o=(p.bOwner&&p.bOwner[b])||"corona";if(owned[o])owned[o][b]=(owned[o][b]||0)+lv}
-  }
-  const wl=(NA&&NA.sWealth)||{}, mkt=(NA&&NA.mkt)||{};
-  const nf=v=>Math.round(v).toLocaleString("es-ES");
-  let h="<div class='tsyhead'><span class='chip' style='background:"+N.color+"'></span> "+N.name+" · "+nf(pop)+" hab.</div>";
-  h+="<div style='display:flex;font-size:10px;color:#7a828b;margin:8px 2px 3px'><span style='flex:1'></span><span style='width:88px;text-align:right'>habitantes</span><span style='width:52px;text-align:right'>%</span><span style='width:78px;text-align:right'>riqueza 🪙</span></div>";
-  for(const k of STRATA){
-    const info=STRATA_INFO[k],c=cnt[k],pct=pop>0?100*c/pop:0;
-    h+="<div style='margin-bottom:8px'>"+
-       "<div style='display:flex;align-items:center;gap:7px;font-size:13px'>"+
-         "<span style='font-size:16px'>"+info.icon+"</span>"+
-         "<b style='flex:1'>"+info.label+"</b>"+
-         "<span style='color:var(--txt);width:88px;text-align:right'>"+nf(c)+"</span>"+
-         "<span style='color:#9aa3ad;width:52px;text-align:right'>"+pct.toFixed(1)+"%</span>"+
-         "<span style='color:var(--title);width:78px;text-align:right'>"+nf(wl[k]||0)+"</span>"+
-       "</div>"+
-       "<div style='height:6px;background:#2a2f36;border-radius:3px;margin-top:3px;overflow:hidden'>"+
-         "<div style='height:100%;width:"+pct.toFixed(1)+"%;background:"+N.color+"'></div>"+
-       "</div>";
-    // reservas de bienes + edificios que POSEE el estamento (el campesino no construye)
-    if(k!=="campesino"){
-      const sr=(NA&&NA.sRes&&NA.sRes[k])||{};
-      const resP=[];for(const g in sr)if(sr[g]>1)resP.push((RES_ICON[g]||RES_LABEL[g]||g)+" "+nf(sr[g]));
-      const ob=owned[k];let nb=0;const types=[];for(const b in ob){nb+=ob[b];types.push((BUILDINGS[b]?BUILDINGS[b].label:b)+"×"+ob[b])}
-      const bTxt=nb?"🏛 "+nb+" edificios <span style='color:#7a828b'>("+types.slice(0,6).join(", ")+(types.length>6?"…":"")+")</span>":"🏛 sin edificios";
-      h+="<div style='font-size:11px;color:#9aa3ad;margin-top:2px;padding-left:23px'>"+bTxt+"</div>";
-      if(resP.length)h+="<div style='font-size:11px;color:#7a828b;padding-left:23px'>📦 "+resP.join(" · ")+"</div>";
-    }
-    // DESGLOSE de flujos de riqueza del estamento (mes en curso): de dónde entra y en qué se gasta
-    const fl=(S.sFlow&&S.sFlow[k])||{};
-    const cats=Object.keys(fl).filter(c=>Math.abs(fl[c])>0.5).sort((a,b)=>Math.abs(fl[b])-Math.abs(fl[a]));
-    if(cats.length){
-      let net=0;for(const c of cats)net+=fl[c];
-      h+="<div style='padding-left:23px;margin-top:4px'>"+
-         "<div style='font-size:9px;color:#7a828b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:1px'>Flujo este mes</div>";
-      for(const c of cats)h+="<div style='display:flex;font-size:11px;justify-content:space-between;gap:8px'>"+
-        "<span style='color:#9aa3ad'>"+c+"</span><span style='color:"+(fl[c]<0?"var(--neg)":"var(--pos)")+"'>"+(fl[c]>=0?"+":"−")+nf(Math.abs(fl[c]))+"</span></div>";
-      h+="<div style='display:flex;font-size:11px;justify-content:space-between;gap:8px;border-top:1px solid #3a4047;margin-top:2px;padding-top:2px'>"+
-        "<span style='color:#c9c2ae'>Neto del mes</span><span style='color:"+(net<0?"var(--neg)":"var(--pos)")+"'>"+(net>=0?"+":"−")+nf(Math.abs(net))+" 🪙</span></div></div>";
-    }
-    // DESGLOSE de CONSUMO por bien (qué compra el estamento en el mercado, cantidad y gasto)
-    const cons=(S.sConsume&&S.sConsume[k])||{};
-    const goods=Object.keys(cons).filter(g=>cons[g][1]>0.5).sort((a,b)=>cons[b][1]-cons[a][1]);
-    if(goods.length){
-      h+="<div style='padding-left:23px;margin-top:4px'>"+
-         "<div style='font-size:9px;color:#7a828b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px'>Compra por bien (gasto · cantidad)</div>"+
-         "<div style='display:flex;flex-wrap:wrap;gap:3px 12px'>";
-      for(const g of goods)h+="<span style='font-size:11px;color:#c9c2ae;white-space:nowrap' title='"+(RES_LABEL[g]||g)+"'>"+
-        resImg(g)+" "+nf(cons[g][1])+"🪙 <span style='color:#7a828b'>("+nf(cons[g][0])+")</span></span>";
-      h+="</div></div>";
-    }
-    h+="</div>";
-  }
-  h+="<p style='color:#7a828b;font-size:11px;margin-top:10px;text-align:center'>Los estratos ganan por su rol, comen y compran sus lujos. El comercio de bienes vive ahora en la ventana <b>🏪 Mercado</b>.</p>";
-  body.innerHTML=h;
+  if(S.player<0){body.innerHTML="<p style='text-align:center;color:#9aa3ad'>Estás en modo observador. Toma el mando de una nación (desde el <b>Registro</b>) para ver su estamentos.</p>";return}
+  refreshEstates2(body);
 }
 // ---- Mercado del reino (ventana propia): comercio de bienes, precios, oferta/demanda interna y exterior ----
 // ---- Geografía de un bien: producción por nación (suma de lo provincial, ADR 0001) + demanda del mercado.
 // Se calcula al PULSAR un bien (O(provincias), no por tick). Equivalente en juego de tools/diag-paises.mjs. ----
-function goodGeography(g){
-  if(S.econV2){const rows=[]; // v2: lo que cada reino lleva a su plaza (N.mktInfo, u/mes → /año)
-    for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(!N||!N.alive)continue;const mi=(N.mktInfo&&N.mktInfo[g])||{};
-      rows.push({n,prod:(mi.prod||0)*12,cons:(mi.dem||0)*12,net:((mi.prod||0)-(mi.dem||0))*12})}
-    return rows}
-  const prod=new Float64Array(NPLAY);
-  const isBasic=BASICS.indexOf(g)>=0, isSpec=isRawSpecialty(g);
-  for(const p of S.provs){const n=p.owner; if(n>=NPLAY||p.wasteland||isOccupied(p))continue;
-    if(isBasic)prod[n]+=subsProd(p,g)*YR_TICKS;
-    if(isSpec&&p.resType===g)prod[n]+=(p.pop||0)*RESTYPE_RATE*terrMul(p,g)*(p.morale/100);
-    for(const b in p.buildings){if(!lvlOf(p,b))continue;const o=buildingOutput(p,b);if(o.g===g&&o.q)prod[n]+=o.q*12;}
-  }
+function goodGeography(g){ // lo que cada reino lleva a su plaza (N.mktInfo, u/mes → /año)
   const rows=[];
-  for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(!N||!N.alive)continue;
-    const mi=(N.mktInfo&&N.mktInfo[g])||{};
-    rows.push({n,prod:prod[n],cons:(mi.dem||0)*12,net:prod[n]-(mi.dem||0)*12});}
+  for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(!N||!N.alive)continue;const mi=(N.mktInfo&&N.mktInfo[g])||{};
+    rows.push({n,prod:(mi.prod||0)*12,cons:(mi.dem||0)*12,net:((mi.prod||0)-(mi.dem||0))*12})}
   return rows;
 }
 // Precalcula, por nación, los valores que el map mode "Comercio de un bien" pinta (render.js los lee de S.gm*):
@@ -1568,7 +1117,7 @@ function goodGeography(g){
 window.computeGoodMap=function(g){
   const geo=goodGeography(g);
   const prodA=new Float64Array(NPLAY),netA=new Float64Array(NPLAY),prA=new Float64Array(NPLAY).fill(1);
-  const ref=(S.econV2?REF2[g]*PRICE_SCALE:MKT_PRICE[g])||1; let maxP=1,maxN=1;
+  const ref=REF2[g]*PRICE_SCALE; let maxP=1,maxN=1;
   for(const r of geo){prodA[r.n]=r.prod;netA[r.n]=r.net;if(r.prod>maxP)maxP=r.prod;if(Math.abs(r.net)>maxN)maxN=Math.abs(r.net);
     const N=S.nations[r.n];prA[r.n]=((N&&N.mktPrice&&N.mktPrice[g])||ref)/ref;}
   S.gmProd=prodA;S.gmNet=netA;S.gmPriceR=prA;S.gmMaxP=maxP;S.gmMaxN=maxN;
@@ -1579,7 +1128,7 @@ window.refreshGoodLegend=function(){
   if(!S.goodView){el.style.display="none";return;}
   const g=S.mapGood||"lana", m=S.mapMetric||"deficit";
   const mchip=(k,lab)=>"<span onclick=\"setGoodMetric('"+k+"')\" style='cursor:pointer;padding:1px 7px;border-radius:4px;font-size:11px;"+(m===k?"background:#3a4550;color:#fff":"color:#9aa3ad")+"'>"+lab+"</span>";
-  const picker=(S.econV2?GOODS2:MKT_TRADE).map(x=>"<span onclick=\"setMapGood('"+x+"')\" data-tip=\""+ta(gLabel(x))+"\" style='cursor:pointer;font-size:16px;opacity:"+(x===g?"1":".4")+"'>"+(RES_ICON[x]||"·")+"</span>").join(" ");
+  const picker=GOODS2.map(x=>"<span onclick=\"setMapGood('"+x+"')\" data-tip=\""+ta(gLabel(x))+"\" style='cursor:pointer;font-size:16px;opacity:"+(x===g?"1":".4")+"'>"+(RES_ICON[x]||"·")+"</span>").join(" ");
   const scale=m==="prod"
     ?"<span style='color:#7a828b'>poco</span> <span style='background:linear-gradient(90deg,#3a483a,#6cb05c);width:64px;height:8px;display:inline-block;border-radius:2px;vertical-align:middle'></span> <span style='color:#6cb05c'>mucho</span>"
     :"<span style='color:var(--neg)'>"+(m==="price"?"caro":"déficit")+"</span> <span style='background:linear-gradient(90deg,#c4563e,#82888e,#6cb05c);width:74px;height:8px;display:inline-block;border-radius:2px;vertical-align:middle'></span> <span style='color:var(--pos)'>"+(m==="price"?"barato":"excedente")+"</span>";
@@ -1589,133 +1138,12 @@ window.refreshGoodLegend=function(){
     "<div style='display:flex;flex-wrap:wrap;gap:4px;max-width:220px;line-height:1.7'>"+picker+"</div>";
   el.style.display="block";
 };
-// cadena de producción de un bien (fábrica que lo hace → sus insumos). "" si es materia prima sin cadena.
-function chainStr(g){
-  for(const b in BUILDINGS){const B=BUILDINGS[b];if(B.fx&&B.fx.prodAdd&&B.fx.prodAdd[g]&&B.inputs)
-    return Object.keys(B.inputs).map(k=>(RES_ICON[k]||"")+RES_LABEL[k]).join(" + ")+" → "+(RES_ICON[g]||"")+RES_LABEL[g];}
-  return "";
-}
-// ---- ficha de UN bien: su balance en mi reino (con el PORQUÉ: cobertura) + su geografía mundial (el DÓNDE) ----
-function renderMktGood(body,N,NA,g,nf,n1v){
-  const info=(NA&&NA.mktInfo)||{},mkt=(NA&&NA.mkt)||{},mi=info[g]||{};
-  const price=mi.price!=null?mi.price:MKT_PRICE[g],ref=MKT_PRICE[g],dev=ref>0?Math.round((price/ref-1)*100):0;
-  const pcol=price>ref*1.05?"var(--neg)":(price<ref*0.95?"var(--pos)":"#9aa3ad");
-  const chain=chainStr(g);
-  let h="<div class='tcrumb'><span class='tccl' onclick='closeMktGood()'>🏪 Mercado</span> <span style='color:#5c636b'>▸</span> "+(RES_ICON[g]||"")+" <b>"+RES_LABEL[g]+"</b></div>";
-  // --- En mi reino ---
-  h+="<div class='bsec'>En "+N.name+"</div>";
-  const line=(lab,val,col)=>"<div class='prow'><span>"+lab+"</span><span class='statv' style='color:"+(col||"var(--txt)")+"'>"+val+"</span></div>";
-  h+=line("Precio",n1v(price)+"🪙 <span style='color:#7a828b'>("+(dev>=0?"+":"")+dev+"% vs ref "+ref+")</span>",pcol);
-  h+=line("Stock en el mercado",nf(mkt[g]||0));
-  h+=line("Demanda",nf(mi.dem||0)+" /mes");
-  h+=line("Vendido",nf(mi.sold||0)+" /mes"+(mi.short?" <span style='color:var(--neg)'>⚠ escasea</span>":""),mi.short?"var(--neg)":null);
-  if(mi.exp>1)h+=line("Exporta",nf(mi.exp)+" /mes ↗","var(--pos)");
-  if(mi.imp>1)h+=line("Importa",nf(mi.imp)+" /mes ↙","#d6a15a");
-  // el PORQUÉ: cobertura de insumos (si g lo consumen fábricas de este reino)
-  const cov=NA&&NA.inputCover&&NA.inputCover[g];
-  if(cov!=null){const pc=Math.round(cov*100),cc=cov<0.6?"var(--neg)":cov<0.9?"#d6a15a":"var(--pos)";
-    h+="<div class='prow'><span>Cobertura para las fábricas"+iInfo("Cuánta de la materia prima que las fábricas de tu reino DEMANDAN llega a comprarse. Si baja, esas fábricas producen menos: es el PORQUÉ de una manufactura floja.")+"</span>"+
-      "<span class='statv' style='color:"+cc+"'>"+relFillBar(pc)+" "+pc+"%</span></div>";}
-  if(chain)h+="<div class='prow'><span style='color:#9aa3ad;font-size:11px'>🏭 "+chain+"</span></div>";
-  // --- En el mundo: quién produce (excedente) y quién consume (déficit) ---
-  const geo=goodGeography(g);
-  const prod=geo.filter(r=>r.prod>1).sort((a,b)=>b.prod-a.prod).slice(0,8);
-  const defs=geo.filter(r=>r.net<-1).sort((a,b)=>a.net-b.net).slice(0,8);
-  const chip=n=>"<span class='chip' style='background:"+NATIONS[n].color+"'></span> "+NATIONS[n].name;
-  let TP=0,TC=0;for(const r of geo){TP+=r.prod;TC+=r.cons;}
-  h+="<div class='bsec'>En el mundo</div>";
-  h+="<div style='display:flex;gap:12px'>";
-  h+="<div style='flex:1'><div style='font-size:11px;color:var(--pos);margin-bottom:2px'>Producen (excedente)</div>"+
-    (prod.length?prod.map(r=>"<div class='prow' style='font-size:12px'><span>"+chip(r.n)+"</span><span class='statv pos'>"+nf(r.prod)+"</span></div>").join(""):"<div class='prow'><span class='dim'>—</span></div>")+"</div>";
-  h+="<div style='flex:1'><div style='font-size:11px;color:#d6a15a;margin-bottom:2px'>Consumen (déficit)</div>"+
-    (defs.length?defs.map(r=>"<div class='prow' style='font-size:12px'><span>"+chip(r.n)+"</span><span class='statv neg'>"+nf(-r.net)+"</span></div>").join(""):"<div class='prow'><span class='dim'>—</span></div>")+"</div>";
-  h+="</div>";
-  const ratio=TC>0?TP/TC:9;
-  h+="<div style='text-align:center;font-size:12px;margin:8px 0;color:"+(ratio>1.15?"var(--pos)":ratio<0.85?"var(--neg)":"#9aa3ad")+"'>MUNDIAL: "+nf(TP)+" prod · "+nf(TC)+" cons /año · ratio "+n1v(ratio)+" "+(ratio>1.3?"— raw en excedente, industrializable ✔":ratio<0.85?"— déficit global ⚠":"— equilibrado")+"</div>";
-  // chips que pintan el mapa
-  h+="<div style='display:flex;gap:8px;justify-content:center;margin-top:6px'>"+
-    "<button class='bbtn sm' onclick='showGoodMap(\""+g+"\",\"prod\")'>🗺 Producción</button>"+
-    "<button class='bbtn sm' onclick='showGoodMap(\""+g+"\",\"price\")'>🗺 Precio</button>"+
-    "<button class='bbtn sm' onclick='showGoodMap(\""+g+"\",\"deficit\")'>🗺 Déficit</button></div>";
-  body.innerHTML=h;
-}
-// barra 0..100 reutilizable (misma estética que las barras inline del juego)
-function relFillBar(pc){return "<span style='display:inline-block;width:46px;height:6px;background:#241a14;border-radius:3px;overflow:hidden;vertical-align:middle'><i style='display:block;height:100%;width:"+Math.max(0,Math.min(100,pc))+"%;background:"+(pc<60?"#c0563e":pc<90?"#c98a3a":"#6fae5a")+"'></i></span>";}
 function refreshMercado(){
   const ov=document.getElementById("mercadoOverlay");
   if(!ov||ov.style.display!=="flex")return;
   const body=document.getElementById("mercadoBody");
   if(S.player<0){body.innerHTML="<p style='text-align:center;color:#9aa3ad'>Estás en modo observador. Toma el mando de una nación (desde el <b>Registro</b>) para ver su mercado.</p>";return}
-  if(S.econV2){refreshMercado2(body);return}
-  const N=NATIONS[S.player],NA=S.nations[S.player];
-  const mkt=(NA&&NA.mkt)||{}, info=(NA&&NA.mktInfo)||{};
-  const nf=v=>Math.round(v).toLocaleString("es-ES");
-  const n1v=v=>Math.round(v*10)/10;
-  if(S.mktGood){renderMktGood(body,N,NA,S.mktGood,nf,n1v);return;} // drill-down: ficha de un bien
-  // agregados de comercio (valor = volumen × precio; /mes, se anualiza ×12)
-  const vol=S.mktVol||{}; // VOLUMEN físico del mes en curso (producido/vendido/tirado por bien; solo jugador)
-  let expVal=0,impVal=0,intVal=0,expVol=0,impVol=0,intVol=0,prodVol=0,discVol=0,discVal=0;
-  for(const g of MKT_TRADE){const mi=info[g]||{},pr=mi.price!=null?mi.price:MKT_PRICE[g];
-    expVal+=(mi.exp||0)*pr; impVal+=(mi.imp||0)*pr; intVal+=(mi.sold||0)*pr;
-    expVol+=mi.exp||0; impVol+=mi.imp||0; intVol+=mi.sold||0;
-    const vg=vol[g]||{}; prodVol+=vg.prod||0; discVol+=vg.discard||0; discVal+=(vg.discard||0)*pr;}
-  const bal=expVal-impVal;
-  let h="<div class='tsyhead'><span class='chip' style='background:"+N.color+"'></span> "+N.name+" · comercio de bienes"+iInfo("Los burgueses compran los bienes donde están baratos (excedente) y los venden donde están caros (déficit): el comercio hace CONVERGER los precios entre reinos. Pulsa un bien para ver su balance y su geografía mundial.")+"</div>";
-  // tarjetas resumen
-  const card=(lab,val,sub,col)=>"<div style='flex:1;min-width:120px;background:#20252b;border:1px solid #2f363d;border-radius:7px;padding:8px 10px'>"+
-    "<div style='font-size:10px;color:#7a828b;text-transform:uppercase;letter-spacing:.4px'>"+lab+"</div>"+
-    "<div style='font-size:17px;font-weight:bold;color:"+(col||"var(--txt)")+"'>"+val+"</div>"+
-    "<div style='font-size:10px;color:#7a828b'>"+sub+"</div></div>";
-  h+="<div style='display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 4px'>"+
-    card("Balance comercial",(bal>=0?"+":"")+nf(bal)+"🪙",(bal>=0?"superávit":"déficit")+" /mes",bal>=0?"var(--pos)":"var(--neg)")+
-    card("Exportación",nf(expVal)+"🪙",nf(expVol)+" u/mes · "+nf(expVal*12)+"🪙/año","var(--pos)")+
-    card("Importación",nf(impVal)+"🪙",nf(impVol)+" u/mes · "+nf(impVal*12)+"🪙/año","#d6a15a")+
-    card("Comercio interno",nf(intVal)+"🪙",nf(intVol)+" u/mes (dentro del reino)")+
-    card("Producción al mercado",nf(prodVol)+" u",nf(prodVol)+" u/mes (materias del campo)")+
-    card("Tirado (sobreproducción)",nf(discVol)+" u",nf(discVal)+"🪙 desperdiciado /mes",discVol>1?"var(--neg)":"#7a828b")+
-    "</div>";
-  // tabla por bien, agrupada en Básicos y Lujos
-  const th="<div style='display:flex;font-size:10px;color:#7a828b;padding:3px 1px 2px;border-bottom:1px solid #2a2f36'>"+
-    "<span style='flex:1'>bien</span><span style='width:60px;text-align:right'>precio</span><span style='width:58px;text-align:right'>stock</span>"+
-    "<span style='width:60px;text-align:right'>producido</span><span style='width:62px;text-align:right'>demanda</span><span style='width:58px;text-align:right'>vendido</span>"+
-    "<span style='width:56px;text-align:right' title='producido por encima del tope de inventario = sobreproducción tirada'>tirado</span>"+
-    "<span style='width:52px;text-align:right'>exporta</span><span style='width:52px;text-align:right'>importa</span></div>";
-  const rowFor=g=>{
-    const mi=info[g]||{}, price=mi.price!=null?mi.price:MKT_PRICE[g], ref=MKT_PRICE[g];
-    const dev=ref>0?Math.round((price/ref-1)*100):0;
-    const pcol=price>ref*1.05?"var(--neg)":(price<ref*0.95?"var(--pos)":"#9aa3ad");
-    const expTxt=(mi.exp>1)?"<span style='color:var(--pos)'>↗"+nf(mi.exp)+"</span>":"<span style='color:#5a6470'>—</span>";
-    const impTxt=(mi.imp>1)?"<span style='color:#d6a15a'>↙"+nf(mi.imp)+"</span>":"<span style='color:#5a6470'>—</span>";
-    const vg=vol[g]||{}, prodTxt=(vg.prod>1)?nf(vg.prod):"<span style='color:#5a6470'>—</span>";
-    const discTxt=(vg.discard>1)?"<span style='color:var(--neg)'>"+nf(vg.discard)+"</span>":"<span style='color:#5a6470'>—</span>";
-    const chn=chainStr(g);
-    return "<div onclick=\"openMktGood('"+g+"')\" style='display:flex;align-items:center;font-size:12px;padding:2px 1px;cursor:pointer' onmouseover=\"this.style.background='#20252b'\" onmouseout=\"this.style.background=''\""+(chn?" data-tiph=\""+ta("🏭 "+chn)+"\"":"")+">"+
-      "<span style='flex:1'>"+(RES_ICON[g]||"")+" "+RES_LABEL[g]+"</span>"+
-      "<span style='width:60px;text-align:right;color:"+pcol+"' title='ref. "+ref+"🪙 · "+(dev>=0?"+":"")+dev+"%'>"+n1v(price)+"🪙</span>"+
-      "<span style='width:58px;text-align:right;color:var(--txt)'>"+nf(mkt[g]||0)+"</span>"+
-      "<span style='width:60px;text-align:right;color:#9aa3ad'>"+prodTxt+"</span>"+
-      "<span style='width:62px;text-align:right;color:#9aa3ad'>"+nf(mi.dem||0)+"</span>"+
-      "<span style='width:58px;text-align:right;color:#9aa3ad'>"+nf(mi.sold||0)+"</span>"+
-      "<span style='width:56px;text-align:right'>"+discTxt+"</span>"+
-      "<span style='width:52px;text-align:right'>"+expTxt+"</span>"+
-      "<span style='width:52px;text-align:right'>"+impTxt+"</span></div>";
-  };
-  // agrupado POR CATEGORÍA (cereal, cultivo, ganadería, bosque, minería, mar, manufacturas, comercio)
-  const MKT_CATS=[["cereal","🌾","Cereal"],["cultivo","🍇","Cultivo"],["ganado","🐑","Ganadería"],
-    ["bosque","🪵","Bosque"],["extractivo","⛏","Minería"],["mar","🐟","Mar"],
-    ["manufactura","🏭","Manufacturas"],["comercio","🌶","Comercio lejano"]];
-  for(const[cat,ico,lab]of MKT_CATS){
-    const goods=MKT_TRADE.filter(g=>RES_CAT[g]===cat);
-    if(!goods.length)continue;
-    h+="<div style='margin-top:11px'><div style='font-size:12px;color:var(--title);margin-bottom:2px'>"+ico+" "+lab+"</div>"+th;
-    for(const g of goods)h+=rowFor(g);
-    h+="</div>";
-  }
-  h+="<div style='display:flex;font-size:10px;color:#7a828b;gap:14px;flex-wrap:wrap;margin-top:10px;justify-content:center'>"+
-    "<span>precio en 🪙 (color: rojo caro / verde barato vs. referencia)</span><span>demanda/interno en unidades/mes</span>"+
-    "<span><span style='color:var(--pos)'>↗</span> exporta a otros reinos · <span style='color:#d6a15a'>↙</span> importa (u/mes)</span>"+
-    "<span style='color:var(--title)'>↕ pulsa un bien para su ficha</span></div>";
-  body.innerHTML=h;
+  refreshMercado2(body);
 }
 // ---- Cortes · Hacienda Real: ajustar los impuestos/gravámenes de la corona ----
 function refreshFiscal(){
@@ -1726,8 +1154,6 @@ function refreshFiscal(){
   const n=S.player, N=S.nations[n];
   const nf=v=>Math.round(v).toLocaleString("es-ES"), pct=v=>Math.round(v*100);
   const feud=taxRateOf(n), alc=alcabalaOf(n), alm=almojOf(n);
-  const alcInc=(N.alcabalaRate||0)*MONTH_TICKS, almInc=(N.almojRate||0)*MONTH_TICKS;
-  const coronaMes=nationEconomy(n).res.dinero*MONTH_TICKS;
   const slider=(label,val,min,max,kind,info,inc)=>
     "<div style='background:#20252b;border:1px solid #2f363d;border-radius:8px;padding:11px 13px;margin-bottom:9px'>"+
       "<div style='display:flex;justify-content:space-between;align-items:baseline'>"+
@@ -1735,27 +1161,19 @@ function refreshFiscal(){
         "<span style='font-family:monospace;font-size:15px;color:var(--title)'>"+pct(val)+"%</span></div>"+
       (inc!=null?"<div style='font-size:11px;color:#8aa478'>≈ +"+nf(inc)+"🪙/mes a la corona (variable)</div>":"")+
       "<input type='range' min='"+min+"' max='"+max+"' value='"+pct(val)+"' step='1' style='width:100%;margin-top:6px' oninput='setTax(\""+kind+"\",this.value)'></div>";
-  if(S.econV2){ // v2: lo que rindió cada impuesto el mes pasado (libro de la corona)
-    const cb=crownBook("prev"),got=c=>cb.cats[c]||0,lab=cb.cur?"este mes":"el mes pasado";
-    const slider2=(label,val,min,max,kind,info,inc)=>slider(label,val,min,max,kind,info,null).replace("</span></div>","</span></div><div style='font-size:11px;color:#8aa478'>+"+nf(inc)+" 🪙 "+lab+"</div>");
-    let h="<div style='text-align:center;font-size:12px;color:#9aa3ad;margin-bottom:11px'>Ingresos de la corona "+lab+": <b style='color:var(--title)'>"+nf(cb.inc)+" 🪙</b></div>";
-    h+=slider2("🌾 Pecho",feud,2,20,"feudal","Lo paga el campesino sobre lo que vende de su cosecha en la plaza. Más pecho, menos le queda para sus comodidades.",got("Pecho"));
-    h+=slider2("🏪 Alcabala",alc,0,30,"alcabala","Sobre cada compra en la plaza del reino: encarece lo que compran todos los estamentos.",got("Alcabala"));
-    h+=slider2("⚓ Almojarifazgo",alm,0,60,"almoj","Aduana sobre el comercio con otros reinos: resta margen al mercader.",got("Almojarifazgo"));
-    h+="<div style='background:#1c2026;border:1px solid #2a2f36;border-radius:8px;padding:9px 13px;margin-bottom:4px;opacity:.75'>"+
-      "<div style='display:flex;justify-content:space-between;align-items:baseline'><span>⛪ Diezmo"+iInfo("La décima de toda la cosecha, en especie, va al clero. Es derecho de la Iglesia: no se toca.")+"</span><span style='font-family:monospace'>"+pct(DIEZMO)+"%</span></div></div>";
-    body.innerHTML=h;return;
-  }
-  let h="<div style='text-align:center;font-size:12px;color:#9aa3ad;margin-bottom:11px'>Ingreso fijo de la corona: <b style='color:var(--title)'>"+nf(coronaMes)+"🪙/mes</b> + comercio (abajo)</div>";
-  h+=slider("🌾 Impuesto feudal",feud,2,20,"feudal","La parte de la corona del reparto feudal (sobre la producción del campesino). Histórico Castilla ~8%. Más ingreso, pero empobrece al campesino y le baja la moral.",null);
-  h+=slider("🏪 Alcábala (comercio interno)",alc,0,30,"alcabala","Impuesto sobre las VENTAS del mercado interno del reino. Histórico Castilla ~10% (empezó más bajo). Ingreso variable según cuánto se comercie.",alcInc);
-  h+=slider("⚓ Almojarifazgo (aduana exterior)",alm,0,60,"almoj","Aduana sobre el comercio EXTERIOR (el arbitraje entre reinos, que enriquece a los burgueses). Histórico Castilla ~5% (2,5% exportación / 5% importación). Súbelo para frenar ese enriquecimiento y financiar a la corona.",almInc);
+  // lo que rindió cada impuesto el mes pasado (libro de la corona)
+  const cb=crownBook("prev"),got=c=>cb.cats[c]||0,lab=cb.cur?"este mes":"el mes pasado";
+  const slider2=(label,val,min,max,kind,info,inc)=>slider(label,val,min,max,kind,info,null).replace("</span></div>","</span></div><div style='font-size:11px;color:#8aa478'>+"+nf(inc)+" 🪙 "+lab+"</div>");
+  let h="<div style='text-align:center;font-size:12px;color:#9aa3ad;margin-bottom:11px'>Ingresos de la corona "+lab+": <b style='color:var(--title)'>"+nf(cb.inc)+" 🪙</b></div>";
+  h+=slider2("🌾 Pecho",feud,2,20,"feudal","Lo paga el campesino sobre lo que vende de su cosecha en la plaza. Más pecho, menos le queda para sus comodidades.",got("Pecho"));
+  h+=slider2("🏪 Alcabala",alc,0,30,"alcabala","Sobre cada compra en la plaza del reino: encarece lo que compran todos los estamentos.",got("Alcabala"));
+  h+=slider2("⚓ Almojarifazgo",alm,0,60,"almoj","Aduana sobre el comercio con otros reinos: resta margen al mercader.",got("Almojarifazgo"));
   h+="<div style='background:#1c2026;border:1px solid #2a2f36;border-radius:8px;padding:9px 13px;margin-bottom:4px;opacity:.75'>"+
-      "<div style='display:flex;justify-content:space-between;align-items:baseline'><span>⛪ Diezmo (Iglesia)"+iInfo("El 10% de la producción del campesino va al CLERO, no a la corona. Fijo: es derecho de la Iglesia.")+"</span><span style='font-family:monospace'>"+pct(DIEZMO)+"%</span></div></div>";
+    "<div style='display:flex;justify-content:space-between;align-items:baseline'><span>⛪ Diezmo"+iInfo("La décima de toda la cosecha, en especie, va al clero. Es derecho de la Iglesia: no se toca.")+"</span><span style='font-family:monospace'>"+pct(DIEZMO)+"%</span></div></div>";
   body.innerHTML=h;
 }
 /* ============================= ECONOMÍA v2: Tesorería, Mercado y Estamentos =============================
- * Solo con S.econV2 (la v1 sigue en las funciones de arriba). Qué cuentan: design/economia-v2.md §13.
+ * Qué cuentan: design/economia-v2.md §13.
  * Datos: el libro de la corona (S.cBook/S.cPrev, economy.js recCrown), los flujos de los estamentos del mes cerrado
  * (S.sFlowPrev/S.sConsumePrev), N.e2 (cobertura de las 3 necesidades, ingreso, cesta) y N.mktInfo (u/mes). */
 const TIER2={};for(const t in NEED2)for(const g in NEED2[t])TIER2[g]=t;
@@ -2177,5 +1595,5 @@ function provEcoWinHTML(p){ // ventana Economía: el mismo libro que la Tesorer�
 window.setProvMonth=function(k){S.pMonth=k;S.pEcoPath=null;refreshBuildBar()};
 window.provEcoDrill=function(w){S.pEcoPath=w;refreshBuildBar()};
 export {
-  log, fmt, fmtDur, iInfo, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, buildRealmMenu, refreshMetricsLog, refreshArmyPanel, refreshTreasury, refreshEstates, refreshMercado, refreshFiscal, refreshCouncil, refreshCoalPeace, refreshLeagues, refreshCallToArms, refreshDipModal
+  log, fmt, fmtDur, iInfo, buildResBar, refreshTop, costStr, n1, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, buildRealmMenu, refreshMetricsLog, refreshArmyPanel, refreshTreasury, refreshEstates, refreshMercado, refreshFiscal, refreshCouncil, refreshCoalPeace, refreshLeagues, refreshCallToArms, refreshDipModal
 };

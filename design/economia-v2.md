@@ -1,6 +1,6 @@
 # Economía v2 — "una sola regla"
 
-> Estado: **IMPLEMENTADO tras interruptor** (2026-09-25): `call-of-war/js/economy2.js`, se activa con `?eco=2`.
+> Estado: **ÚNICA ECONOMÍA DEL JUEGO** (implementada 2026-09-25; la v1 se borró el 2026-09-27): `call-of-war/js/economy2.js`.
 > Pasado por /consejo (§10). Decisiones de implementación y primera calibración en §11. Pendiente de /ux.
 > Sustituye a la economía actual (`economy.js`, `economyTick`) por un módulo nuevo `economy2.js` en paralelo,
 > tras un interruptor. v1 se borra cuando v2 se juegue mejor.
@@ -175,8 +175,16 @@ Criterio rector: **simplicidad**. 5/5 estamentos ⚠️, ninguno ❌, ningún ma
 
 ## 11. Implementación (2026-09-25)
 
-Código: `call-of-war/js/economy2.js` (motor) · interruptor `S.econV2` (`?eco=2` / `?eco=1`, se recuerda; la partida
-guardada conserva la suya) · enganche en `sim.js` (tick, siembra, IA de obras) · arnés `tools/verify-v2.mjs`.
+Código: `call-of-war/js/economy2.js` (motor; `economy.js` conserva lo compartido: despensa, tasas, libros de cuentas)
+· enganche en `sim.js` (tick, siembra) y `estates.js` (IA de obras de estamentos y corona) · arnés `tools/verify-v2.mjs`
+(invariante del dinero + libros de cuentas) y `tools/e2e-v2.mjs` (juego real en Chrome). Las partidas guardadas con la v1
+ya no se cargan.
+
+**Cambios del 2026-09-27 (decisiones de Sergio):** la **Granja** es la explotación de su dueño (produce grano para él,
+BLD2; ya no multiplica el grano del campesino). La **corona** guarda en su almacén lo de sus talleres de madera, piedra,
+hierro, grano y caballos, y su IA elige obras con la misma lógica que los estamentos (`pickCrownBuild`): lo del almacén
+vale su precio solo mientras le haga falta (`CROWN_STOCK_WANT`). Los **centros de comercio** se calculan en el tick
+(antes solo al abrir la vista de mapa: flete y portazgo eran 0 en partida).
 
 **Cómo se cumple la regla — la PLAZA.** Cada reino tiene una plaza (`N.e2.plaza`) que paga al productor cuando entrega
 y cobra al consumidor cuando compra. Su saldo acumulado ES el dinero creado por el comercio. Grifos/sumideros

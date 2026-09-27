@@ -1,17 +1,15 @@
 // sim.js
 import { BUILDINGS, GARR_CITADEL, GARR_FORT, GARR_MIN, GOLD_PER_WS, LEVY_RAISE_HOURS, NATIONS, NEUTRAL, NPLAY, RES_BUILDING, RES_KEYS, SIEGE_BASE_H, START_STOCK, TERRAINS, UNITS, WAR_LOCK_HOURS, WS_BATTLE, WS_DUCHY_BASE, WS_DUCHY_PER, isSea, EMBARK_HOURS } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyDef, armyHp, armySpd, bOwnerOf, buildBlock, buildJobs, buildMax, buildSlots, canAfford, canStaffIndustry, costFor, economyTick, ESTATES_BUILD, foodFill, storeCap, SUBS_BASICS, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor, usedSlots, seedStrataWealth, tsyTick, recFlow, recCrown, specialistCap, jobsOf, prosperityTick, degradeBuildings, buildingProfit, buildingOutput, sourceableSet, inputsSourceable } from "./economy.js";
-import { relTick, getRel, THRESH, conquestFanout, insult, fabricateClaim, hasClaim, duchyOwner, sameLeague,
-  hasPact, nationNeighbors, rivalsOf, isRival, sharedRivals, MAX_RIVALS, canPact, formPact,
-  leagueOf, canApplyLeague, applyToLeague, createLeague, leaveLeague, resolveApplication, MAX_LEAGUE } from "./diplomacy.js";
+import { armyAtk, armyCount, armyDef, armyHp, armySpd, bOwnerOf, buildBlock, buildJobs, buildMax, buildSlots, canAfford, canStaffIndustry, costFor, ESTATES_BUILD, foodFill, storeCap, SUBS_BASICS, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor, usedSlots, tsyTick, recFlow, recCrown, specialistCap, jobsOf, degradeBuildings } from "./economy.js";
+import { relTick, getRel, THRESH, conquestFanout, insult, fabricateClaim, hasClaim, duchyOwner, sameLeague, hasPact, nationNeighbors, rivalsOf, isRival, sharedRivals, MAX_RIVALS, canPact, formPact, leagueOf, canApplyLeague, applyToLeague, createLeague, leaveLeague, resolveApplication, MAX_LEAGUE } from "./diplomacy.js";
 import { aiOpenWar } from "./council.js";
 import { buildDuchies, hasRoad, roadLvl, isDuchyCap, kmBetween, roadKey } from "./mapgen.js";
 import { drawRoads, paintBorders, repaintProvince } from "./render.js";
 import { saveGame } from "./save.js";
 import { economyTick2, seedOwner2, seedWealth2, seedEstates2, siteOK2, BLD2 } from "./economy2.js";
 // IA de obras y gestión de edificios de los ESTAMENTOS (y de la corona IA): vive en estates.js, sin DOM (la usa el arnés)
-import { estateBuild, budgetManage, profitOf, srcOK } from "./estates.js";
+import { estateBuild, budgetManage, profitOf, pickCrownBuild } from "./estates.js";
 import { log, refreshBuildBar, refreshSide, refreshTop } from "./ui.js";
 
 // El núcleo económico/demográfico del tick vive en economy.js (economyTick), sin DOM, para
@@ -40,12 +38,10 @@ function setupNations(){
       // mundo no empiece con oferta ≈0. Nivel 2 solo si la provincia puede dotar dos niveles; si no, nivel 1.
       const b=RES_BUILDING[p.resType];
       if(b&&canStaffIndustry(p,b)){const B=BUILDINGS[b];p.buildings[b]=(specialistCap(p)>=2*jobsOf(b)&&(B.unique?1:(B.max||3)>=2))?2:1;
-        if(S.econV2){const o=seedOwner2(b);if(o!=="corona")p.bOwner[b]=o}} // v2: cada taller a su dueño histórico (su producción se VENDE)
+        const o=seedOwner2(b);if(o!=="corona")p.bOwner[b]=o} // cada taller a su dueño histórico (su producción se VENDE)
       // E2: base inicial por estamento (lever de nivelado). Urbano: el burgués tiene su comercio (INGRESO)
       // y el clero su templo (moral + COSTE); rural: la nobleza su cuartel (leva + COSTE). Todo tunable.
-      if(S.econV2)seedEstates2(p,seedEstateBld);           // v2: cuartel en rural ≥2.000 hab., templo en ciudad ≥20.000 (economy2)
-      else if(p.urban){seedEstateBld(p,"mercado","burgues");seedEstateBld(p,"templo","clero");}
-      else seedEstateBld(p,"cuartel","nobleza");
+      seedEstates2(p,seedEstateBld);                        // cuartel en rural ≥2.000 hab., templo en ciudad ≥20.000 (economy2)
     }
     p.store={};for(const k of SUBS_BASICS)p.store[k]=storeCap(p,k)*0.6; // despensa de grano inicial
   }
@@ -117,7 +113,7 @@ function setupNations(){
   }
   // ducados: subdivisión de iure del mapa (unidad de conquista). Determinista, tras fijar capitales.
   buildDuchies();
-  if(S.econV2)seedWealth2();else seedStrataWealth(); // riqueza inicial por estrato (v2: meses de su cesta)
+  seedWealth2(); // riqueza inicial por estrato: meses de su cesta
   seedHistoricalDiplomacy(); // Fase 7: pactos y ligas históricos de ~1450 al inicio de partida
 }
 // Fase 7 — SEED HISTÓRICO ~1450: siembra al inicio los pactos (S.pacts) y ligas (S.leagues) reales de la
@@ -527,12 +523,11 @@ function hourTick(){
   // horarios (abajo). Equivalencia medida vs. todo-horario: población 0%, tesoro 1,1%.
   if(S.hour%24===0){
     const tsyBefore=S.player>=0?{...S.nations[S.player].res}:null; // foto del tesoro antes del tick económico
-    if(S.econV2)economyTick2(24,true);else economyTick(24, true); // dt=24 (1 día); arbitraje TAMBIÉN diario (barato, ~5ms) para reponer gradual y evitar la oscilación mensual
+    economyTick2(24,true); // dt=24 (1 día); arbitraje TAMBIÉN diario (barato) para reponer gradual y evitar la oscilación mensual
     tsyTick(tsyBefore); // capa mensual: acumula el delta recurrente del jugador y publica la cifra "/mes"
-    if(!S.econV2)prosperityTick(); // (v2 la sustituye por la cobertura de las 3 necesidades) prosperidad por provincia/bien: +1/−1 punto al mes (se autodispara al cambiar de mes)
     relTick(); // diplomacia: deriva mensual del campo de relaciones hacia su línea base (se autodispara al mes)
     estateBuild(); // E2: los estamentos levantan su tipo de edificio con su riqueza (1 vez/día)
-    if(S.econV2)budgetManage(); // v2: cada dueño cuadra sus cuentas (cierra lo que no puede pagar, reabre si va holgado)
+    budgetManage(); // cada dueño cuadra sus cuentas (cierra lo que no puede pagar, reabre si va holgado)
   }
   degradeBuildings(); // ciclo de vida: los edificios deshabilitados se degradan y, a condición 0, se destruyen
   // 2. construcción
@@ -815,32 +810,13 @@ function aiTurn(n){
   const N=S.nations[n];
   const owned=S.provs.filter(p=>p.owner===n&&!isOccupied(p)); // no desarrollar lo ocupado
   if(!owned.length)return;
-  // construir: prioridad militar en la capital, economía en el resto
-  const src=sourceableSet(); // gate de construcción (Opción 1): bienes obtenibles en el alcance
+  // construir: la corona elige sus obras con la MISMA lógica que los estamentos (estates.js pickCrownBuild)
   for(let t=0;t<2;t++){
     const p=owned[(S.rand()*owned.length)|0];
     if(p.buildQueue.length)continue;
-    // orden de preferencia según recurso de la provincia y si es capital
-    const pri=[];
-    if(p.capital){pri.push("cuartel","fabrica","fortaleza","templo","mercado");}
-    // el resType es un ESPECIAL histórico (vino/paño/sal/seda/especias/caballos/plata/oro): construir su
-    // fábrica propia primero (los básicos ya no son resType — los produce el terreno, ver assignResources).
-    if(p.resType&&RES_BUILDING[p.resType])pri.push(RES_BUILDING[p.resType]);
-    pri.push("mercado","gremio","granja","templo","cuartel","fabrica","campo");
-    if(p.coastal)pri.push("puerto");
-    for(const b of pri){
-      if(lvlOf(p,b)>=buildMax(p,b))continue;
-      if(buildBlock(p,b))continue;
-      if(S.econV2&&(v2Useless(b)||(BLD2[b]&&!siteOK2(p,b))))continue; // v2: ni oro "de la nada" ni talleres sin su materia
-      if(!srcOK(b,src))continue;                    // GATE (Opción 1): insumo obtenible en el alcance
-      // no construir un edificio productivo si la provincia no puede DOTARLO (mano de obra libre)
-      const fx=BUILDINGS[b].fx, economic=fx.prodAdd||fx.goldAdd||fx.prodMul;
-      if(economic&&freeLabor(p)<buildJobs(p)+JOBS_PER_LEVEL)continue;
-      if((BUILDINGS[b].inputs||fx.prodAdd)&&profitOf(p,b,lvlOf(p,b)+1)<=0)continue; // no construir FÁBRICAS ruinosas (sobreoferta/insumo caro)
-      pay(n,costFor(p,b),"Obras",BUILDINGS[b].label);
-      p.buildQueue.push({b,hoursLeft:timeFor(p,b)});
-      break;
-    }
+    const b=pickCrownBuild(p); if(!b)continue;
+    pay(n,costFor(p,b),"Obras",BUILDINGS[b].label);
+    p.buildQueue.push({b,hoursLeft:timeFor(p,b)});
   }
   // reclutar
   let troops=0;
@@ -1087,12 +1063,10 @@ function findTarget(from,n,enemies,wantNeutral,myPower,garrison){
   }
   return best;
 }
-// v2: edificios cuyo único efecto es el oro "de la nada" (goldAdd: mercado, lonja) ya no rinden nada
-function v2Useless(b){const B=BUILDINGS[b],fx=B.fx||{};return !!fx.goldAdd&&Object.keys(fx).every(k=>k==="goldAdd")&&!B.unlock}
 function tryBuild(pid,b){
   const p=S.provs[pid];
   if(p.owner!==S.player||isOccupied(p)||buildBlock(p,b))return;
-  if(S.econV2&&BLD2[b]&&!siteOK2(p,b))return;   // v2: un taller sin su materia prima no produciría nada
+  if(BLD2[b]&&!siteOK2(p,b))return;   // un taller sin su materia prima no produciría nada
   if(!canAfford(S.player,costFor(p,b)))return; // solvencia sobre el saldo comprometido (tesoro mensual)
   pay(S.player,costFor(p,b),"Obras",BUILDINGS[b].label);
   p.buildQueue.push({b,hoursLeft:timeFor(p,b)});

@@ -1,38 +1,19 @@
-import {
-  saveGame, loadSaveMeta, continueGame, runCatchup, buildSnapshot, saveProvMap, loadProvMapSnapshot, loadProvMap
-} from "./save.js";
-import {
-  enterEditor, exitEditor, pushUndo, restoreWorldFromSnap, toggleRoadEdit, setProvinceOwner, dpSimplify, simplifyRing, traceProvince, applyShape, mergeProvinces, rasterPoly, keepLargestFragment, splitProvince, refreshEditorPanel, vertexAt, nearestSegment, dissolveProvince, setProvinceDuchy
-} from "./editor.js";
-import {
-  log, fmt, fmtDur, iInfo, buildResBar, refreshTop, costStr, n1, fxText, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, refreshArmyPanel, buildRealmMenu, refreshTreasury, refreshEstates, refreshMercado, refreshFiscal, refreshCouncil, refreshCoalPeace, refreshLeagues, refreshCallToArms, refreshDipModal
-} from "./ui.js";
-import {
-  atWar, declareWar, makePeace, underTruce, spawnArmy, setupNations, tryRoad, nbrs, bfsPath, startLeg, orderMove, takeTile, updateDuchy, isKeyTile, hourTick, resolveBattles, applyDamage, mergeIdle, aiTurn, findTarget, tryBuild, tryRecruit, disbandUnit, raiseLevies, checkVictory, armiesIn,
-  getWar, warscore, duchyValue, occupiedDuchiesBy, report, coalitionOf, coalitionPeace
-} from "./sim.js";
-import { insult, giftGold, isEmbargoed, setEmbargo, fabricateClaim, getRel, THRESH, formPact, breakPact, hasPact,
-  leagueOf, createLeague, applyToLeague, resolveApplication, proposeExpel, leaveLeague, refuseDefense,
-  MAX_RIVALS, rivalsOf, canRival, addRival, removeRival } from "./diplomacy.js";
+import { saveGame, loadSaveMeta, continueGame, runCatchup, buildSnapshot, saveProvMap, loadProvMapSnapshot, loadProvMap } from "./save.js";
+import { enterEditor, exitEditor, pushUndo, restoreWorldFromSnap, toggleRoadEdit, setProvinceOwner, dpSimplify, simplifyRing, traceProvince, applyShape, mergeProvinces, rasterPoly, keepLargestFragment, splitProvince, refreshEditorPanel, vertexAt, nearestSegment, dissolveProvince, setProvinceDuchy } from "./editor.js";
+import { log, fmt, fmtDur, iInfo, buildResBar, refreshTop, costStr, n1, costLine, renderBuildTabs, refreshBuildBar, refreshSide, refreshDiplomacy, refreshLedger, refreshReports, refreshPeace, showNationPicker, refreshArmyPanel, buildRealmMenu, refreshTreasury, refreshEstates, refreshMercado, refreshFiscal, refreshCouncil, refreshCoalPeace, refreshLeagues, refreshCallToArms, refreshDipModal } from "./ui.js";
+import { atWar, declareWar, makePeace, underTruce, spawnArmy, setupNations, tryRoad, nbrs, bfsPath, startLeg, orderMove, takeTile, updateDuchy, isKeyTile, hourTick, resolveBattles, applyDamage, mergeIdle, aiTurn, findTarget, tryBuild, tryRecruit, disbandUnit, raiseLevies, checkVictory, armiesIn, getWar, warscore, duchyValue, occupiedDuchiesBy, report, coalitionOf, coalitionPeace } from "./sim.js";
+import { insult, giftGold, isEmbargoed, setEmbargo, fabricateClaim, getRel, THRESH, formPact, breakPact, hasPact, leagueOf, createLeague, applyToLeague, resolveApplication, proposeExpel, leaveLeague, refuseDefense, MAX_RIVALS, rivalsOf, canRival, addRival, removeRival } from "./diplomacy.js";
 import { openCouncil, councilToggle, councilConvene, launchCouncil, cancelCouncil, playerJoinDefense } from "./council.js";
-import {
-  hex2rgb, provColor, paintAll, paintBorders, repaintProvince, roadCurve, drawRoads, fitCanvas, clampPan, armyPos, draw, drawArrow, drawEditorOverlay, NCOL, TCOL, WASTECOL, baseC, baseCtx, roadsC, canvas, baseData, clearSelOutline, bakeTerrainProvince
-} from "./render.js";
-import {
-  canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, provUpkeep, provEconomy, provBreakdown, nationEconomy, armyCount, armyFood, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, recruitable, resetTsyLedger
-} from "./economy.js";
-import {
-  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, rebuildProvinceData, seedCities, renameProvincesHistorical, ensureMarketTopology, kmBetween, roadKey, hasRoad, landPath, generateRoads, sprinkleTerrain
-} from "./mapgen.js";
+import { hex2rgb, provColor, paintAll, paintBorders, repaintProvince, roadCurve, drawRoads, fitCanvas, clampPan, armyPos, draw, drawArrow, drawEditorOverlay, NCOL, TCOL, WASTECOL, baseC, baseCtx, roadsC, canvas, baseData, clearSelOutline, bakeTerrainProvince } from "./render.js";
+import { canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, armyCount, armyFood, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, recruitable, resetTsyLedger } from "./economy.js";
+import { mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, rebuildProvinceData, seedCities, renameProvincesHistorical, ensureMarketTopology, kmBetween, roadKey, hasRoad, landPath, generateRoads, sprinkleTerrain } from "./mapgen.js";
 import { S } from "./state.js";
 import "./debug.js"; // registra window.dbg (herramientas de observación por consola)
 /* ============================= RNG ============================= */
 
 S.rand=mulberry32(193909);
 
-import {
-  GH_PER_SEC, MW, MH, NATIONS, NPLAY, NEUTRAL, RES_KEYS, RES_STRAT, RES_TRADE, RES_LABEL, RES_SHORT, RES_ICON, START_STOCK, BUILDINGS, BUILD_CATS, newBuildings, UNITS, TERRAINS, TERRAIN_KEYS, GOLD_PER_WS, terrainFx, isSea
-} from "./config.js";
+import { GH_PER_SEC, MW, MH, NATIONS, NPLAY, NEUTRAL, RES_KEYS, RES_STRAT, RES_TRADE, RES_LABEL, RES_SHORT, RES_ICON, START_STOCK, BUILDINGS, BUILD_CATS, newBuildings, UNITS, TERRAINS, TERRAIN_KEYS, GOLD_PER_WS, terrainFx, isSea } from "./config.js";
 
 /* ============================= Estado global ============================= */
 // El acumulador del bucle de simulación vive en S.acc (lo resetean también editor.js y
@@ -127,7 +108,7 @@ window.tryBuild=tryBuild;window.tryRecruit=tryRecruit;
 // Ciclo de vida de edificios: deshabilitar (libera dotación, deja de producir/pagar) o reactivar (reparando la parte degradada)
 window.toggleBuilding=function(pid,b){
   const p=S.provs[pid]; if(!p||p.owner!==S.player||!(p.buildings[b]>0))return;
-  if(S.econV2&&p.bOwner&&p.bOwner[b]&&p.bOwner[b]!=="corona")return; // v2: el taller de un estamento lo gestiona su dueño
+  if(p.bOwner&&p.bOwner[b]&&p.bOwner[b]!=="corona")return; // el taller de un estamento lo gestiona su dueño
   if(!p.bOff)p.bOff={}; if(!p.bCond)p.bCond={};
   if(p.bOff[b]){ // REACTIVAR: repara la parte degradada (coste de creación prorrateado)
     const cond=p.bCond[b]!=null?p.bCond[b]:1, frac=Math.max(0,1-cond);

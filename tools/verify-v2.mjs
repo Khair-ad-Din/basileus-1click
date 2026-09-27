@@ -6,7 +6,10 @@
 //  (3) objetivos de calibración (§9): fracción vendida/producida del campesino 20-35%; neto del campesino por ducado.
 //  (4) por nación grande: ingreso de la corona /mes, riqueza por estamento, cobertura de las 3 necesidades.
 //  (5) precios mundiales por bien (media y rango) y comercio exterior.
-//   node tools/verify-v2.mjs [años=5] [--v1]      (--v1 corre la economía vieja para comparar la corona)
+//  (6) LIBROS DE CUENTAS (los que lee la interfaz): por provincia, Σ cobros + flete = Σ valor pagado por la plaza; y la
+//      suma del PECHO de las provincias de un reino = el pecho de su libro de la corona (mismo mes). Si alguno descuadra,
+//      la Tesorería o la ficha de provincia estarían mintiendo.
+//   node tools/verify-v2.mjs [años=5] [--ia] [--nac Nación] [--regiones] [--dump ruta.json]
 import fs from "fs"; import path from "path"; import { fileURLToPath, pathToFileURL } from "url";
 const base=path.join(path.dirname(fileURLToPath(import.meta.url)),"..","call-of-war");
 function loadGlobal(file,name){let t=fs.readFileSync(path.join(base,file),"utf8").replace(/\r\n/g,"\n");
@@ -16,12 +19,11 @@ loadGlobal("official_map.js","OFFICIAL_MAP");loadGlobal("cities1444.js","CITIES1
 const imp=f=>import(pathToFileURL(path.join(base,"js",f)).href);
 const st=await imp("state.js"),cfg=await imp("config.js"),mg=await imp("mapgen.js"),ec=await imp("economy.js"),e2=await imp("economy2.js"),es=await imp("estates.js");
 const S=st.S,{MW,MH,NEUTRAL,TERRAIN_KEYS,NPLAY,NATIONS,RES_KEYS,START_STOCK,UNITS,newBuildings,BUILDINGS,STRATA,RES_BUILDING}=cfg;
-const args=process.argv.slice(2); const V1=args.includes("--v1"); const YEARS=+(args.find(a=>/^\d+$/.test(a))||5);
+const args=process.argv.slice(2); const YEARS=+(args.find(a=>/^\d+$/.test(a))||5);
 const NAC=args.includes("--nac")?args[args.indexOf("--nac")+1]:null; // desglose de flujos por estamento de esa nación
 const AI=args.includes("--ia"); // corre la IA real de obras + gestión por presupuesto + construcción + demolición (estates.js)
 
 // ---- mundo ----
-S.econV2=!V1; // la IA de obras (estates.js) elige fórmulas según el interruptor
 const snap=OFFICIAL_MAP;S.rand=mg.mulberry32(193909);S.hour=0;S.armies=[];
 S.provIdx=new Int16Array(MW*MH).fill(-1);
 let pos=0;for(let i=0;i<snap.rle.length;i+=2){const pid=snap.rle[i],run=snap.rle[i+1];if(pid>=0)S.provIdx.fill(pid,pos,pos+run);pos+=run;}
@@ -37,20 +39,20 @@ S.nations=NATIONS.map((n,i)=>({idx:i,res:Object.fromEntries(RES_KEYS.map(k=>[k,S
 function seedEstateBld(p,b,e){if(ec.lvlOf(p,b)>=1||ec.usedSlots(p)>=ec.buildSlots(p))return;p.buildings[b]=(p.buildings[b]||0)+1;(p.bOwner||(p.bOwner={}))[b]=e}
 for(const p of S.provs)if(!p.wasteland&&p.owner<NPLAY){
   p.sold=ec.soldCap(p);p.bOwner=p.bOwner||{};const b=RES_BUILDING[p.resType];
-  if(b&&ec.canStaffIndustry(p,b)){const B=BUILDINGS[b];p.buildings[b]=(ec.specialistCap(p)>=2*ec.jobsOf(b)&&(B.unique?1:(B.max||3)>=2))?2:1;if(!V1){const o=e2.seedOwner2(b);if(o!=="corona")p.bOwner[b]=o}}
-  if(!V1)e2.seedEstates2(p,seedEstateBld);else if(p.urban){seedEstateBld(p,"mercado","burgues");seedEstateBld(p,"templo","clero")}else seedEstateBld(p,"cuartel","nobleza");
+  if(b&&ec.canStaffIndustry(p,b)){const B=BUILDINGS[b];p.buildings[b]=(ec.specialistCap(p)>=2*ec.jobsOf(b)&&(B.unique?1:(B.max||3)>=2))?2:1;const o=e2.seedOwner2(b);if(o!=="corona")p.bOwner[b]=o}
+  e2.seedEstates2(p,seedEstateBld);
   p.store={};for(const k of ec.SUBS_BASICS)p.store[k]=ec.storeCap(p,k)*0.6;}
 for(let n=0;n<NPLAY;n++){let cap=S.provs.find(p=>p.owner===n&&p.capital)||S.provs.find(p=>p.owner===n);
   if(!cap){S.nations[n].alive=false;continue}S.nations[n].capital=cap.id;
   const units={infanteria:2,miliciano:2};let w=0;for(const k in units)w+=units[k]*(UNITS[k].mano||0);
   S.armies.push({id:n+1,nation:n,prov:cap.id,units,src:{[cap.id]:w},path:[],legDone:0,legTotal:0});}
-if(V1)ec.seedStrataWealth();else e2.seedWealth2();
+e2.seedWealth2();
 if(NAC){S.player=NATIONS.findIndex(x=>x.name===NAC);if(S.player<0){console.log("no existe "+NAC);process.exit(1)}}
 function census(){const c={};for(const p of S.provs){if(p.owner>=NPLAY||p.wasteland)continue;const n=p.owner;const C=c[n]||(c[n]={});
   for(const b in p.buildings){const l=p.buildings[b]||0;if(!l)continue;const o=ec.bOwnerOf(p,b);const k=b+"@"+o;const x=C[k]||(C[k]={open:0,off:0});
     if(ec.bOff(p,b))x.off+=l;else x.open+=l}}return c}
 const census0=census();
-const tick=V1?()=>ec.economyTick(24,true):()=>e2.economyTick2(24,true);
+const tick=()=>e2.economyTick2(24,true);
 const names=NATIONS.map(n=>n.name);
 const alive=()=>{const a=[];for(let n=0;n<NPLAY;n++)if(S.nations[n].alive)a.push(n);return a};
 const fmt=v=>{const a=Math.abs(v);return a>=1e6?(v/1e6).toFixed(2)+"M":a>=1e3?(v/1e3).toFixed(1)+"k":v.toFixed(a<10?2:0)};
@@ -59,20 +61,32 @@ const pct=v=>(v*100).toFixed(0)+"%";
 // naciones grandes para el informe
 const popOf=n=>{let t=0;for(const p of S.provs)if(p.owner===n&&!p.wasteland)t+=p.pop||0;return t};
 const big=alive().sort((a,b)=>popOf(b)-popOf(a)).slice(0,12);
-console.log(`verify-v2: ${V1?"ECONOMÍA v1 (referencia)":"ECONOMÍA v2"} · ${YEARS} años · ${alive().length} naciones vivas`);
+console.log(`verify-v2: ECONOMÍA v2 · ${YEARS} años · ${alive().length} naciones vivas`);
 
 // invariante
 const L=()=>S.e2L||{mint:0,sink:0,rescue:0};
-const inv=()=>{if(V1)return 0;const{m,pl}=e2.moneyStock();const l=L();return m+pl+l.sink-l.mint-l.rescue};
+const inv=()=>{const{m,pl}=e2.moneyStock();const l=L();return m+pl+l.sink-l.mint-l.rescue};
 const inv0=inv();
+// (6) libros de cuentas: se vigila el reino más poblado (recCrown solo apunta al jugador)
+if(S.player==null||S.player<0)S.player=big[0];
+const pechoCrown=()=>{const b=S.cBook&&S.cBook.Pecho;let t=0;if(b)for(const k in b)t+=b[k];return t};
+let pmKey0=S.pmKey,pechoAt=0,worstProvBook=0,worstPecho=0,monthsChecked=0;
+function checkBooks(pechoBefore){ // tras un cierre de mes del libro provincial
+  let pv=0;
+  for(const p of S.provs){const m=p.m;if(!m)continue;let v=0,w=0;for(const g in m.val)v+=m.val[g];for(const k in m.pay)for(const c in m.pay[k])w+=m.pay[k][c];
+    worstProvBook=Math.max(worstProvBook,Math.abs(v-w-m.lost)/(v+1));
+    if(p.owner===S.player&&m.pay.corona&&m.pay.corona.Pecho)pv+=m.pay.corona.Pecho}
+  const cr=pechoBefore-pechoAt; worstPecho=Math.max(worstPecho,Math.abs(cr-pv)/(Math.abs(cr)+1)); monthsChecked++;
+}
 let nan=false,worstInv=0;
 const treas0=new Map();
 for(let y=0;y<YEARS;y++){
   for(const n of alive())treas0.set(n,S.nations[n].res.dinero);
   for(const n of alive())if(S.nations[n].e2)S.nations[n].e2.st={prodV:0,soldV:0,grossV:0,campNet:0,jornal:0};
   S.sFlow={};
-  for(let d=0;d<365;d++){S.hour+=24;tick();
-    if(AI){es.estateBuild();if(!V1)es.budgetManage();for(let h=0;h<24;h++)ec.degradeBuildings();
+  for(let d=0;d<365;d++){S.hour+=24;const pb=pechoCrown();tick();
+    if(S.pmKey!==pmKey0){if(pmKey0!=null)checkBooks(pb);pmKey0=S.pmKey;pechoAt=pb}
+    if(AI){es.estateBuild();es.budgetManage();for(let h=0;h<24;h++)ec.degradeBuildings();
       for(const p of S.provs)if(p.buildQueue.length){const q=p.buildQueue[0];q.hoursLeft-=24;
         if(q.hoursLeft<=0){p.buildings[q.b]++;p.buildQueue.shift();if(q.owner)(p.bOwner||(p.bOwner={}))[q.b]=q.owner}}}}
   for(const n of alive()){const N=S.nations[n];for(const k in N.res)if(!isFinite(N.res[k]))nan=true;for(const k in N.sWealth)if(!isFinite(N.sWealth[k]))nan=true}
@@ -81,23 +95,24 @@ for(let y=0;y<YEARS;y++){
   let pop=0,money=0,st={prodV:0,soldV:0,grossV:0,campNet:0,jornal:0};
   for(const n of alive()){const N=S.nations[n];pop+=popOf(n);money+=N.res.dinero;for(const k in N.sWealth)money+=N.sWealth[k];
     if(N.e2&&N.e2.st)for(const k in st)st[k]+=N.e2.st[k]}
-  const extra=V1?"":` · vendido/producido ${pct(st.soldV/Math.max(1,st.prodV))} · neto campesino por ducado vendido ${(st.campNet/Math.max(1,st.grossV)).toFixed(2)} · jornales ${fmt(st.jornal)}/año · invariante Δrel ${rel.toExponential(1)}`;
+  const extra=` · vendido/producido ${pct(st.soldV/Math.max(1,st.prodV))} · neto campesino por ducado vendido ${(st.campNet/Math.max(1,st.grossV)).toFixed(2)} · jornales ${fmt(st.jornal)}/año · invariante Δrel ${rel.toExponential(1)}`;
   console.log(`año ${y+1}: población ${fmt(pop)} · dinero en manos ${fmt(money)}${extra}`);
 }
-console.log(`\nNaN: ${nan?"⚠ SÍ":"✅ no"}${V1?"":` · invariante del dinero: ${worstInv<1e-6?"✅":"⚠"} peor Δrel ${worstInv.toExponential(2)}`}`);
-if(!V1){const l=L();console.log(`grifos/sumideros acumulados: minas ${fmt(l.mint)} · rescates ${fmt(l.rescue)} · mantenimiento+flete ${fmt(l.sink)} · tirado de la plaza (valor) ${fmt(l.discard)}`)}
+console.log(`\nNaN: ${nan?"⚠ SÍ":"✅ no"} · invariante del dinero: ${worstInv<1e-6?"✅":"⚠"} peor Δrel ${worstInv.toExponential(2)}`);
+console.log(`libros de cuentas (${monthsChecked} meses, ${names[S.player]}): provincia Σcobros+flete=Σvalor ${worstProvBook<1e-9?"✅":"⚠"} peor ${worstProvBook.toExponential(2)} · pecho provincias = pecho Tesorería ${worstPecho<1e-9?"✅":"⚠"} peor ${worstPecho.toExponential(2)}`);
+{const l=L();console.log(`grifos/sumideros acumulados: minas ${fmt(l.mint)} · rescates ${fmt(l.rescue)} · mantenimiento+flete ${fmt(l.sink)} · tirado de la plaza (valor) ${fmt(l.discard)}`)}
 
 // ---- por nación (último año) ----
-console.log(`\nNación            pobl.  corona Δ/mes   riqueza/hab: camp  burg  clero  nob`+(V1?"":"   cobertura (subs/vida/lujo): camp · burg · clero · nob"));
+console.log(`\nNación            pobl.  corona Δ/mes   riqueza/hab: camp  burg  clero  nob`+"   cobertura (subs/vida/lujo): camp · burg · clero · nob");
 for(const n of big){const N=S.nations[n],W=N.sWealth;const sp={campesino:0,burgues:0,clero:0,nobleza:0};
   for(const p of S.provs)if(p.owner===n&&p.pops)for(const k in sp)sp[k]+=p.pops[k]||0;
   const dT=(N.res.dinero-treas0.get(n))/12;
-  let cov="";if(!V1){const c=N.e2.cov;cov="   "+STRATA.map(e=>`${pct(c[e].subs)}/${pct(c[e].vida)}/${e==="campesino"?"—":pct(c[e].lujo)}`).join(" · ")}
+  let cov="";{const c=N.e2.cov;cov="   "+STRATA.map(e=>`${pct(c[e].subs)}/${pct(c[e].vida)}/${e==="campesino"?"—":pct(c[e].lujo)}`).join(" · ")}
   console.log(`${names[n].padEnd(16)} ${fmt(popOf(n)).padStart(6)} ${fmt(dT).padStart(10)}      `+
     STRATA.map(k=>(W[k]/Math.max(1,sp[k])).toFixed(3).padStart(6)).join("")+cov);
 }
 // ---- precios mundiales ----
-if(!V1){
+{
   console.log(`\nBien            ref   precio medio (min–max)   prod/mes   demanda/mes   vendido   export/mes`);
   for(const g of e2.GOODS2){let s=0,c=0,mn=1e9,mx=0,pr=0,dm=0,so=0,ex=0;
     for(const n of alive()){const i=S.nations[n].mktInfo&&S.nations[n].mktInfo[g];if(!i)continue;s+=i.price;c++;mn=Math.min(mn,i.price);mx=Math.max(mx,i.price);
@@ -129,7 +144,7 @@ if(args.includes("--dump")){const out=args[args.indexOf("--dump")+1];
 
 // --regiones: oferta vs demanda de cada bien por GRANDES REGIONES (por la capital de cada reino). Para cazar recursos
 // estratégicos mal repartidos: una región que produce 5× lo que consume, o que no produce nada de lo que necesita.
-if(args.includes("--regiones")&&!V1){
+if(args.includes("--regiones")){
   const REG=[["Iberia",-10,3.5,35.5,44],["Islas Británicas",-11,2,49.5,61],["Francia",-5,7.5,42.5,51],["Italia",6.5,19,36,47],
     ["Países Bajos-Alemania",3,16,47,55.5],["Escandinavia",4,32,55.5,71],["Polonia-Lituania",14,32,49,57],["Rusia",32,60,50,70],
     ["Hungría-Balcanes",13,30,39,49],["Anatolia-Levante",25,50,29,42.5],["Egipto-Magreb",-10,35,20,37]];

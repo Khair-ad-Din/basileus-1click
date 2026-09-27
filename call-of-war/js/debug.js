@@ -9,10 +9,7 @@ import { S } from "./state.js";
 import { NATIONS, NPLAY } from "./config.js";
 import { hourTick, spawnArmy, orderMove, bfsPath } from "./sim.js";
 import { pxToLonLat, renameProvincesHistorical, seedCities, assignPopulation, CITY_POP, popNormKey } from "./mapgen.js";
-import {
-  nationEconomy, nationProvCount, nationStrength, armyCount,
-  soldCap, soldAvail, foodCap, foodBalance, foodCons, foodFill, harvestMul, staffing, buildJobs, freeLabor, specialistCap, structPPF
-} from "./economy.js";
+import { nationProvCount, nationStrength, armyCount, soldCap, soldAvail, storeCap, harvestMul, staffing, buildJobs, freeLabor, specialistCap } from "./economy.js";
 
 const fmt=n=>Math.round(n||0).toLocaleString("es-ES");
 const pct=(x)=>Math.round((x||0)*100)+"%";
@@ -22,6 +19,8 @@ function nIdx(x){
   return i;
 }
 function nationPop(n){let t=0;for(const p of S.provs)if(p.owner===n&&!p.wasteland)t+=p.pop||0;return t}
+function nationTroops(n){let t=0;for(const a of S.armies)if(a.nation===n)t+=armyCount(a);return Math.round(t)}
+function crownInc(n){const E=S.nations[n]&&S.nations[n].e2;return (E&&E.inc&&E.inc.corona)||0} // ingreso medio mensual de la corona
 function nationFamine(n){let f=0,c=0;for(const p of S.provs)if(p.owner===n&&!p.wasteland){c++;if(p.famine)f++}return c?f/c:0}
 
 const dbg={
@@ -52,15 +51,14 @@ const dbg={
     const p=S.provs.find(q=>q.name&&q.name.toLowerCase()===String(name).toLowerCase());
     if(!p){console.warn("No encuentro la provincia:",name);return}
     if(p.wasteland){console.log(`${p.name}: impracticable.`);return}
-    const fc=foodCap(p),fill=foodFill(p),jobs=buildJobs(p),c$=(p.store&&p.store.comida!=null)?p.store.comida:fc*0.6;
+    const fc=storeCap(p,"comida"),c$=(p.store&&p.store.comida)||0,fill=fc>0?c$/fc:0,jobs=buildJobs(p);
     console.log(`%c${p.name}${p.capital?" ★":""}  (${NATIONS[p.owner]?NATIONS[p.owner].name:"—"})`,"font-weight:bold");
     console.table({
       Población:fmt(p.pop), Terreno:p.terrain, Moral:Math.round(p.morale)+"%",
       "Cosecha del año":(harvestMul(p)>=1?"+":"")+Math.round((harvestMul(p)-1)*100)+"%",
-      "Comida balance/año":(foodBalance(p)*8760>=0?"+":"")+fmt(foodBalance(p)*8760),
       "Despensa":`${pct(fill)} (${fmt(c$)}/${fmt(fc)})`, Hambruna:p.famine?"SÍ ⚠":"no",
       "Soldadesca":`${fmt(soldAvail(p))}/${fmt(soldCap(p))}`,
-      "Especialistas (cap)":fmt(specialistCap(p)), "structPPF":structPPF(p).toFixed(2),
+      "Especialistas (cap)":fmt(specialistCap(p)),
       "Dotación":jobs>0?`${pct(staffing(p))} (${fmt(freeLabor(p))} libres / ${fmt(jobs)} puestos)`:"sin edificios",
       Movilizados:fmt(p.mob)
     });
@@ -68,25 +66,22 @@ const dbg={
   // Resumen de una nación (por nombre o índice).
   nation(x){
     const n=nIdx(x);if(n<0||n>=NPLAY){console.warn("Nación no encontrada:",x);return}
-    const ne=nationEconomy(n),pop=nationPop(n);
+    const pop=nationPop(n),din=crownInc(n),N=S.nations[n];
     console.log(`%c${NATIONS[n].name}`,"font-weight:bold");
     console.table({
       Provincias:nationProvCount(n), Población:fmt(pop),
-      "Hambruna prov":pct(nationFamine(n)), Tropas:ne.troops, Fuerza:Math.round(nationStrength(n)),
-      "Ducados/mes":(ne.res.dinero>=0?"+":"")+ (Math.round(ne.res.dinero*10)/10),
-      "Duc/100k hab":pop>0?(Math.round(ne.res.dinero*1e5/pop*10)/10):0,
-      "Grano/mes":Math.round((ne.res.comida||0)*10)/10, "Madera/mes":Math.round((ne.res.materiales||0)*10)/10,
-      "Paño/mes":Math.round((ne.res.pano||0)*10)/10, "Vino/mes":Math.round((ne.res.vino||0)*10)/10,
-      "Sal/mes":Math.round((ne.res.sal||0)*10)/10
+      "Hambruna prov":pct(nationFamine(n)), Tropas:nationTroops(n), Fuerza:Math.round(nationStrength(n)),
+      "Tesoro":fmt(N.res.dinero), "Ingreso corona/mes":fmt(din),
+      "Duc/100k hab":pop>0?(Math.round(din*1e5/pop*10)/10):0
     });
   },
   // Ranking de naciones por métrica: pop | din | pc(=riqueza per cápita) | troops | fam | provs
   top(metric="pop",k=15){
     const rows=[];
     for(let n=0;n<NPLAY;n++){if(!S.nations[n]||!S.nations[n].alive)continue;
-      const ne=nationEconomy(n),pop=nationPop(n),din=ne.res.dinero||0;
+      const pop=nationPop(n),din=crownInc(n);
       rows.push({Nación:NATIONS[n].name,Pob:Math.round(pop),Prov:nationProvCount(n),
-        Tropas:ne.troops,"Ducados/mes":Math.round(din*10)/10,
+        Tropas:nationTroops(n),"Ducados/mes":Math.round(din*10)/10,
         "Duc/100k hab":pop>0?Math.round(din*1e5/pop*10)/10:0,"Hambr%":Math.round(nationFamine(n)*100)});
     }
     const key={pop:"Pob",din:"Ducados/mes",pc:"Duc/100k hab",troops:"Tropas",fam:"Hambr%",provs:"Prov"}[metric]||"Pob";

@@ -3,10 +3,6 @@
 // importe S ve el mismo estado (las reasignaciones son propiedades del objeto,
 // no bindings, asi que se comparten sin problema entre modulos ES).
 export const S = {
-  // ECONOMÍA v2 (design/economia-v2.md): se activa con ?eco=2 en la URL (o ?eco=1 para volver) y se recuerda en
-  // localStorage; una partida guardada conserva la suya. Fuera del navegador (arneses) vale false.
-  econV2: (()=>{try{const q=new URLSearchParams(location.search).get("eco");if(q)localStorage.setItem("basileus_eco",q);
-    return (q||localStorage.getItem("basileus_eco"))==="2"}catch(e){return false}})(),
   rand: null,
   provs: [], provIdx: null, pixOfProv: [], borderPxOfProv: [], adj: [], seaAdj: [], navAdj: [],
   nations: [], armies: [], wars: new Map(), truces: new Map(), armyIdSeq: 1,
