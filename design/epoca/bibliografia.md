@@ -97,3 +97,18 @@ resuelven choques **entre** fichas (no pertenecen a una sola). Si se tocan `cler
 - **Las cifras que circulan sin aparato suelen ser de otro siglo.** La carga fiscal "25-50%" es del
   mundo antiguo o del XVIII francés; el "un tercio de la tierra en manos de la Iglesia" está
   cuestionado y es munición de apologetas. Se descartaron.
+
+---
+
+## Añadidos de la pasada de verificación del 2026-09-25 (Oficio 1, revisión de `design/economia-v2.md`)
+
+Abiertas en esta sesión. Resuelven preguntas que cruzan fichas (artesano/campesino/noble/clérigo).
+
+| Autor / obra | Año | Enlace | Qué cubre | Fiab. |
+|---|---|---|---|---|
+| **G. T. Lapsley**, *The Account Roll of a Fifteenth-Century Iron Master*, **EHR 14** (55), pp. 509-529 | 1899 | [Internet Archive, texto](https://archive.org/download/sim_english-historical-review_1899-07_14_55/sim_english-historical-review_1899-07_14_55_djvu.txt) | Edición del compoto de la ferrería de **Byrkeknott (Durham), 1408-09**: 278 *blomes*; carbón a 2s la docena de cargas + 6d de acarreo; *blomer* 6d/blome, herrero 6d+1d. **Cálculo propio sobre 9 semanas: carbón (quemado + acarreo) = 45-62% del gasto semanal** (media ~55%); el mineral se compraba aparte (£13 5s/año); gasto total £83 0s 1d. **La leña salía gratis del parque del obispo**, así que el coste del carbón está infravalorado | **A** (edición documental) |
+| **L. F. Salzman**, *English Industries of the Middle Ages* (Gutenberg) | 1923 | [Gutenberg](https://www.gutenberg.org/cache/epub/48588/pg48588.txt) | Tudeley (Kent) 1333/1353 y Bedburn 1408: salarios por blome; bloom a 3s 4d en Tudeley (Eduardo III). Sin reparto de costes | **B** (antiguo) |
+| **G. Clark**, *Markets and Economic Growth: The Grain Market of Medieval England* (working paper UC Davis) | c.1999 | [PDF](https://faculty.econ.ucdavis.edu/faculty/gclark/210a/readings/market99.pdf) | Trigo **~6 s/quarter**; transporte terrestre **~0,2 s/quarter por 10 millas c.1300** (cita a Campbell, Galloway, Keene & Murphy 1993, pp. 193-8) → **~3,3% del precio cada 16 km**; el agua ~1/10 de la tierra | **B** (working paper; dato base de Campbell et al. = **D**) |
+| **Heldring, Robinson & Vollmer**, *The Long-Run Impact of the Dissolution of the English Monasteries* (working paper) | 2020 | [PDF](https://bpb-us-w2.wpmucdn.com/voices.uchicago.edu/dist/f/1135/files/2018/06/Valor-June-15-2020.pdf) | **Tabla 1 (adaptada de Clay 1986, p. 143 / Overton 1996, tabla 4.8): reparto de la tierra cultivada en Inglaterra en 1436**: aristocracia+gran gentry 15-20% · gentry media y menor 25% · yeomen y pequeños propietarios 20% · **Iglesia y Corona 25-35%** (Iglesia ~20-30%, Corona ~5%) | **B** (working paper; Clay y Overton = **D**). **Es de 1436: fecha buena** |
+| **NCMH vol. VII**, cap. 5 *Rural Europe* | 1998 | [erenow (espejo)](https://erenow.org/postclassical/MedivalHistory7/24.php) | Rentas a la baja en casi toda Europa; **champart (sur de Europa): de 1/2 o 1/3 de la cosecha en el XIII a "1/4 o menos"** en el XV; rentas en dinero pactadas y dues consuetudinarios también bajan; excepciones: **Países Bajos del sur** (sin reducción general) y **Castilla** (la gran nobleza gana poder y explota reservas y Mesta); mezzadria toscana con "rentas altas" | **A** (contenido CUP; espejo no oficial) |
+| Wikipedia, *Thomas Percy, 1st Baron Egremont* | — | [enlace](https://en.wikipedia.org/wiki/Thomas_Percy,_1st_Baron_Egremont) | "the Percy Cumberland estates suffered a decline of 25% between 1416 and 1470" (cita Tuck, *Northern History* 21, 1985, p. 42 — **D**) | **B/C** |
