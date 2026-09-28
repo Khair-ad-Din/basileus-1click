@@ -8,6 +8,7 @@ import { hex2rgb, provColor, paintAll, paintBorders, repaintProvince, roadCurve,
 import { canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, armyCount, armyFood, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, recruitable, resetTsyLedger } from "./economy.js";
 import { mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, rebuildProvinceData, seedCities, renameProvincesHistorical, ensureMarketTopology, kmBetween, roadKey, hasRoad, landPath, generateRoads, sprinkleTerrain } from "./mapgen.js";
 import { S } from "./state.js";
+import { reliefSend } from "./economy2.js";
 import "./debug.js"; // registra window.dbg (herramientas de observación por consola)
 /* ============================= RNG ============================= */
 
@@ -47,6 +48,14 @@ import { GH_PER_SEC, MW, MH, NATIONS, NPLAY, NEUTRAL, RES_KEYS, RES_STRAT, RES_T
 // entre capitales vecinas (las viejas calzadas que unen los reinos).
 
 window.tryRoad=tryRoad;
+// SOCORRO DE GRANO (economy2.js reliefSend): llena el granero del ducado de esta provincia hasta su próxima siega.
+window.reliefSendProv=function(pid){
+  const p=S.provs[pid]; if(!p||p.owner!==S.player)return;
+  const q=reliefSend(S.player,p);
+  if(q&&q.ok){const dn=p.duchy>=0&&S.duchies[p.duchy]?S.duchies[p.duchy].name:p.name;
+    log("🌾 Socorro a "+dn+": "+fmt(q.falta)+" de grano ("+fmt(q.almacen)+" del almacén) por "+fmt(q.total)+" ducados.")}
+  refreshBuildBar(); refreshTop(); refreshSide();
+};
 
 /* ============================= Render del mapa base ============================= */
 

@@ -14,7 +14,7 @@ import { NPLAY, BUILDINGS, UNITS, STRATA, TERRAINS } from "./config.js";
 import { S } from "./state.js";
 import { kmBetween, pxToLonLat, ensureMarketTopology } from "./mapgen.js";
 import { isEmbargoed, atWarPair } from "./diplomacy.js";
-import { BKEYS, calOf, harvestMonth, monthsToHarvest, ledger, sinkAdd, isOccupied, effLvl, lvlOf, bOwnerOf, manorOf, taxRateOf, alcabalaOf, almojOf, harvestMul, terrMul, DIEZMO, terrCatMul, staffing, storeCap, armyFood, soldCap, provProdMul, ensureMarket, recFlow, recBuy, recCrown, YR_TICKS, TRADE_KM, TRADE_SEA, TRADE_WAR, TRADE_BULK, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN, PROMO_RATE, targetBurgFrac, monthKeyOf } from "./economy.js";
+import { BKEYS, calOf, harvestMonth, monthsToHarvest, ledger, sinkAdd, canAfford, isOccupied, effLvl, lvlOf, bOwnerOf, manorOf, taxRateOf, alcabalaOf, almojOf, harvestMul, terrMul, DIEZMO, terrCatMul, staffing, storeCap, armyFood, soldCap, provProdMul, ensureMarket, recFlow, recBuy, recCrown, YR_TICKS, TRADE_KM, TRADE_SEA, TRADE_WAR, TRADE_BULK, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN, PROMO_RATE, targetBurgFrac, monthKeyOf } from "./economy.js";
 
 // ============================== CONSTANTES (todo lo tunable está aquí) ==============================
 const PRICE_SCALE=8;     // palanca GLOBAL de precios: iguala el dinero del comercio a la escala de costes de la v1
@@ -739,12 +739,49 @@ function granaryKey(p){return (p.duchy>=0?"d"+p.duchy:"p"+p.id)+"|"+p.owner}
 // el camino de ese centro al de la provincia más el de su centro a la provincia (por mar, ×TRADE_SEA si ambos centros son
 // costeros). Antes solo contaba el último tramo: un reino grande era un seguro gigante (Polonia-Lituania, Rusia: casi
 // nunca hambre en 20 años) y el Sacro Imperio, Italia o Irlanda, reinos de 1-3 ducados, cargaban con toda el hambre.
-function reliefRoute(p){
-  const H=hubOfNation(p.owner), h=(p.hubOf!=null&&p.hubOf>=0&&S.provs[p.hubOf])||p;
+// payer: el reino que manda el grano (por defecto, el dueño). Con otro reino (ayuda a un aliado, futuro) la ruta sale del
+// centro de comercio de la capital de QUIEN PAGA: mismo cálculo, más lejos, más flete.
+function reliefRoute(p,payer=p.owner){
+  const H=hubOfNation(payer), h=(p.hubOf!=null&&p.hubOf>=0&&S.provs[p.hubOf])||p;
   let far=(H&&h&&H.id!==h.id)?kmBetween(h,H):0; if(far&&H.coastal&&h.coastal)far*=TRADE_SEA;
   return {km:(p.hubKm||0)+far, from:H||h};
 }
-function reliefFlete(p){return Math.min(FLETE_MAX,TRADE_KM2*reliefRoute(p).km*(TRADE_BULK[BULK2.comida]||1)/REF2.comida)}
+function reliefFlete(p,payer=p.owner){return Math.min(FLETE_MAX,TRADE_KM2*reliefRoute(p,payer).km*(TRADE_BULK[BULK2.comida]||1)/REF2.comida)}
+// ============================== SOCORRO DE GRANO (design/grano-ducado.md, ancla 1+2) ==============================
+// Una sola acción: la corona llena el granero de un ducado HASTA SU PRÓXIMA SIEGA (con la reserva de GRAIN_RESERVE, así
+// que el granero no revende lo que le llega). Primero saca grano de su ALMACÉN (solo paga el flete), sin tocar los
+// RELIEF_ARMY_MONTHS meses que come su ejército; lo que falte lo COMPRA en la plaza del reino a precio + flete. No compra a
+// medias. reliefQuote es la ÚNICA fuente del precio: tooltip, botón, (futuro) mapa, pósito automático, IA y aliados.
+const RELIEF_ARMY_MONTHS=3;
+function granaryMembers(p){const k=granaryKey(p),ps=[];
+  for(const q of S.provs)if(q.owner===p.owner&&!q.wasteland&&q.pops&&q.store&&q.store.comida!=null&&granaryKey(q)===k)ps.push(q);return ps}
+function reliefQuote(payer,p){
+  const N=S.nations[payer]; if(!N||!p||!p.pops)return null;
+  const ps=granaryMembers(p); let st=0,need=0,c=0;
+  for(const q of ps){const cq=q.pops.campesino||0;c+=cq;st+=q.store.comida||0;need+=cq*monthsToHarvest(q,S.hour)/12*GRAIN_RESERVE}
+  const falta=Math.max(0,need-st);
+  let army=0;for(const a of S.armies)if(a.nation===payer)army+=armyFood(a)*730*RELIEF_ARMY_MONTHS;
+  const almacen=Math.min(falta,Math.max(0,(N.res.comida||0)-army)), compra=falta-almacen;
+  const price=(N.mktPrice&&N.mktPrice.comida)||ref("comida"), t=reliefFlete(p,payer), rr=reliefRoute(p,payer);
+  const enPlaza=N.mkt.comida||0, flete=falta*price*t, cost=compra*price, total=cost+flete;
+  const why=falta<=0?"no le falta":compra>enPlaza+1e-9?"no hay tanto grano en la plaza":!canAfford(payer,{dinero:total})?"sin dinero":null;
+  return {falta,almacen,compra,price,fletePct:t,km:rr.km,from:rr.from?rr.from.name:"",flete,cost,total,enPlaza,ps,c,ok:!why,why};
+}
+// Ejecuta el socorro. El dinero no nace ni muere: lo comprado se paga como cualquier compra en la plaza (comisión al
+// burgués, alcabala a la corona, el resto a la plaza) y el flete lo cobran los transportistas.
+function reliefSend(payer,p){
+  const q=reliefQuote(payer,p); if(!q||!q.ok)return q;
+  const N=S.nations[payer], alc=alcabalaOf(payer), dn=p.duchy>=0&&S.duchies&&S.duchies[p.duchy]?S.duchies[p.duchy].name:p.name;
+  N.res.comida=(N.res.comida||0)-q.almacen; N.mkt.comida=(N.mkt.comida||0)-q.compra;
+  N.res.dinero-=q.total; recCrown(payer,"Socorro",dn,-q.total);
+  N.sWealth.burgues+=q.cost*MARGIN; recFlow(payer,"burgues","Comisión de la plaza",q.cost*MARGIN);
+  N.res.dinero+=q.cost*alc; recCrown(payer,"Alcabala",LABEL2.comida,q.cost*alc);
+  N.e2.plaza+=q.cost*(1-MARGIN-alc);
+  const cs=cartShare(p); N.sWealth.campesino+=q.flete*cs; recFlow(payer,"campesino","Transporte",q.flete*cs);
+  N.sWealth.burgues+=q.flete*(1-cs); recFlow(payer,"burgues","Transporte",q.flete*(1-cs));
+  for(const r of q.ps){const w=q.c>0?(r.pops.campesino||0)/q.c:1/q.ps.length;r.store.comida+=q.falta*w}
+  return q;
+}
 function granaryPass(deliv,grainReq,dt){
   const G=new Map();
   for(const p of S.provs){
@@ -780,4 +817,4 @@ function granaryOf(p){
 }
 
 export { economyTick2, siteOK2, seedEstates2, upkeepScale, seedOwner2, seedWealth2, GOODS2, LABEL2, REF2, NEED2, WANT2, TIERS, BLD2, ESTATE_BUILDS2, buildingProfit2, buildingOutput2,
-  transport, tradeCost2, moneyStock, sinkAdd, ARTISAN_IN, ctrOut, ctrIn, granaryOf, foodGrowth, GRAIN_RESERVE, isMarketDay, MARKET_DAYS, PRICE_SCALE, JORNAL, MARGIN, CROWN_STOCK, CROWN_STOCK_WANT, crownStockOut, specialty2, obsolete2 };
+  transport, tradeCost2, moneyStock, sinkAdd, ARTISAN_IN, ctrOut, ctrIn, granaryOf, foodGrowth, GRAIN_RESERVE, reliefQuote, reliefSend, isMarketDay, MARKET_DAYS, PRICE_SCALE, JORNAL, MARGIN, CROWN_STOCK, CROWN_STOCK_WANT, crownStockOut, specialty2, obsolete2 };

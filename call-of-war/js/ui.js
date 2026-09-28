@@ -3,7 +3,7 @@ import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, 
 import { S } from "./state.js";
 import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildJobs, buildMax, buildSlots, canAfford, costFor, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationProvCount, nationStrength, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, resetTsyLedger, tsyAvail, tsyMonthBal, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, provProdMul, YR_TICKS, manorOf, MANOR_RENT, bOwnerOf } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
-import { GOODS2, LABEL2, REF2, NEED2, WANT2, BLD2, PRICE_SCALE, CROWN_STOCK, specialty2, obsolete2, siteOK2, transport, buildingProfit2, buildingOutput2, upkeepScale, granaryOf, foodGrowth } from "./economy2.js";
+import { GOODS2, LABEL2, REF2, NEED2, WANT2, BLD2, PRICE_SCALE, CROWN_STOCK, specialty2, obsolete2, siteOK2, transport, buildingProfit2, buildingOutput2, upkeepScale, granaryOf, foodGrowth, reliefQuote } from "./economy2.js";
 import { calOf, MONTHS_ES } from "./economy.js";
 import { canvas, clampPan } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
@@ -1222,6 +1222,7 @@ const CROWN_CAT={
   "Reclutamiento":["🛡","Tropas reclutadas."],
   "Caminos":["🛣","Caminos que has mandado construir."],
   "Reparaciones":["🔧","Edificios reabiertos y reparados."],
+  "Socorro":["🌾","Grano enviado a ducados que no llegaban a la siega: comprado en la plaza y su flete."],
   "Gastos varios":["·","Otros pagos de la corona."],
   "Otros":["❔","Movimientos del tesoro sin apunte en el libro."]
 };
@@ -1520,7 +1521,7 @@ function pantryRow2(p){ // el GRANERO del ducado: cuántos meses de grano quedan
     :mo>=12?"<span class='pos'>de sobra</span>":"<span class='dim'>hasta "+until+"</span>";
   const tip=tipRows("Granero · "+dn,[
     ["Grano guardado",nfE(g.st)+" / "+nfE(g.cap)],["Alcanza para",(g.months>=24?"más de 2 años":g.months.toFixed(1)+" meses")],
-    ["Próxima siega",hm+" (en "+Math.ceil(g.monthsToHarvest)+" meses)"],["Cosecha del ducado este año",(hv>=0?"+":"")+hv+"%"],
+    ["Próxima siega",hm+" · "+Math.ceil(g.monthsToHarvest)+" m"],["Cosecha del ducado este año",(hv>=0?"+":"")+hv+"%"],
     ["Comen sus campesinos",nfE(g.c/12)+" /mes"],...(troop>0.5?[["Tropas",nfE(troop)+" /mes","#d08080"]]:[]),
     ["Diezmo + renta",pctE(DIEZMO)+"% + "+Math.round((MANOR_RENT[m]||0)*100)+"% de lo que se vende"],
     ["Traer grano cuesta",nfE(g.price)+" + flete "+pctE(g.flete)+"% = "+nfE(g.priceIn)+" 🪙/u"],["El grano viene de",g.from+" · "+Math.round(g.km)+" km"],
@@ -1528,7 +1529,24 @@ function pantryRow2(p){ // el GRANERO del ducado: cuántos meses de grano quedan
     ["Natalidad por el grano","×"+foodGrowth(g.months).toFixed(1)],
     ["Lo que sobra hasta la siega","se vende en la plaza"]]);
   const pc=Math.min(100,Math.round(100*g.months/12));
-  return "<div class='prow' data-tiph=\""+ta(tip)+"\" style='cursor:help'><span>🌾 Granero</span><b>"+barE(pc,64)+" "+(g.months>=24?"24+":mo)+" m &nbsp;"+state+"</b></div>";
+  return "<div class='prow' data-tiph=\""+ta(tip)+"\" style='cursor:help'><span>🌾 Granero</span><b>"+barE(pc,64)+" "+(g.months>=24?"24+":g.months<1?"&lt;1":mo)+" m &nbsp;"+state+"</b></div>"+
+    reliefRow2(p,g,hm);
+}
+// SOCORRO: solo en ducados propios que no llegan a la siega (o con hambre). Un clic llena el granero hasta la siega; el
+// botón enseña el total antes de pulsar y el tooltip el desglose (almacén, compra, flete). Todo sale de reliefQuote.
+function reliefRow2(p,g,hm){
+  if(p.owner!==S.player||!(g.short||p.famine||(p._grainNeed||0)>0))return "";
+  const q=reliefQuote(S.player,p); if(!q||q.falta<=0)return "";
+  const dn=p.duchy>=0&&S.duchies&&S.duchies[p.duchy]?S.duchies[p.duchy].name:p.name;
+  const tip=tipRows("Socorro · "+dn,[
+    ["Falta hasta "+hm,nfE(q.falta)+" 🌾"],
+    ...(q.almacen>=0.5?[["Del almacén de la corona",nfE(q.almacen)+" 🌾"]]:[]),
+    ...(q.compra>=0.5?[["Comprado en la plaza",nfE(q.compra)+" × "+nfE(q.price)+" 🪙"]]:[]),
+    ["Flete "+q.from+" · "+Math.round(q.km)+" km","+"+pctE(q.fletePct)+"% · "+nfE(q.flete)+" 🪙"],
+    ...(q.why?[["No se puede",q.why,"#d08080"]]:[])],
+    ["Total",nfE(q.total)+" 🪙"]);
+  return "<div class='prow' data-tiph=\""+ta(tip)+"\"><span></span><b><button class='bbtn' "+(q.ok?"":"disabled")+
+    " onclick='reliefSendProv("+p.id+")'>🛒 Socorro → "+hm+" · <span class='"+(q.ok?"":"neg")+"'>"+nfE(q.total)+"</span> 🪙</button></b></div>";
 }
 function tradeRow2(p){ // su centro de comercio y lo que cuesta llevar allí cada bien (flete)
   const hub=(p.hubOf!=null&&p.hubOf>=0)?S.provs[p.hubOf]:null, km=Math.round(p.hubKm||0);

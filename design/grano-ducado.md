@@ -67,7 +67,19 @@ Ficha de provincia, fila **🌾 Granero** (`pantryRow2`, ui.js): barra de meses 
 próxima siega, cosecha del ducado este año, lo que comen, diezmo + renta, **lo que cuesta traer grano (precio + flete =
 total)** y la natalidad por el grano.
 
-## Siguiente: anclas del jugador (paso 5)
+## Anclas del jugador (paso 5) — `/ux` 2026-09-28, diseño B del director (patrón EU4)
 
-Traer grano del almacén de la corona a un ducado; comprarlo en otro ducado pagando el flete; prohibir la saca de un
-ducado; Almacén/pósito (ya amplía el granero). En el futuro: ayuda a aliados por la misma tubería entre reinos.
+Decisiones de fondo: las anclas 1 (almacén) y 2 (comprar) son **una sola acción, "Socorro"**; la cantidad es **tiempo**
+("hasta la siega"), un clic, sin compras a medias; **una sola fuente del precio**, `reliefQuote(pagador, provincia)`
+(economy2.js), que leen tooltip, botón, mapa, pósito, IA y aliados; `reliefRoute(p, pagador)` ya acepta otro pagador
+(aliados, futuro); todo gasto va al libro de la corona como **"🌾 Socorro"** por ducado.
+
+- **HECHO — botón en la ficha** (`reliefRow2`, ui.js): solo en ducados propios que no llegan a la siega o tienen hambre.
+  "🛒 Socorro → julio · 10.216 🪙" (desactivado y en rojo si no se puede). Tooltip: falta hasta la siega, del almacén
+  de la corona (sin tocar 3 meses de comida del ejército), comprado en la plaza × precio, flete desde · km · % · 🪙,
+  total. `reliefSend` descuenta almacén, compra en la plaza (comisión, alcabala, plaza), paga el flete a los
+  transportistas y reparte el grano por el granero. Invariante del dinero exacto (Δ = 0, medido).
+- Pendiente, en orden: **modo de mapa "Graneros"** con leyenda-lista de los ducados que se vacían antes (cada uno con su
+  botón); **⛔ prohibir la saca** en la fila del granero (tooltip: lo que pierden campesinos/clero/señor/plaza y los meses
+  que gana); **Pósito** en Hacienda (tope mensual; socorre solo, del que antes se vacía; la IA usa la misma palanca);
+  opcional, alerta "🌾3" junto al botón del mapa.
