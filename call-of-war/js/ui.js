@@ -1523,7 +1523,7 @@ function pantryRow2(p){ // el GRANERO del ducado: cuántos meses de grano quedan
     ["Próxima siega",hm+" (en "+Math.ceil(g.monthsToHarvest)+" meses)"],["Cosecha del ducado este año",(hv>=0?"+":"")+hv+"%"],
     ["Comen sus campesinos",nfE(g.c/12)+" /mes"],...(troop>0.5?[["Tropas",nfE(troop)+" /mes","#d08080"]]:[]),
     ["Diezmo + renta",pctE(DIEZMO)+"% + "+Math.round((MANOR_RENT[m]||0)*100)+"% de lo que se vende"],
-    ["Traer grano cuesta",nfE(g.price)+" + flete "+pctE(g.flete)+"% = "+nfE(g.priceIn)+" 🪙/u"],
+    ["Traer grano cuesta",nfE(g.price)+" + flete "+pctE(g.flete)+"% = "+nfE(g.priceIn)+" 🪙/u"],["El grano viene de",g.from+" · "+Math.round(g.km)+" km"],
     ...(need>0?[["Granero vacío: compra",Math.round(100*got/need)+"% conseguido","#d08080"]]:[]),
     ["Natalidad por el grano","×"+foodGrowth(g.months).toFixed(1)],
     ["Lo que sobra hasta la siega","se vende en la plaza"]]);

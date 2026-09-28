@@ -48,10 +48,11 @@ const WANT2={campesino:{subs:1,vida:1,lujo:0}, burgues:{subs:1,vida:2,lujo:1},
 const BUY_ORDER=["nobleza","clero","burgues"];   // si falta: talleres (insumos), luego quien más paga, luego el campesino
 
 // PRODUCCIÓN del campesino por campesino y año (× vocación del terreno × moral).
-const GRAIN_YIELD=1.40;  // cosecha por campesino y año (× terreno × año del ducado). Con el granero del ducado, lo que no se
+const GRAIN_YIELD=1.35;  // cosecha por campesino y año (× terreno × año del ducado). Con el granero del ducado, lo que no se
                          // vende vuelve al granero y alimenta la natalidad: con 1,55 sobraba ~50% y no había hambre en décadas.
                          // 1,40 (medido a 25 años): hambre notable en alguna región cada ~5 años, grande (20-35 ducados) cada ~6-8,
-                         // ~0,5% de muertos en 25 años y la población crece ~0,5%/año
+                         // ~0,5% de muertos en 25 años, la población crece ~0,5%/año; pero por granero, una cada 50-100 años en
+                         // Occidente: poco para la carestía local. 1,35 por decisión de Sergio (2026-09-28)
                          // (~30% de lo que come) triplicaba lo que compran ciudades y élites (~12% de la población)
 // GRANERO DEL DUCADO (design/grano-ducado.md): las provincias de un ducado (del mismo dueño) guardan su grano en común.
 // De él comen sus campesinos; vende a la plaza del reino SOLO lo que sobra por encima de lo que necesitan hasta la
@@ -570,7 +571,7 @@ function economyTick2(dt=24,doArb=true){
     };
     // 1) grano para las despensas vacías (antes que nadie: es hambre)
     for(const r of grainReq[n]){ // el grano de socorro llega desde el centro de comercio: se paga el precio MÁS EL FLETE
-      const t=transport(r.p,"comida"), pr=price.comida*(1+t), can=Math.min(r.q,Math.max(0,W.campesino||0)/pr);
+      const t=reliefFlete(r.p), pr=price.comida*(1+t), can=Math.min(r.q,Math.max(0,W.campesino||0)/pr);
       r.got=buy("campesino","comida",can); r.p._grainGot=r.got;
       const fr=r.got*price.comida*t; if(fr>0){const cs=cartShare(r.p);W.campesino-=fr;recFlow(n,"campesino","Compras",-fr);
         pay(n,"campesino",fr*cs,"Transporte");if(cs<1)pay(n,"burgues",fr*(1-cs),"Transporte")}}
@@ -734,6 +735,16 @@ function granaryKey(p){return (p.duchy>=0?"d"+p.duchy:"p"+p.id)+"|"+p.owner}
 // Pone en común el grano de las provincias de cada ducado (lo reparte según sus campesinos), vende el SOBRANTE a la plaza
 // del reino (el dinero se reparte como la cosecha: diezmo al clero, renta al señor, el resto al campesino) y, si se ha
 // vaciado, pide comprar. Deja en cada provincia p._gm (meses de grano que le quedan al granero) para la natalidad y la UI.
+// FLETE DEL GRANO DE SOCORRO: el grano de la plaza del reino está en el centro de comercio de su CAPITAL. Traerlo cuesta
+// el camino de ese centro al de la provincia más el de su centro a la provincia (por mar, ×TRADE_SEA si ambos centros son
+// costeros). Antes solo contaba el último tramo: un reino grande era un seguro gigante (Polonia-Lituania, Rusia: casi
+// nunca hambre en 20 años) y el Sacro Imperio, Italia o Irlanda, reinos de 1-3 ducados, cargaban con toda el hambre.
+function reliefRoute(p){
+  const H=hubOfNation(p.owner), h=(p.hubOf!=null&&p.hubOf>=0&&S.provs[p.hubOf])||p;
+  let far=(H&&h&&H.id!==h.id)?kmBetween(h,H):0; if(far&&H.coastal&&h.coastal)far*=TRADE_SEA;
+  return {km:(p.hubKm||0)+far, from:H||h};
+}
+function reliefFlete(p){return Math.min(FLETE_MAX,TRADE_KM2*reliefRoute(p).km*(TRADE_BULK[BULK2.comida]||1)/REF2.comida)}
 function granaryPass(deliv,grainReq,dt){
   const G=new Map();
   for(const p of S.provs){
@@ -763,9 +774,9 @@ function granaryOf(p){
   if(!p||!p.store||p.store.comida==null||!p.pops)return null;
   const k=granaryKey(p);let st=0,c=0,cap=0;
   for(const q of S.provs)if(q.owner===p.owner&&!q.wasteland&&q.pops&&q.store&&granaryKey(q)===k){st+=q.store.comida||0;c+=q.pops.campesino||0;cap+=storeCap(q,"comida")}
-  const N=S.nations[p.owner], pr=(N&&N.mktPrice&&N.mktPrice.comida)||ref("comida"), t=transport(p,"comida");
+  const N=S.nations[p.owner], pr=(N&&N.mktPrice&&N.mktPrice.comida)||ref("comida"), t=reliefFlete(p), rr=reliefRoute(p);
   const months=c>0?st/(c/12):12, hm=harvestMonth(p), mth=monthsToHarvest(p,S.hour);
-  return {st,cap,c,months,harvestMonth:hm,monthsToHarvest:mth,harvest:harvestMul(p),price:pr,flete:t,priceIn:pr*(1+t),short:months<mth}
+  return {st,cap,c,months,harvestMonth:hm,monthsToHarvest:mth,harvest:harvestMul(p),price:pr,flete:t,priceIn:pr*(1+t),short:months<mth,from:rr.from?rr.from.name:"",km:rr.km}
 }
 
 export { economyTick2, siteOK2, seedEstates2, upkeepScale, seedOwner2, seedWealth2, GOODS2, LABEL2, REF2, NEED2, WANT2, TIERS, BLD2, ESTATE_BUILDS2, buildingProfit2, buildingOutput2,

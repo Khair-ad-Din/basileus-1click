@@ -42,8 +42,23 @@ peor cosecha (−27%) solo 5 de ~5.000 provincias con hambre. Tres colchones api
 El hambre llega **el año siguiente a la mala cosecha** (cuando el granero se vacía antes de la siega: el hambre de
 primavera). Regional: como mucho ~35 de 926 ducados a la vez.
 
-Pendiente de medir: **dónde** cae (¿siempre los mismos ducados débiles o repartida?). Visto por ducado, hoy sale a una
-cada ~200 años de media.
+**Dónde cae** (20 años, medido). Con 1,40 y el flete de socorro solo desde el centro más cercano, un reino grande era un
+seguro gigante: Polonia-Lituania nunca, Rusia una vez por granero cada ~720 años, mientras el Sacro Imperio, Italia e
+Irlanda (reinos de 1-3 ducados) cargaban con todo. Decisión de Sergio (2026-09-28): **B** el grano de socorro paga el
+flete desde el centro de comercio de la CAPITAL (`reliefRoute`/`reliefFlete`), y **C** `GRAIN_YIELD` 1,40 → 1,35.
+
+| Región | Episodios por granero (años entre uno y otro) antes → ahora |
+|---|---|
+| Islas Británicas · P.Bajos-Alemania · Egipto-Magreb · Anatolia | 53-63 → **30-37** |
+| Francia · Italia | 80-100 → **53-60** |
+| Iberia | 142 → **89** |
+| Hungría-Balcanes · Rusia | 460-720 → **125-131** |
+| Escandinavia | 453 → **194** |
+| Polonia-Lituania | nunca → casi nunca (el granero de Europa: llanura fértil y poca gente) |
+
+El 22% de los graneros pasa hambre alguna vez en 20 años. Repiten la **montaña** (Salzburgo, Trentino, Granada,
+Albania, Avaria) y los **reinos diminutos y lejos de su centro** (los irlandeses: 420-560 km). ~550k muertos en 20 años
+(~0,9%); la población sigue creciendo.
 
 ## En la interfaz
 
