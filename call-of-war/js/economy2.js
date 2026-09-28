@@ -14,7 +14,7 @@ import { NPLAY, BUILDINGS, UNITS, STRATA, TERRAINS } from "./config.js";
 import { S } from "./state.js";
 import { kmBetween, pxToLonLat, ensureMarketTopology } from "./mapgen.js";
 import { isEmbargoed, atWarPair } from "./diplomacy.js";
-import { BKEYS, ledger, sinkAdd, isOccupied, effLvl, lvlOf, bOwnerOf, manorOf, taxRateOf, alcabalaOf, almojOf, harvestMul, terrMul, DIEZMO, terrCatMul, staffing, storeCap, armyFood, soldCap, provProdMul, ensureMarket, recFlow, recBuy, recCrown, YR_TICKS, TRADE_KM, TRADE_SEA, TRADE_WAR, TRADE_BULK, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN, PROMO_RATE, targetBurgFrac, monthKeyOf } from "./economy.js";
+import { BKEYS, calOf, harvestMonth, monthsToHarvest, ledger, sinkAdd, isOccupied, effLvl, lvlOf, bOwnerOf, manorOf, taxRateOf, alcabalaOf, almojOf, harvestMul, terrMul, DIEZMO, terrCatMul, staffing, storeCap, armyFood, soldCap, provProdMul, ensureMarket, recFlow, recBuy, recCrown, YR_TICKS, TRADE_KM, TRADE_SEA, TRADE_WAR, TRADE_BULK, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN, PROMO_RATE, targetBurgFrac, monthKeyOf } from "./economy.js";
 
 // ============================== CONSTANTES (todo lo tunable está aquí) ==============================
 const PRICE_SCALE=8;     // palanca GLOBAL de precios: iguala el dinero del comercio a la escala de costes de la v1
@@ -48,9 +48,21 @@ const WANT2={campesino:{subs:1,vida:1,lujo:0}, burgues:{subs:1,vida:2,lujo:1},
 const BUY_ORDER=["nobleza","clero","burgues"];   // si falta: talleres (insumos), luego quien más paga, luego el campesino
 
 // PRODUCCIÓN del campesino por campesino y año (× vocación del terreno × moral).
-const GRAIN_YIELD=1.55;  // con diezmo (10%) y renta (10-28%) EN ESPECIE, al campesino le queda ~60-80% de la cosecha  // grano (× terreno × granja × cosecha); el campesino come 1 de su despensa. Con 1,2 el excedente
+const GRAIN_YIELD=1.40;  // cosecha por campesino y año (× terreno × año del ducado). Con el granero del ducado, lo que no se
+                         // vende vuelve al granero y alimenta la natalidad: con 1,55 sobraba ~50% y no había hambre en décadas.
+                         // 1,40 (medido a 25 años): hambre notable en alguna región cada ~5 años, grande (20-35 ducados) cada ~6-8,
+                         // ~0,5% de muertos en 25 años y la población crece ~0,5%/año
                          // (~30% de lo que come) triplicaba lo que compran ciudades y élites (~12% de la población)
-const STORE_KEEP=0.5;    // el campesino guarda media despensa; lo que produzca por encima lo vende
+// GRANERO DEL DUCADO (design/grano-ducado.md): las provincias de un ducado (del mismo dueño) guardan su grano en común.
+// De él comen sus campesinos; vende a la plaza del reino SOLO lo que sobra por encima de lo que necesitan hasta la
+// próxima siega (× GRAIN_RESERVE); lo que no cabe se vende entero. Si se vacía, compra en la plaza pagando el precio
+// MÁS EL FLETE desde su centro de comercio: el grano es lo más caro de mover, así que el ducado remoto o de montaña lo
+// paga más caro (limitado por coste, no por cantidad: Granada puede importarlo si puede pagarlo).
+const GRAIN_RESERVE=1.2;  // guarda un 20% más de lo que necesita hasta la próxima siega antes de vender
+const GRAIN_SELL_DAYS=30; // el sobrante se va vendiendo en ~un mes (no de golpe)
+// NATALIDAD: el grano acumulado se convierte en súbditos (más grano → más natalidad → más consumo → equilibrio). Es el
+// tope natural del exceso de alimento y el motor de crecimiento que quiere todo rey. Meses de reserva → factor.
+function foodGrowth(months){return months<=1?0.3:months<=12?0.3+0.7*(months-1)/11:Math.min(1.8,1+0.8*(months-12)/6)}
 // Lo que produce TODA provincia según su terreno (la categoría "mar" solo rinde en la COSTA: sal marina y pesca de bajura).
 // Revisado 2026-09-27 con el informe regional (--regiones): sal y pescado faltaban en todo el Mediterráneo y el Este,
 // los caballos solo salían en la estepa y el Norte no tenía cerveza. Bebida = vino/cerveza/hidromiel caseros.
@@ -419,20 +431,17 @@ function economyTick2(dt=24,doArb=true){
     const N=S.nations[n]; if(!N||!N.alive)continue;
     for(const k of STRATA)strata[n][k]+=p.pops[k]||0;
     const c=p.pops.campesino||0, mor=(p.morale||0)/100;
-    // GRANO: el campesino come de su despensa; lo que desborda va a la plaza; si se vacía, pide comprar
+    // GRANO: la provincia SIEGA una vez al año, en su mes, y lo cosechado entra en el granero (p.store.comida, que se
+    // pone en común con su ducado después de esta pasada: granaryPass). Sus campesinos comen de él cada día.
     if(!p.store)p.store={};
-    const cap=storeCap(p,"comida"); if(p.store.comida==null)p.store.comida=cap*0.6;
-    const gprod=c*GRAIN_YIELD*terrMul(p,"comida")*harvestMul(p)*f;   // (la Granja ya no lo multiplica: es la explotación de su dueño, BLD2)
-    const sh=harvestShares(p), kept=1-sh.tithe-sh.rent;   // DIEZMO y RENTA en especie sobre TODA la cosecha
-    if(gprod>0){deliv[n].push({p,g:"comida",q:gprod*sh.tithe,kind:"tithe"},{p,g:"comida",q:gprod*sh.rent,kind:"rent",owner:sh.lord})} // la décima del grano, al granero del clero
-    p.store.comida+=gprod*kept-c*f; N.e2.st.prodV+=gprod*REF2.comida; pmProd(p,"comida",gprod);
+    if(p.store.comida==null)p.store.comida=storeCap(p,"comida")*0.6;
+    {const cal=calOf(S.hour);
+      if(cal.m===harvestMonth(p)&&p.store.hy!==cal.y){p.store.hy=cal.y;
+        const gh=c*GRAIN_YIELD*terrMul(p,"comida")*harvestMul(p);   // la cosecha del AÑO (la Granja no la multiplica: es la explotación de su dueño, BLD2)
+        p.store.comida+=gh; N.e2.st.prodV+=gh*REF2.comida; pmProd(p,"comida",gh)}}
+    p.store.comida-=c*f;
     p._grainNeed=0;p._grainGot=0;
-    // por encima de la mitad de la despensa, el excedente del tick se VENDE (el campesino vendía tras la cosecha, no
-    // esperaba a tener el granero lleno); por debajo, rellena la despensa. Sin esto los primeros meses no hay grano en la plaza.
-    const keep=cap*STORE_KEEP;
-    if(p.store.comida>keep&&gprod>c*f){const q=Math.min(gprod-c*f,p.store.comida-keep);p.store.comida-=q;deliv[n].push({p,g:"comida",q,kind:"camp"})}
-    if(p.store.comida>cap){const q=p.store.comida-cap;p.store.comida=cap;deliv[n].push({p,g:"comida",q,kind:"camp"})}
-    else if(p.store.comida<0){p._grainNeed=-p.store.comida;p.store.comida=0;grainReq[n].push({p,q:p._grainNeed,got:0})}
+    const sh=harvestShares(p);
     // lo que produce toda provincia + su especialidad
     for(const g in BASE2){const[r,cat]=BASE2[g];let q=c*r*terrCatMul(p,cat)*mor*f;
       q*=geoMul(p,g);
@@ -477,6 +486,8 @@ function economyTick2(dt=24,doArb=true){
     }
   }
 
+  granaryPass(deliv,grainReq,dt);
+
   // ---------------- MERCADO de cada reino: precio, cobro de productores, compras ----------------
   const marketDay=isMarketDay();
   const bought=Array.from({length:NPLAY},()=>({}));
@@ -496,7 +507,11 @@ function economyTick2(dt=24,doArb=true){
           const q=NEED2[t][g]*w*str[e]*f*(g==="vino"&&N.e2.islam?ISLAM_DRINK:1); base[e][g]=(base[e][g]||0)+q; want[e][g]=(want[e][g]||0)+q*boost}}}
     const dem={};
     for(const e of STRATA)for(const g in want[e])dem[g]=(dem[g]||0)+want[e][g];
-    for(const r of grainReq[n])dem.comida=(dem.comida||0)+r.q;
+    let reqQ=0;for(const r of grainReq[n])reqQ+=r.q;
+    dem.comida=(dem.comida||0)+reqQ;
+    // el almacén de la plaza se dimensiona con la demanda ESTABLE: sin las compras de socorro de los graneros vacíos, que
+    // van a ráfagas (un día la plaza aceptaba mucho grano y al siguiente, con el tope más bajo, tiraba lo ya pagado)
+    const demCap=g=>(dem[g]||0)-(g==="comida"?reqQ:0);
     for(const o in factNeed[n])for(const g in factNeed[n][o])dem[g]=(dem[g]||0)+factNeed[n][o][g];
     // PRECIO de la semana: el día de mercado se fija el de la semana que empieza (weeklyPrice) con lo acumulado en la
     // anterior (tras las compras, abajo). Entre mercados, todos compran y venden al precio fijado.
@@ -511,7 +526,7 @@ function economyTick2(dt=24,doArb=true){
     // acepta no se paga (si no, crearía dinero por bienes que se tiran). El grano rechazado vuelve a la despensa.
     const acc={},unsold={};
     for(const g of GOODS2){const sup=supply[n][g]||0;if(!sup){acc[g]=1;continue}
-      const dx=(dem[g]||0)+ctrOut(N,g)*dt/24;                           // su demanda + lo que tiene contratado para exportar hoy
+      const dx=demCap(g)+ctrOut(N,g)*dt/24;                           // su demanda + lo que tiene contratado para exportar hoy
       const room=dx+Math.max(0,dx/dt*730*CAP_MONTHS-(N.mkt[g]||0));
       acc[g]=Math.min(1,room/sup);unsold[g]=(1-acc[g])*sup/dt*730}
     // la PLAZA paga a los productores (el dinero nace aquí)
@@ -554,7 +569,11 @@ function economyTick2(dt=24,doArb=true){
       bought[n][g]=(bought[n][g]||0)+q; return q;
     };
     // 1) grano para las despensas vacías (antes que nadie: es hambre)
-    for(const r of grainReq[n]){r.got=buy("campesino","comida",r.q);r.p._grainGot=r.got}
+    for(const r of grainReq[n]){ // el grano de socorro llega desde el centro de comercio: se paga el precio MÁS EL FLETE
+      const t=transport(r.p,"comida"), pr=price.comida*(1+t), can=Math.min(r.q,Math.max(0,W.campesino||0)/pr);
+      r.got=buy("campesino","comida",can); r.p._grainGot=r.got;
+      const fr=r.got*price.comida*t; if(fr>0){const cs=cartShare(r.p);W.campesino-=fr;recFlow(n,"campesino","Compras",-fr);
+        pay(n,"campesino",fr*cs,"Transporte");if(cs<1)pay(n,"burgues",fr*(1-cs),"Transporte")}}
     // 2) talleres: su materia prima (es capital de trabajo, va antes que el consumo de sus dueños)
     const coverIn={};
     for(const o in factNeed[n])for(const g in factNeed[n][o]){const need=factNeed[n][o][g];const q=buy(o,g,need,true); // la materia prima se servía a crédito al taller: el pedido entero atrae al mercader
@@ -588,9 +607,9 @@ function economyTick2(dt=24,doArb=true){
     for(const e of STRATA){let m=0,sm=0;for(const g in base[e]){const v=base[e][g]*price[g];m+=v;if(TIER_OF[g]==="subs")sm+=v}
       N.e2.basket[e]=m/dt*730; N.e2.subsCost[e]=sm/dt*730}   // /mes: cesta completa y solo subsistencia
     N.prosp=N.e2.cov.burgues.vida;                             // el ascenso a burgués sigue a la vida diaria del burgués
-    // la plaza no guarda más de CAP_MONTHS de demanda: el resto se tira
-    for(const g of GOODS2){const capS=((dem[g]||0)/dt*730+ctrOut(N,g)*730/24)*CAP_MONTHS, s=N.mkt[g]||0;
-      if(s>capS){L.discard+=(s-capS)*price[g];N.mkt[g]=capS}}
+    // la plaza no guarda más de CAP_MONTHS de demanda: lo que pasa de ahí se va estropeando
+    for(const g of GOODS2){const capS=(demCap(g)/dt*730+ctrOut(N,g)*730/24)*CAP_MONTHS, s=N.mkt[g]||0;
+      if(s>capS){const x=(s-capS)*Math.min(1,dt/24/30),v=x*price[g];L.discard+=v;const db=L.dby||(L.dby={});db[g]=(db[g]||0)+v;N.mkt[g]=s-x}}  // MERMA: lo que sobra se estropea poco a poco (1/30 al día): da un mes para que los contratos o el mercado lo coloquen; tirarlo de golpe al renovarse los contratos tiraba lo ya pagado
     // demanda que se quedó sin cubrir POR FALTA DE MERCANCÍA: es lo único que un mercader puede venir a vender
     if(!N.e2.gap)N.e2.gap={};
     for(const g of GOODS2)N.e2.gap[g]=gapStock[g]||0;   // lo que se habría comprado (había dinero) pero no había mercancía
@@ -627,9 +646,8 @@ function economyTick2(dt=24,doArb=true){
     if(p._grainNeed>0){const left=p._grainNeed-(p._grainGot||0);
       const cons=c*f; if(cons>0&&left/cons>FAMINE_DEF){p.pop=Math.max(0,pop0-left*STARVE_RATE);famine=true}}
     p.famine=famine;
-    if(!famine){const cap=storeCap(p,"comida"),fill=cap>0?p.store.comida/cap:0;
-      const vida=N.e2.cov.campesino.vida;
-      p.pop=pop0*(1+POP_GROWTH_BASE*(0.4+fill)*(0.5+0.5*vida)*dt)}
+    if(!famine){const vida=N.e2.cov.campesino.vida;   // la natalidad sigue a los MESES de grano del granero de su ducado
+      p.pop=pop0*(1+POP_GROWTH_BASE*foodGrowth(p._gm!=null?p._gm:6)*(0.5+0.5*vida)*dt)}
     if(pop0>0){const r=(p.pop||0)/pop0;for(const k in p.pops)p.pops[k]*=r}
     const base=(p.pops.campesino||0)+(p.pops.burgues||0);
     if(base>0){let move=(targetBurgFrac(p)*base-(p.pops.burgues||0))*PROMO_RATE*dt;
@@ -709,5 +727,46 @@ function inputCov(N,b){const D=BLD2[b];if(!D||!D.in)return 1;let c=1;for(const k
 function moneyStock(){let m=0,pl=0;for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(!N)continue;m+=N.res.dinero||0;
   if(N.sWealth)for(const k in N.sWealth)m+=N.sWealth[k];if(N.e2)pl+=N.e2.plaza}return{m,pl}}
 
+// ============================== GRANERO DEL DUCADO ==============================
+// Clave del granero: el ducado y su dueño (un ducado partido por una conquista tiene dos graneros); una provincia sin
+// ducado es su propio granero.
+function granaryKey(p){return (p.duchy>=0?"d"+p.duchy:"p"+p.id)+"|"+p.owner}
+// Pone en común el grano de las provincias de cada ducado (lo reparte según sus campesinos), vende el SOBRANTE a la plaza
+// del reino (el dinero se reparte como la cosecha: diezmo al clero, renta al señor, el resto al campesino) y, si se ha
+// vaciado, pide comprar. Deja en cada provincia p._gm (meses de grano que le quedan al granero) para la natalidad y la UI.
+function granaryPass(deliv,grainReq,dt){
+  const G=new Map();
+  for(const p of S.provs){
+    if(p.owner>=NPLAY||p.wasteland||!p.pops||!p.store||p.store.comida==null)continue;
+    const N=S.nations[p.owner]; if(!N||!N.alive)continue;
+    const k=granaryKey(p); let g=G.get(k); if(!g){g={ps:[],c:0,st:0,cap:0,res:0};G.set(k,g)}
+    const c=p.pops.campesino||0; g.ps.push(p); g.c+=c; g.st+=p.store.comida; g.cap+=storeCap(p,"comida");
+    g.res+=c*monthsToHarvest(p,S.hour)/12*GRAIN_RESERVE;          // lo que necesita hasta su próxima siega, con reserva
+  }
+  for(const g of G.values()){
+    if(g.c<=0){for(const p of g.ps){p._gm=12;if(p.store.comida<0)p.store.comida=0}continue}
+    if(g.st<0){const need=-g.st;
+      for(const p of g.ps){const w=(p.pops.campesino||0)/g.c;p.store.comida=0;p._gm=0;
+        if(w>0){p._grainNeed=need*w;grainReq[p.owner].push({p,q:need*w,got:0})}}
+      continue}
+    const over=Math.max(0,g.st-g.cap), sale=over+Math.max(0,g.st-over-g.res)*Math.min(1,dt/24/GRAIN_SELL_DAYS);
+    const left=g.st-sale;
+    for(const p of g.ps){const w=(p.pops.campesino||0)/g.c;p.store.comida=left*w;p._gm=left/(g.c/12);
+      if(sale*w>1e-9)pushGrain(deliv[p.owner],p,sale*w)}
+  }
+}
+function pushGrain(list,p,q){const sh=harvestShares(p);
+  list.push({p,g:"comida",q:q*(1-sh.tithe-sh.rent),kind:"camp"},{p,g:"comida",q:q*sh.tithe,kind:"tithe"},{p,g:"comida",q:q*sh.rent,kind:"rent",owner:sh.lord})}
+// Para la interfaz: el granero del ducado de una provincia (meses que le quedan, cuándo siega, cómo viene el año, y lo
+// que costaría traer grano: precio + flete).
+function granaryOf(p){
+  if(!p||!p.store||p.store.comida==null||!p.pops)return null;
+  const k=granaryKey(p);let st=0,c=0,cap=0;
+  for(const q of S.provs)if(q.owner===p.owner&&!q.wasteland&&q.pops&&q.store&&granaryKey(q)===k){st+=q.store.comida||0;c+=q.pops.campesino||0;cap+=storeCap(q,"comida")}
+  const N=S.nations[p.owner], pr=(N&&N.mktPrice&&N.mktPrice.comida)||ref("comida"), t=transport(p,"comida");
+  const months=c>0?st/(c/12):12, hm=harvestMonth(p), mth=monthsToHarvest(p,S.hour);
+  return {st,cap,c,months,harvestMonth:hm,monthsToHarvest:mth,harvest:harvestMul(p),price:pr,flete:t,priceIn:pr*(1+t),short:months<mth}
+}
+
 export { economyTick2, siteOK2, seedEstates2, upkeepScale, seedOwner2, seedWealth2, GOODS2, LABEL2, REF2, NEED2, WANT2, TIERS, BLD2, ESTATE_BUILDS2, buildingProfit2, buildingOutput2,
-  transport, tradeCost2, moneyStock, sinkAdd, ARTISAN_IN, ctrOut, ctrIn, isMarketDay, MARKET_DAYS, PRICE_SCALE, JORNAL, MARGIN, CROWN_STOCK, CROWN_STOCK_WANT, crownStockOut, specialty2, obsolete2 };
+  transport, tradeCost2, moneyStock, sinkAdd, ARTISAN_IN, ctrOut, ctrIn, granaryOf, foodGrowth, GRAIN_RESERVE, isMarketDay, MARKET_DAYS, PRICE_SCALE, JORNAL, MARGIN, CROWN_STOCK, CROWN_STOCK_WANT, crownStockOut, specialty2, obsolete2 };

@@ -3,7 +3,8 @@ import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, 
 import { S } from "./state.js";
 import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildJobs, buildMax, buildSlots, canAfford, costFor, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationProvCount, nationStrength, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, resetTsyLedger, tsyAvail, tsyMonthBal, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, provProdMul, YR_TICKS, manorOf, MANOR_RENT, bOwnerOf } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
-import { GOODS2, LABEL2, REF2, NEED2, WANT2, BLD2, PRICE_SCALE, CROWN_STOCK, specialty2, obsolete2, siteOK2, transport, buildingProfit2, buildingOutput2, upkeepScale } from "./economy2.js";
+import { GOODS2, LABEL2, REF2, NEED2, WANT2, BLD2, PRICE_SCALE, CROWN_STOCK, specialty2, obsolete2, siteOK2, transport, buildingProfit2, buildingOutput2, upkeepScale, granaryOf, foodGrowth } from "./economy2.js";
+import { calOf, MONTHS_ES } from "./economy.js";
 import { canvas, clampPan } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
 import { armiesIn, atWar, duchyValue, fortGarrison, occupiedDuchiesBy, tryBuild, tryRecruit, tryRoad, warscore, coalitionOf, coalScore, coalCededDuchies } from "./sim.js";
@@ -1508,19 +1509,26 @@ function provStats2(p,own){ // población + moral/soldadesca/dotación/huecos en
     const dm=provDefMul(p);if(dm>1)cells.push(it(uiIcon('defensa'),"+"+Math.round((dm-1)*100)+"%",defBreak(p)));}
   return h+"<div class='prow' style='justify-content:space-between'>"+cells.join("")+"</div>";
 }
-function pantryRow2(p){ // ¿pasará hambre? despensa + cosecha (o compra de grano / hambre)
-  const cap=storeCap(p,"comida"),st=(p.store&&p.store.comida)||0,pc=pctE(cap>0?st/cap:0);
-  const hv=Math.round((harvestMul(p)-1)*100),m=manorOf(p),c=(p.pops&&p.pops.campesino)||0,troop=troopDrainOn(p)*730;
-  const need=p._grainNeed||0,got=p._grainGot||0;
+function pantryRow2(p){ // el GRANERO del ducado: cuántos meses de grano quedan, si llega a la siega, y qué cuesta traerlo
+  const g=granaryOf(p); if(!g)return "";
+  const hv=Math.round((g.harvest-1)*100),m=manorOf(p),troop=troopDrainOn(p)*730,need=p._grainNeed||0,got=p._grainGot||0;
+  const mo=Math.floor(g.months),cal=calOf(S.hour),until=MONTHS_ES[(cal.m+mo)%12],hm=MONTHS_ES[g.harvestMonth];
+  const dn=p.duchy>=0&&S.duchies&&S.duchies[p.duchy]?S.duchies[p.duchy].name:"esta provincia";
   const state=p.famine?"<b class='neg'>⚠ Hambre</b>"
-    :need>0?"<span class='neg'>🛒 "+Math.round(100*got/need)+"%</span>"
-    :hv>=5?"<span class='pos'>🌾+"+hv+"%</span>":hv<=-5?"<span class='neg'>🌾"+hv+"%</span>":"<span class='dim'>🌾 ±0</span>";
-  const tip=tipRows("Despensa de grano",[["Guardado",nfE(st)+" / "+nfE(cap)],["Cosecha del año",(hv>=0?"+":"")+hv+"%"],
-    ["Diezmo + renta (en especie)",pctE(DIEZMO)+"% + "+Math.round((MANOR_RENT[m]||0)*100)+"%"],["Come el campesino",nfE(c/12)+" /mes"],
-    ...(troop>0.5?[["Tropas",nfE(troop)+" /mes","#d08080"]]:[]),
-    ...(need>0?[["Despensa vacía: compra grano",Math.round(100*got/need)+"% conseguido","#d08080"]]:[]),
-    ["Por encima de media despensa","se vende en la plaza"]]);
-  return "<div class='prow' data-tiph=\""+ta(tip)+"\" style='cursor:help'><span>🥖 Despensa</span><b>"+barE(pc,64)+" "+pc+"% &nbsp;"+state+"</b></div>";
+    :need>0?"<span class='neg'>🛒 comprando</span>"
+    :g.short?"<span class='neg'>⚠ no llega a "+hm+"</span>"
+    :mo>=12?"<span class='pos'>de sobra</span>":"<span class='dim'>hasta "+until+"</span>";
+  const tip=tipRows("Granero · "+dn,[
+    ["Grano guardado",nfE(g.st)+" / "+nfE(g.cap)],["Alcanza para",(g.months>=24?"más de 2 años":g.months.toFixed(1)+" meses")],
+    ["Próxima siega",hm+" (en "+Math.ceil(g.monthsToHarvest)+" meses)"],["Cosecha del ducado este año",(hv>=0?"+":"")+hv+"%"],
+    ["Comen sus campesinos",nfE(g.c/12)+" /mes"],...(troop>0.5?[["Tropas",nfE(troop)+" /mes","#d08080"]]:[]),
+    ["Diezmo + renta",pctE(DIEZMO)+"% + "+Math.round((MANOR_RENT[m]||0)*100)+"% de lo que se vende"],
+    ["Traer grano cuesta",nfE(g.price)+" + flete "+pctE(g.flete)+"% = "+nfE(g.priceIn)+" 🪙/u"],
+    ...(need>0?[["Granero vacío: compra",Math.round(100*got/need)+"% conseguido","#d08080"]]:[]),
+    ["Natalidad por el grano","×"+foodGrowth(g.months).toFixed(1)],
+    ["Lo que sobra hasta la siega","se vende en la plaza"]]);
+  const pc=Math.min(100,Math.round(100*g.months/12));
+  return "<div class='prow' data-tiph=\""+ta(tip)+"\" style='cursor:help'><span>🌾 Granero</span><b>"+barE(pc,64)+" "+(g.months>=24?"24+":mo)+" m &nbsp;"+state+"</b></div>";
 }
 function tradeRow2(p){ // su centro de comercio y lo que cuesta llevar allí cada bien (flete)
   const hub=(p.hubOf!=null&&p.hubOf>=0)?S.provs[p.hubOf]:null, km=Math.round(p.hubKm||0);

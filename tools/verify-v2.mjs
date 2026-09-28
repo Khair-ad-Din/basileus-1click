@@ -27,11 +27,12 @@ const AI=args.includes("--ia"); // corre la IA real de obras + gestión por pres
 const snap=OFFICIAL_MAP;S.rand=mg.mulberry32(193909);S.hour=0;S.armies=[];
 S.provIdx=new Int16Array(MW*MH).fill(-1);
 let pos=0;for(let i=0;i<snap.rle.length;i+=2){const pid=snap.rle[i],run=snap.rle[i+1];if(pid>=0)S.provIdx.fill(pid,pos,pos+run);pos+=run;}
-S.provs=snap.provs.map((a,i)=>({id:i,name:a[0],x:a[1],y:a[2],country:0,owner:a[3],owner0:a[3],
+S.duchyNames=Array.isArray(snap.duchies)?snap.duchies.slice():null;
+S.provs=snap.provs.map((a,i)=>({id:i,name:a[0],x:a[1],y:a[2],country:0,owner:a[3],owner0:a[3],duchy0:a[10]!=null?a[10]:-1,
   named:!!a[4],coastal:false,morale:75,urban:!!a[5],capital:!!a[6],
   terrain:(a[7]!=null&&TERRAIN_KEYS[a[7]])||null,wasteland:a[8]!=null?!!a[8]:null,pop:a[9]!=null?a[9]:null,
   buildings:newBuildings(),buildQueue:[],recruitQueue:[]}));
-mg.rebuildProvinceData();mg.seedCities();mg.assignTerrain();mg.assignResources();mg.assignPopulation();
+mg.rebuildProvinceData();mg.buildDuchies();mg.seedCities();mg.assignTerrain();mg.assignResources();mg.assignPopulation();
 for(const p of S.provs){if(p.wasteland){p.owner=NEUTRAL;p.capital=false;p.urban=false}else mg.seedStrata(p);}
 S.mktDirty=true;mg.ensureMarketTopology();
 S.nations=NATIONS.map((n,i)=>({idx:i,res:Object.fromEntries(RES_KEYS.map(k=>[k,START_STOCK[k]||0])),
@@ -102,7 +103,8 @@ console.log(`\nNaN: ${nan?"⚠ SÍ":"✅ no"} · invariante del dinero: ${worstI
 console.log(`libros de cuentas (${monthsChecked} meses, ${names[S.player]}): provincia Σcobros+flete=Σvalor ${worstProvBook<1e-9?"✅":"⚠"} peor ${worstProvBook.toExponential(2)} · pecho provincias = pecho Tesorería ${worstPecho<1e-9?"✅":"⚠"} peor ${worstPecho.toExponential(2)}`);
 {const l=L();console.log(`grifos/sumideros acumulados: minas ${fmt(l.mint)} · rescates ${fmt(l.rescue)} · sumidero ${fmt(l.sink)} · tirado de la plaza (valor) ${fmt(l.discard)}`);
   console.log(`  sumidero por concepto: `+Object.entries(l.by||{}).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k} ${fmt(v)}`).join(" · ")+
-    ` · saldo de las plazas ${fmt(e2.moneyStock().pl)}`)}
+    ` · saldo de las plazas ${fmt(e2.moneyStock().pl)}`);
+  console.log(`  tirado por bien: `+Object.entries(l.dby||{}).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([k,v])=>`${e2.LABEL2[k]} ${fmt(v)}`).join(" · "))}
 
 // ---- por nación (último año) ----
 console.log(`\nNación            pobl.  corona Δ/mes   riqueza/hab: camp  burg  clero  nob`+"   cobertura (subs/vida/lujo): camp · burg · clero · nob");

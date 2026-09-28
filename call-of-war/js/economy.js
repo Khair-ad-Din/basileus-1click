@@ -100,7 +100,7 @@ const TERRAIN_CAT={ // terreno → {categoría: multiplicador de producción}
   tundra:  {cereal:0.9, cultivo:0.2, ganado:0.7, bosque:1.1, extractivo:0.85},
 };
 const MAR_MUL=1.2, MAR_INLAND=0.15; // categoría 'mar' (pescado/sal/ámbar): solo rinde en la COSTA
-const SUBS_STORE_YEARS={comida:0.7}; // capacidad de la despensa de GRANO en años de consumo (× Almacén)
+const SUBS_STORE_YEARS={comida:1.25}; // capacidad del GRANERO en años de consumo (× Almacén): cabe una cosecha entera y algo de remanente
 function terrMul(p,k){ // vocación del terreno para el bien k, POR CATEGORÍA
   const cat=RES_CAT[k]; if(!cat)return 1;
   if(cat==="mar")return p.coastal?MAR_MUL:MAR_INLAND;
@@ -128,10 +128,25 @@ function harvestYear(year){ // el AÑO AGRÍCOLA que comparte todo el mapa (esto
   if(t<HARVEST_TAIL_P)m-=HARVEST_TAIL*(1-t/HARVEST_TAIL_P); // cola izquierda: el desastre general y raro
   return m;
 }
-function harvestMul(p){ // calidad de la cosecha de esta provincia este año (año común + suerte local)
+function harvestMul(p){ // calidad de la cosecha de esta provincia este año: año común a Europa + suerte de su DUCADO
+  // (antes la suerte era por provincia: el jugador no podía leerla; ahora "Castilla la Nueva: +12%", un número por ducado)
   const year=Math.floor(S.hour/YR_TICKS);
-  const local=HARVEST_AL*(hash01(p.id,year)*2-1);
+  const local=HARVEST_AL*(hash01(p.duchy>=0?100000+p.duchy:p.id,year)*2-1);
   return Math.max(HARVEST_FLOOR,1+harvestYear(year)+local);
+}
+// CALENDARIO y SIEGA. Cada provincia siega UNA vez al año, en su mes (hoy según la latitud; en el futuro, según su
+// cultivo): la crecida del Nilo deja segar en abril, el Mediterráneo en junio, el centro en julio, el norte en agosto,
+// Escandinavia en septiembre. Lo cosechado va al granero y se come mes a mes hasta la siguiente siega.
+const MONTHS_ES=["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+function calOf(hour){const d=new Date(START_DATE+hour*3600e3);return {y:d.getUTCFullYear(),m:d.getUTCMonth(),d:d.getUTCDate()}}
+function harvestMonth(p){
+  if(p._hm!=null)return p._hm;
+  const[lo,la]=pxToLonLat(p.x,p.y);
+  return p._hm=(la<31.6&&lo>24&&lo<35.5)?3:la<40?5:la<47?6:la<55?7:8;
+}
+function monthsToHarvest(p,hour){ // meses (con fracción) que faltan para la próxima siega de esta provincia
+  const c=calOf(hour), hm=harvestMonth(p); let dm=(hm-c.m+12)%12; if(dm===0)dm=12;
+  return dm-(c.d-1)/30;
 }
 function storeCap(p,k){return (p.pop||0)*(SUBS_STORE_YEARS[k]||0.5)*(1+0.8*lvlOf(p,"almacen"))} // el Almacén amplía la reserva
 function storeOf(p,k){const c=storeCap(p,k);return (p.store&&p.store[k]!=null)?p.store[k]:c*0.6} // reserva actual (o siembra)
@@ -529,5 +544,5 @@ function recruitTime(p,u){
 }
 
 export {
-  BKEYS, fxKeys, ledger, sinkAdd, canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, isOccupied, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, recruitable, moraleGrowth, MORALE_MIN, MORALE_HOSTILE, SOLD_FRAC, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, specialistCap, buildJobs, freeLabor, staffing, jobsOf, buildSlots, usedSlots, structPPF, JOBS_PER_LEVEL, ensureMarket, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, manorOf, canStaffIndustry, bOwnerOf, ESTATES_BUILD, TRADE_BULK, TERRAIN_CAT, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, monthKeyOf, resetTsyLedger, tsyTick, tsyAvail, tsyMonthBal, recFlow, recCrown, bOff, bCond, effLvl, degradeBuildings, YR_TICKS, TRADE_KM, TRADE_SEA, TRADE_WAR, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN, PROMO_RATE, targetBurgFrac, recBuy
+  BKEYS, fxKeys, ledger, sinkAdd, calOf, harvestMonth, monthsToHarvest, MONTHS_ES, canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, isOccupied, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, recruitable, moraleGrowth, MORALE_MIN, MORALE_HOSTILE, SOLD_FRAC, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, specialistCap, buildJobs, freeLabor, staffing, jobsOf, buildSlots, usedSlots, structPPF, JOBS_PER_LEVEL, ensureMarket, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, manorOf, canStaffIndustry, bOwnerOf, ESTATES_BUILD, TRADE_BULK, TERRAIN_CAT, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, monthKeyOf, resetTsyLedger, tsyTick, tsyAvail, tsyMonthBal, recFlow, recCrown, bOff, bCond, effLvl, degradeBuildings, YR_TICKS, TRADE_KM, TRADE_SEA, TRADE_WAR, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN, PROMO_RATE, targetBurgFrac, recBuy
 };
