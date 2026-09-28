@@ -217,7 +217,14 @@ function goodColor(pid){
   if(m==="price")return gmBipolar(-Math.max(-1,Math.min(1,(((S.gmPriceR&&S.gmPriceR[n])||1)-1)/0.8))); // caro=rojo
   return gmBipolar(Math.max(-1,Math.min(1,((S.gmNet&&S.gmNet[n])||0)/(S.gmMaxN||1)))); // déficit: rojo importa, verde exporta
 }
+// Modo de mapa GRANEROS: el estado de cada provincia propia lo precalcula ui.js (computeGranMap → S.gmGran):
+// 0 de sobra · 1 llega · 2 no llega a su siega · 3 hambre; lo ajeno, apagado.
+const GRAN_RGB=[[108,176,92],[201,164,78],[196,86,62],[138,42,58]];
+function granColor(pid){const p=S.provs[pid];
+  if(p.wasteland)return WASTECOL; if(isSea(p))return seaCol(p);
+  const s=S.gmGran?S.gmGran[pid]:-1; return s>=0?GRAN_RGB[s]:[74,78,84]}
 function provColor(p){
+  if(S.granView)return granColor(p);
   if(S.popView)return popColor(p);
   if(S.resView)return resColor(p);
   if(S.mktView)return mktColor(p);
@@ -242,8 +249,8 @@ function paintAll(){
     }else{
       const P=S.provs[p];let c=provColor(p);
       // ocupación (solo en vista política): franjas diagonales del color del ocupante
-      if(!S.terrainView&&!S.popView&&!S.resView&&!S.mktView&&!S.hubView&&!S.goodView&&!P.wasteland&&P.occupier>=0&&P.occupier!==P.owner&&((x+y)>>2&1))c=NCOL[P.occupier];
-      const s=S.mktView||S.hubView||S.goodView?1:P.shade;   // en Mercados/Centros el color es identidad: el shade rompería el racimo
+      if(!S.terrainView&&!S.popView&&!S.resView&&!S.mktView&&!S.hubView&&!S.goodView&&!S.granView&&!P.wasteland&&P.occupier>=0&&P.occupier!==P.owner&&((x+y)>>2&1))c=NCOL[P.occupier];
+      const s=S.mktView||S.hubView||S.goodView||S.granView?1:P.shade;   // en Mercados/Centros el color es identidad: el shade rompería el racimo
       d[o]=c[0]*s;d[o+1]=c[1]*s;d[o+2]=c[2]*s;d[o+3]=255;
     }
   }
@@ -483,8 +490,8 @@ if(typeof window!=="undefined")window.__terr={c:terrainC,img:_terrImg,SPRITE:TER
 let POL_TINT=0.35;
 if(typeof window!=="undefined")window.setPolTint=v=>{POL_TINT=Math.max(0,Math.min(1,+v||0))};
 function repaintProvince(pid){
-  const P=S.provs[pid],base=provColor(pid),s=S.mktView||S.hubView||S.goodView?1:P.shade,d=baseData.data;
-  const occ=(!S.terrainView&&!S.popView&&!S.resView&&!S.mktView&&!S.hubView&&!S.goodView&&!P.wasteland&&P.occupier>=0&&P.occupier!==P.owner)?NCOL[P.occupier]:null;
+  const P=S.provs[pid],base=provColor(pid),s=S.mktView||S.hubView||S.goodView||S.granView?1:P.shade,d=baseData.data;
+  const occ=(!S.terrainView&&!S.popView&&!S.resView&&!S.mktView&&!S.hubView&&!S.goodView&&!S.granView&&!P.wasteland&&P.occupier>=0&&P.occupier!==P.owner)?NCOL[P.occupier]:null;
   for(const i of S.pixOfProv[pid]){
     const o=i*4;let c=base;
     if(occ){const x=i%MW,y=(i/MW)|0;if((x+y)>>2&1)c=occ}
@@ -695,7 +702,7 @@ function draw(){
   ctx.drawImage(baseC,0,0);
   // En las vistas de DATOS el color ES el dato: el relieve encima lo ahoga (el tinte solo pesa
   // POL_TINT=0.35, así que la rampa de población quedaba en un oliva ilegible). Se pintan planas.
-  const dataView=S.popView||S.resView||S.mktView||S.hubView||S.goodView;
+  const dataView=S.popView||S.resView||S.mktView||S.hubView||S.goodView||S.granView;
   if(_terrReady===_terrTotal&&!dataView){
     ctx.drawImage(terrainC,0,0,MW,MH); // terreno sobre el relleno
     // TINTE POLÍTICO: se repinta baseC (color de dueño, ya actualizado al conquistar) con poca
@@ -707,7 +714,7 @@ function draw(){
   // marcadores de capital como DIBUJO DE FONDO: centrados en la provincia, pequeños y translúcidos.
   // Se pintan BAJO la malla, así el nodo rojo del centro queda visible encima. No bloquean clics
   // (el clic se resuelve por píxel de provincia, no por la geometría del marcador).
-  const politicalView=!S.terrainView&&!S.popView&&!S.resView&&!S.mktView&&!S.hubView&&!S.goodView; // el mapa por defecto
+  const politicalView=!S.terrainView&&!S.popView&&!S.resView&&!S.mktView&&!S.hubView&&!S.goodView&&!S.granView; // el mapa por defecto
   if(!S.editMode&&S.started){
     const z=S.zoom;
     const ducCaps=new Set(S.duchies.map(d=>d.cap));     // provincias que son capital de ducado

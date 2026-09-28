@@ -4,8 +4,8 @@ import { S } from "./state.js";
 import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildJobs, buildMax, buildSlots, canAfford, costFor, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationProvCount, nationStrength, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, resetTsyLedger, tsyAvail, tsyMonthBal, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, provProdMul, YR_TICKS, manorOf, MANOR_RENT, bOwnerOf } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
 import { GOODS2, LABEL2, REF2, NEED2, WANT2, BLD2, PRICE_SCALE, CROWN_STOCK, specialty2, obsolete2, siteOK2, transport, buildingProfit2, buildingOutput2, upkeepScale, granaryOf, foodGrowth, reliefQuote } from "./economy2.js";
-import { calOf, MONTHS_ES } from "./economy.js";
-import { canvas, clampPan } from "./render.js";
+import { calOf, MONTHS_ES, monthsToHarvest, harvestMonth } from "./economy.js";
+import { canvas, clampPan, repaintProvince } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
 import { armiesIn, atWar, duchyValue, fortGarrison, occupiedDuchiesBy, tryBuild, tryRecruit, tryRoad, warscore, coalitionOf, coalScore, coalCededDuchies } from "./sim.js";
 import { getRel, relTier, THRESH, canDeclareWar, canInsult, isEmbargoed, hasClaim, relBreakdown, hasPact, canPact, MAX_LEAGUE, leagueOf, leagueById, sameLeague, canApplyLeague, MAX_RIVALS, rivalsOf, isRival, canRival, NAP_BONUS, ALLY_BONUS } from "./diplomacy.js";
@@ -1137,6 +1137,52 @@ window.refreshGoodLegend=function(){
     "<div style='margin:4px 0'>"+mchip("prod","Producción")+" "+mchip("price","Precio")+" "+mchip("deficit","Déficit")+"</div>"+
     "<div style='font-size:10px;margin-bottom:5px'>"+scale+"</div>"+
     "<div style='display:flex;flex-wrap:wrap;gap:4px;max-width:220px;line-height:1.7'>"+picker+"</div>";
+  el.style.display="block";
+};
+// ---------- Modo de mapa GRANEROS (design/grano-ducado.md §Anclas, diseño B del /ux) ----------
+// Cada provincia PROPIA pintada por "¿llega su granero a la siega?". S.gmGran[pid]: -1 ajena · 0 de sobra (≥12 m) ·
+// 1 llega · 2 no llega a su siega · 3 hambre. Lo pinta render.js (granColor) sin importar la economía.
+const GRAN_LBL=["de sobra","llega","no llega","hambre"],GRAN_CSS=["#6cb05c","#c9a44e","#c4563e","#8a2a3a"];
+function granState(p){
+  if(p.owner!==S.player||p.wasteland||!p.pops||!p.store)return -1;
+  if(p.famine)return 3; const gm=p._gm!=null?p._gm:12;
+  const short=p._gshort!=null?p._gshort:gm<monthsToHarvest(p,S.hour);   // ¿llega el GRANERO entero a la siega? (economy2)
+  return short?2:gm>=12?0:1;
+}
+window.computeGranMap=function(){ // devuelve las provincias que cambian de estado (para repintar solo esas)
+  const prev=S.gmGran,a=new Int8Array(S.provs.length),ch=[];
+  for(const p of S.provs){a[p.id]=granState(p);if(prev&&prev[p.id]!==a[p.id])ch.push(p.id)}
+  S.gmGran=a; return ch;
+};
+window.refreshGranView=function(){ // 1 vez al día con el modo abierto (sim.js), y tras un socorro
+  if(!S.granView)return; for(const pid of window.computeGranMap())repaintProvince(pid); window.refreshGranLegend();
+};
+window.granFocus=function(pid){const p=S.provs[pid];if(!p)return;
+  S.panX=canvas.width/2-p.x*S.zoom;S.panY=canvas.height/2-p.y*S.zoom;clampPan();S.selProv=pid;S.selArmy=null;
+  if(window.setProvTab)window.setProvTab("build");refreshSide()};
+window.granRelief=function(pid){window.reliefSendProv(pid);window.refreshGranView()};
+// Leyenda: la escala de 4 estados y la LISTA de los ducados propios que no llegan a la siega (o con hambre), del que
+// antes se vacía al que después, cada uno con su botón de socorro y el total (reliefQuote, la misma cifra que la ficha).
+window.refreshGranLegend=function(){
+  const el=document.getElementById("granLegend"); if(!el)return;
+  if(!S.granView||S.player<0){el.style.display="none";return}
+  const G=new Map();
+  for(const p of S.provs){if(p.owner!==S.player||!p.pops||!p.store)continue;const st=granState(p);if(st<2)continue;
+    const k=(p.duchy>=0?"d"+p.duchy:"p"+p.id), g=G.get(k), rec={pid:p.id,gm:p._gm||0,mth:monthsToHarvest(p,S.hour),hm:harvestMonth(p)};
+    if(!g)G.set(k,{...rec,st}); else{g.st=Math.max(g.st,st);if((p.pop||0)>(S.provs[g.pid].pop||0))Object.assign(g,rec)}}  // el ducado: su peor estado, y su provincia más poblada
+  const rows=[...G.values()].sort((a,b)=>(b.st-a.st)||((a.gm-a.mth)-(b.gm-b.mth)));
+  const scale=GRAN_LBL.map((l,i)=>"<span style='white-space:nowrap'><i style='display:inline-block;width:9px;height:9px;border-radius:2px;background:"+GRAN_CSS[i]+";vertical-align:middle'></i> "+l+"</span>").join(" &nbsp;");
+  let list="";
+  for(const r of rows.slice(0,8)){const p=S.provs[r.pid],q=reliefQuote(S.player,p);
+    const dn=p.duchy>=0&&S.duchies[p.duchy]?S.duchies[p.duchy].name.replace(/^Ducado de /,""):p.name;
+    const ic=r.st===3?"☠":"⚠",m=r.gm<1?"&lt;1":Math.floor(r.gm);
+    list+="<div class='prow' style='gap:6px'><span style='cursor:pointer' onclick='granFocus("+r.pid+")' data-tip=\""+ta("Siega en "+MONTHS_ES[r.hm])+"\">"+
+      "<span style='color:"+GRAN_CSS[r.st]+"'>"+ic+"</span> "+dn+"</span><b>"+barE(Math.min(100,Math.round(100*r.gm/12)),34)+" "+m+" m "+
+      (q&&q.falta>0?"<button class='bbtn' "+(q.ok?"":"disabled")+" onclick='granRelief("+r.pid+")' data-tip=\""+ta(q.ok?"Socorro hasta la siega (desglose en la ficha)":q.why)+"\">🛒 "+nfE(q.total)+"</button>":"")+"</b></div>";}
+  if(rows.length>8)list+="<div class='prow'><span class='dim'>+"+(rows.length-8)+" más</span></div>";
+  if(!rows.length)list="<div class='prow'><span class='dim'>Todos llegan a la siega</span></div>";
+  el.innerHTML="<b style='font-size:12px'>🌾 Graneros</b>"+iInfo("Cada ducado de tu reino según si su grano llega a la próxima siega. La lista: los que no llegan, del que antes se vacía; pulsa el nombre para ir, 🛒 para socorrerlo hasta la siega (grano del almacén de la corona y lo que falte comprado en la plaza, más el flete).")+
+    "<div style='font-size:10px;margin:4px 0 6px'>"+scale+"</div>"+list;
   el.style.display="block";
 };
 function refreshMercado(){

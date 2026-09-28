@@ -79,7 +79,12 @@ Decisiones de fondo: las anclas 1 (almacén) y 2 (comprar) son **una sola acció
   de la corona (sin tocar 3 meses de comida del ejército), comprado en la plaza × precio, flete desde · km · % · 🪙,
   total. `reliefSend` descuenta almacén, compra en la plaza (comisión, alcabala, plaza), paga el flete a los
   transportistas y reparte el grano por el granero. Invariante del dinero exacto (Δ = 0, medido).
-- Pendiente, en orden: **modo de mapa "Graneros"** con leyenda-lista de los ducados que se vacían antes (cada uno con su
-  botón); **⛔ prohibir la saca** en la fila del granero (tooltip: lo que pierden campesinos/clero/señor/plaza y los meses
+- **HECHO — modo de mapa "Graneros"** (menú de mapas; `S.granView`, `computeGranMap`/`refreshGranLegend` en ui.js,
+  `granColor` en render.js): cada provincia propia en verde (de sobra, ≥12 m) / ocre (llega) / rojo (no llega a su
+  siega) / granate (hambre); lo ajeno, apagado. La leyenda lista los ducados que no llegan, del más urgente, con su botón
+  `🛒 total` (la misma cifra que la ficha). Se repinta solo lo que cambia, una vez al día y tras cada socorro.
+  "No llega" se decide con el GRANERO entero (un ducado puede segar en dos meses): si sale rojo, hay botón.
+  La corona compra a su precio efectivo (sin su propia alcabala): lo anunciado es exactamente lo que baja el tesoro.
+- Pendiente, en orden: **⛔ prohibir la saca** en la fila del granero (tooltip: lo que pierden campesinos/clero/señor/plaza y los meses
   que gana); **Pósito** en Hacienda (tope mensual; socorre solo, del que antes se vacía; la IA usa la misma palanca);
   opcional, alerta "🌾3" junto al botón del mapa.

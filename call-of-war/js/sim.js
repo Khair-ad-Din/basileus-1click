@@ -527,6 +527,7 @@ function hourTick(){
     tsyTick(tsyBefore); // capa mensual: acumula el delta recurrente del jugador y publica la cifra "/mes"
     relTick(); // diplomacia: deriva mensual del campo de relaciones hacia su línea base (se autodispara al mes)
     estatesDaily(); // presupuesto a diario; obras y cierre/reapertura de talleres el DÍA DE MERCADO (semanal)
+    if(S.granView&&typeof window!=="undefined"&&window.refreshGranView)window.refreshGranView(); // mapa "Graneros" abierto: repinta lo que cambia
   }
   degradeBuildings(); // ciclo de vida: los edificios deshabilitados se degradan y, a condición 0, se destruyen
   // 2. construcción

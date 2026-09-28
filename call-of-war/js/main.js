@@ -55,6 +55,7 @@ window.reliefSendProv=function(pid){
   if(q&&q.ok){const dn=p.duchy>=0&&S.duchies[p.duchy]?S.duchies[p.duchy].name:p.name;
     log("🌾 Socorro a "+dn+": "+fmt(q.falta)+" de grano ("+fmt(q.almacen)+" del almacén) por "+fmt(q.total)+" ducados.")}
   refreshBuildBar(); refreshTop(); refreshSide();
+  if(window.refreshGranView)window.refreshGranView();   // mapa "Graneros" abierto: el ducado cambia de color y sale de la lista
 };
 
 /* ============================= Render del mapa base ============================= */
@@ -669,7 +670,7 @@ window.scaleProvPop=function(f){
   refreshEditorPanel();
 };
 function syncMapModeUI(){
-  const cur=S.terrainView?"Terreno":S.popView?"Población":S.resView?"Recursos":S.mktView?"Mercados":S.hubView?"Centros":S.goodView?"Comercio":"Político";
+  const cur=S.terrainView?"Terreno":S.popView?"Población":S.resView?"Recursos":S.mktView?"Mercados":S.hubView?"Centros":S.goodView?"Comercio":S.granView?"Graneros":"Político";
   const mb=document.getElementById("mapBtn");
   if(mb){mb.textContent="🗺 "+cur;mb.classList.toggle("active",cur!=="Político");}
   const tl=document.getElementById("terrLegend");if(tl)tl.style.display=S.terrainView?"block":"none";
@@ -677,10 +678,12 @@ function syncMapModeUI(){
   const rl=document.getElementById("resLegend");if(rl)rl.style.display=S.resView?"block":"none";
   const kl=document.getElementById("mktLegend");if(kl)kl.style.display=S.mktView?"block":"none";
   if(window.refreshGoodLegend)window.refreshGoodLegend(); // leyenda-selector del mapa "Comercio de un bien"
+  if(window.refreshGranLegend)window.refreshGranLegend(); // leyenda-lista del mapa "Graneros"
 }
 // vista de mapa: político (null) o "terrain"/"pop"/"res"/"mkt" (excluyentes entre sí)
 window.setMapView=function(mode){
-  S.terrainView=mode==="terrain";S.popView=mode==="pop";S.resView=mode==="res";S.mktView=mode==="mkt";S.hubView=mode==="hub";S.goodView=mode==="good";
+  S.terrainView=mode==="terrain";S.popView=mode==="pop";S.resView=mode==="res";S.mktView=mode==="mkt";S.hubView=mode==="hub";S.goodView=mode==="good";S.granView=mode==="gran";
+  if(S.granView&&window.computeGranMap)window.computeGranMap(); // estado del granero de cada provincia propia (lo pinta render)
   if(mode==="good"&&!S.mapGood)S.mapGood="lana"; // vista "Comercio de un bien": arranca con la lana
   if(S.goodView&&window.computeGoodMap)window.computeGoodMap(S.mapGood); // precalcula los valores por nación que pinta render
   if(S.mktView||S.hubView)ensureMarketTopology(); // la vista consume p.marketOf/p.hubOf: hay que tenerlos al día
@@ -1014,7 +1017,7 @@ document.getElementById("ledgerBtn").addEventListener("click",()=>{refreshLedger
   if(mb&&ml){
     mb.addEventListener("click",e=>{
       e.stopPropagation();
-      if(S.terrainView||S.popView||S.resView||S.mktView||S.hubView||S.goodView){window.setMapView(null);ml.style.display="none";}
+      if(S.terrainView||S.popView||S.resView||S.mktView||S.hubView||S.goodView||S.granView){window.setMapView(null);ml.style.display="none";}
       else ml.style.display=(ml.style.display==="none"?"block":"none");
     });
     ml.querySelectorAll("div").forEach(d=>d.addEventListener("click",e=>{

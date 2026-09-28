@@ -762,24 +762,29 @@ function reliefQuote(payer,p){
   const falta=Math.max(0,need-st);
   let army=0;for(const a of S.armies)if(a.nation===payer)army+=armyFood(a)*730*RELIEF_ARMY_MONTHS;
   const almacen=Math.min(falta,Math.max(0,(N.res.comida||0)-army)), compra=falta-almacen;
-  const price=(N.mktPrice&&N.mktPrice.comida)||ref("comida"), t=reliefFlete(p,payer), rr=reliefRoute(p,payer);
-  const enPlaza=N.mkt.comida||0, flete=falta*price*t, cost=compra*price, total=cost+flete;
+  // price: lo que le cuesta a la corona cada unidad comprada = el de la plaza SIN su propia alcabala (no se paga a sí misma)
+  const mktPrice=(N.mktPrice&&N.mktPrice.comida)||ref("comida"), alc=alcabalaOf(payer), price=mktPrice*(1-alc);
+  const t=reliefFlete(p,payer), rr=reliefRoute(p,payer);
+  const enPlaza=N.mkt.comida||0, flete=falta*mktPrice*t, cost=compra*price, total=cost+flete;
   const why=falta<=0?"no le falta":compra>enPlaza+1e-9?"no hay tanto grano en la plaza":!canAfford(payer,{dinero:total})?"sin dinero":null;
-  return {falta,almacen,compra,price,fletePct:t,km:rr.km,from:rr.from?rr.from.name:"",flete,cost,total,enPlaza,ps,c,ok:!why,why};
+  return {falta,almacen,compra,price,mktPrice,alc,fletePct:t,km:rr.km,from:rr.from?rr.from.name:"",flete,cost,total,enPlaza,ps,c,st,need,ok:!why,why};
 }
-// Ejecuta el socorro. El dinero no nace ni muere: lo comprado se paga como cualquier compra en la plaza (comisión al
-// burgués, alcabala a la corona, el resto a la plaza) y el flete lo cobran los transportistas.
+// Ejecuta el socorro. El dinero no nace ni muere: lo comprado se paga como una compra en la plaza (comisión al burgués,
+// el resto a la plaza; SIN alcabala: la corona no se paga su propio impuesto, así el total anunciado es exactamente lo
+// que baja el tesoro) y el flete lo cobran los transportistas.
 function reliefSend(payer,p){
   const q=reliefQuote(payer,p); if(!q||!q.ok)return q;
-  const N=S.nations[payer], alc=alcabalaOf(payer), dn=p.duchy>=0&&S.duchies&&S.duchies[p.duchy]?S.duchies[p.duchy].name:p.name;
+  const N=S.nations[payer], dn=p.duchy>=0&&S.duchies&&S.duchies[p.duchy]?S.duchies[p.duchy].name:p.name;
   N.res.comida=(N.res.comida||0)-q.almacen; N.mkt.comida=(N.mkt.comida||0)-q.compra;
   N.res.dinero-=q.total; recCrown(payer,"Socorro",dn,-q.total);
-  N.sWealth.burgues+=q.cost*MARGIN; recFlow(payer,"burgues","Comisión de la plaza",q.cost*MARGIN);
-  N.res.dinero+=q.cost*alc; recCrown(payer,"Alcabala",LABEL2.comida,q.cost*alc);
-  N.e2.plaza+=q.cost*(1-MARGIN-alc);
+  const mv=q.compra*q.mktPrice;                                   // lo comprado a precio de la plaza
+  N.sWealth.burgues+=mv*MARGIN; recFlow(payer,"burgues","Comisión de la plaza",mv*MARGIN);
+  N.e2.plaza+=mv*(1-MARGIN-q.alc);                                // = q.cost − comisión: la plaza, neutra como en cualquier venta
   const cs=cartShare(p); N.sWealth.campesino+=q.flete*cs; recFlow(payer,"campesino","Transporte",q.flete*cs);
   N.sWealth.burgues+=q.flete*(1-cs); recFlow(payer,"burgues","Transporte",q.flete*(1-cs));
-  for(const r of q.ps){const w=q.c>0?(r.pops.campesino||0)/q.c:1/q.ps.length;r.store.comida+=q.falta*w}
+  const st2=q.st+q.falta;   // el granero ya llega a la siega: se actualiza al momento (el mapa y la ficha no esperan al tick)
+  for(const r of q.ps){const w=q.c>0?(r.pops.campesino||0)/q.c:1/q.ps.length;r.store.comida+=q.falta*w;
+    r._gm=q.c>0?st2/(q.c/12):12; r._gshort=st2<q.need/GRAIN_RESERVE; r._grainNeed=0}
   return q;
 }
 function granaryPass(deliv,grainReq,dt){
@@ -787,19 +792,21 @@ function granaryPass(deliv,grainReq,dt){
   for(const p of S.provs){
     if(p.owner>=NPLAY||p.wasteland||!p.pops||!p.store||p.store.comida==null)continue;
     const N=S.nations[p.owner]; if(!N||!N.alive)continue;
-    const k=granaryKey(p); let g=G.get(k); if(!g){g={ps:[],c:0,st:0,cap:0,res:0};G.set(k,g)}
-    const c=p.pops.campesino||0; g.ps.push(p); g.c+=c; g.st+=p.store.comida; g.cap+=storeCap(p,"comida");
-    g.res+=c*monthsToHarvest(p,S.hour)/12*GRAIN_RESERVE;          // lo que necesita hasta su próxima siega, con reserva
+    const k=granaryKey(p); let g=G.get(k); if(!g){g={ps:[],c:0,st:0,cap:0,res:0,need:0};G.set(k,g)}
+    const c=p.pops.campesino||0, nd=c*monthsToHarvest(p,S.hour)/12; g.ps.push(p); g.c+=c; g.st+=p.store.comida; g.cap+=storeCap(p,"comida");
+    g.need+=nd; g.res+=nd*GRAIN_RESERVE;                           // lo que necesita hasta su próxima siega (y con reserva)
   }
   for(const g of G.values()){
-    if(g.c<=0){for(const p of g.ps){p._gm=12;if(p.store.comida<0)p.store.comida=0}continue}
+    if(g.c<=0){for(const p of g.ps){p._gm=12;p._gshort=false;if(p.store.comida<0)p.store.comida=0}continue}
     if(g.st<0){const need=-g.st;
-      for(const p of g.ps){const w=(p.pops.campesino||0)/g.c;p.store.comida=0;p._gm=0;
+      for(const p of g.ps){const w=(p.pops.campesino||0)/g.c;p.store.comida=0;p._gm=0;p._gshort=true;
         if(w>0){p._grainNeed=need*w;grainReq[p.owner].push({p,q:need*w,got:0})}}
       continue}
     const over=Math.max(0,g.st-g.cap), sale=over+Math.max(0,g.st-over-g.res)*Math.min(1,dt/24/GRAIN_SELL_DAYS);
     const left=g.st-sale;
-    for(const p of g.ps){const w=(p.pops.campesino||0)/g.c;p.store.comida=left*w;p._gm=left/(g.c/12);
+    // _gshort: ¿llega el GRANERO a la siega de sus provincias? Se decide con el granero entero (un ducado puede segar en
+    // dos meses distintos), igual que el socorro: si una provincia sale "no llega", su botón de socorro existe
+    for(const p of g.ps){const w=(p.pops.campesino||0)/g.c;p.store.comida=left*w;p._gm=left/(g.c/12);p._gshort=left<g.need;
       if(sale*w>1e-9)pushGrain(deliv[p.owner],p,sale*w)}
   }
 }
@@ -809,11 +816,11 @@ function pushGrain(list,p,q){const sh=harvestShares(p);
 // que costaría traer grano: precio + flete).
 function granaryOf(p){
   if(!p||!p.store||p.store.comida==null||!p.pops)return null;
-  const k=granaryKey(p);let st=0,c=0,cap=0;
-  for(const q of S.provs)if(q.owner===p.owner&&!q.wasteland&&q.pops&&q.store&&granaryKey(q)===k){st+=q.store.comida||0;c+=q.pops.campesino||0;cap+=storeCap(q,"comida")}
+  const k=granaryKey(p);let st=0,c=0,cap=0,need=0;
+  for(const q of S.provs)if(q.owner===p.owner&&!q.wasteland&&q.pops&&q.store&&granaryKey(q)===k){const cq=q.pops.campesino||0;st+=q.store.comida||0;c+=cq;cap+=storeCap(q,"comida");need+=cq*monthsToHarvest(q,S.hour)/12}
   const N=S.nations[p.owner], pr=(N&&N.mktPrice&&N.mktPrice.comida)||ref("comida"), t=reliefFlete(p), rr=reliefRoute(p);
   const months=c>0?st/(c/12):12, hm=harvestMonth(p), mth=monthsToHarvest(p,S.hour);
-  return {st,cap,c,months,harvestMonth:hm,monthsToHarvest:mth,harvest:harvestMul(p),price:pr,flete:t,priceIn:pr*(1+t),short:months<mth,from:rr.from?rr.from.name:"",km:rr.km}
+  return {st,cap,c,months,harvestMonth:hm,monthsToHarvest:mth,harvest:harvestMul(p),price:pr,flete:t,priceIn:pr*(1+t),short:st<need,from:rr.from?rr.from.name:"",km:rr.km}
 }
 
 export { economyTick2, siteOK2, seedEstates2, upkeepScale, seedOwner2, seedWealth2, GOODS2, LABEL2, REF2, NEED2, WANT2, TIERS, BLD2, ESTATE_BUILDS2, buildingProfit2, buildingOutput2,
