@@ -3,7 +3,7 @@ import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, 
 import { S } from "./state.js";
 import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildJobs, buildMax, buildSlots, canAfford, costFor, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationProvCount, nationStrength, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, resetTsyLedger, tsyAvail, tsyMonthBal, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, provProdMul, YR_TICKS, manorOf, MANOR_RENT, bOwnerOf } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
-import { GOODS2, LABEL2, REF2, NEED2, WANT2, BLD2, PRICE_SCALE, CROWN_STOCK, specialty2, obsolete2, siteOK2, transport, buildingProfit2, buildingOutput2, upkeepScale, granaryOf, foodGrowth, reliefQuote } from "./economy2.js";
+import { GOODS2, LABEL2, REF2, NEED2, WANT2, BLD2, PRICE_SCALE, CROWN_STOCK, specialty2, obsolete2, siteOK2, transport, buildingProfit2, buildingOutput2, upkeepScale, granaryOf, foodGrowth, reliefQuote, landYield, landCap, landBirth, LAND_FULL } from "./economy2.js";
 import { calOf, MONTHS_ES, monthsToHarvest, harvestMonth } from "./economy.js";
 import { canvas, clampPan, repaintProvince } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
@@ -195,7 +195,7 @@ function refreshProvPanel(){
   const sp=specialty2(p);
   s+="<div class='tl'>"+(p.urban?"Ciudad":"Campo")+(sp.length?" · "+sp.map(g=>resImg(g)+" "+gLabel(g)).join(" · "):"")+"</div>";
   s+=terrainVocationHTML(p);
-  s+=provStats2(p,own)+siegeLine(p)+(own?tradeRow2(p):"")+pantryRow2(p)+produceRow2(p)+(own?yieldRows2(p):"");
+  s+=provStats2(p,own)+siegeLine(p)+(own?tradeRow2(p):"")+pantryRow2(p)+landRow2(p)+produceRow2(p)+(own?yieldRows2(p):"");
   if(!own){const blist=Object.keys(BUILDINGS).filter(b=>lvlOf(p,b)>0);
     if(blist.length)s+="<div class='bsec'>Construcciones</div><div style='display:flex;flex-wrap:wrap;gap:2px 12px'>"+blist.map(b=>"<span>"+BUILDINGS[b].icon+" "+BUILDINGS[b].label+(BUILDINGS[b].unique?"":" ×"+lvlOf(p,b))+"</span>").join("")+"</div>";}
   const here=armiesIn(p.id);
@@ -1216,7 +1216,7 @@ function refreshFiscal(){
   h+=slider2("🏪 Alcabala",alc,0,30,"alcabala","Sobre cada compra en la plaza del reino: encarece lo que compran todos los estamentos.",got("Alcabala"));
   h+=slider2("⚓ Almojarifazgo",alm,0,60,"almoj","Aduana sobre el comercio con otros reinos: resta margen al mercader.",got("Almojarifazgo"));
   h+="<div style='background:#1c2026;border:1px solid #2a2f36;border-radius:8px;padding:9px 13px;margin-bottom:4px;opacity:.75'>"+
-    "<div style='display:flex;justify-content:space-between;align-items:baseline'><span>⛪ Diezmo"+iInfo("La décima de toda la cosecha, en especie, va al clero. Es derecho de la Iglesia: no se toca.")+"</span><span style='font-family:monospace'>"+pct(DIEZMO)+"%</span></div></div>";
+    "<div style='display:flex;justify-content:space-between;align-items:baseline'><span>⛪ Diezmo"+iInfo("La décima de la cosecha va al clero: del grano, de lo que el granero vende en la plaza; del resto, de todo lo que se produce. Es derecho de la Iglesia: no se toca.")+"</span><span style='font-family:monospace'>"+pct(DIEZMO)+"%</span></div></div>";
   body.innerHTML=h;
 }
 /* ============================= ECONOMÍA v2: Tesorería, Mercado y Estamentos =============================
@@ -1239,8 +1239,8 @@ const nfE=v=>Math.round(v||0).toLocaleString("es-ES");
 const sgnE=v=>(v>=0?"+":"−")+nfE(Math.abs(v));
 const prE=v=>v<10?(Math.round(v*10)/10).toLocaleString("es-ES"):nfE(v);  // precio: un decimal si es pequeño
 const pctE=v=>Math.round(Math.max(0,v)*100);
-function barE(pc,w){ // barra 0..100 (rojo <60, ámbar <90, verde) — misma estética que relFillBar, ancho a medida
-  return "<span style='display:inline-block;width:"+(w||46)+"px;height:7px;background:#241a14;border-radius:3px;overflow:hidden;vertical-align:middle'><i style='display:block;height:100%;width:"+Math.max(0,Math.min(100,pc))+"%;background:"+(pc<60?"#c0563e":pc<90?"#c98a3a":"#6fae5a")+"'></i></span>";
+function barE(pc,w,col){ // barra 0..100 (rojo <60, ámbar <90, verde, o el color que se pase) — misma estética que relFillBar, ancho a medida
+  return "<span style='display:inline-block;width:"+(w||46)+"px;height:7px;background:#241a14;border-radius:3px;overflow:hidden;vertical-align:middle'><i style='display:block;height:100%;width:"+Math.max(0,Math.min(100,pc))+"%;background:"+(col||(pc<60?"#c0563e":pc<90?"#c98a3a":"#6fae5a"))+"'></i></span>";
 }
 function tipRows(title,rows,tot){ // tooltip estructurado (data-tiph): título + filas [etiqueta, valor, color?] + total opcional
   let h="<div class='tipT'>"+title+"</div>";
@@ -1577,6 +1577,22 @@ function pantryRow2(p){ // el GRANERO del ducado: cuántos meses de grano quedan
   const pc=Math.min(100,Math.round(100*g.months/12));
   return "<div class='prow' data-tiph=\""+ta(tip)+"\" style='cursor:help'><span>🌾 Granero</span><b>"+barE(pc,64)+" "+(g.months>=24?"24+":g.months<1?"&lt;1":mo)+" m &nbsp;"+state+"</b></div>"+
     reliefRow2(p,g,hm);
+}
+// TIERRA (design/capacidad-agraria.md): cuánto de su capacidad agraria ocupan los campesinos de la provincia. Por encima
+// del 70% cada campesino nuevo rinde menos; al 100%, en un año normal, cosecha justo lo que come. No habla de renta: la
+// renta sale del granero del ducado, no de la provincia.
+function landRow2(p){
+  const K=p.pops?landCap(p):0; if(!(K>0))return "";
+  const c=p.pops.campesino||0,x=c/K,pc=Math.round(100*x),y=landYield(p);
+  const state=x>1?"<b class='neg'>⚠ no los alimenta</b>":x>LAND_FULL?"<span class='dim'>rinde ×"+y.toFixed(2)+"</span>":"<span class='pos'>de sobra</span>";
+  const tip=tipRows("Tierra · "+p.name,[
+    ["Capacidad agraria",nfE(K)+" campesinos"],["Campesinos",nfE(c)],["Ocupación",pc+"%"],
+    ["Cosecha por campesino","×"+y.toFixed(2),y<1?"#d08080":null],
+    ["Natalidad por la tierra","×"+landBirth(p).toFixed(2),landBirth(p)<1?"#d08080":null],
+    ["Rinde pleno","hasta el "+Math.round(LAND_FULL*100)+"%"],
+    ["Al 100%","cosechan justo lo que comen"]]);
+  return "<div class='prow' data-tiph=\""+ta(tip)+"\" style='cursor:help'><span>🌱 Tierra</span><b>"+
+    barE(pc,64,x>1?"#c0563e":x>LAND_FULL?"#c98a3a":"#6fae5a")+" "+pc+"% &nbsp;"+state+"</b></div>";
 }
 // SOCORRO: solo en ducados propios que no llegan a la siega (o con hambre). Un clic llena el granero hasta la siega; el
 // botón enseña el total antes de pulsar y el tooltip el desglose (almacén, compra, flete). Todo sale de reliefQuote.

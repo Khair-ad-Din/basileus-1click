@@ -800,8 +800,36 @@ function assignPopulation(){
     }
     p.pop=Math.max(0,Math.round(pop));
   }
-  for(const p of S.provs)seedStrata(p); // Fase A: reparte la población en estratos
+  for(const p of S.provs){seedStrata(p);seedLandCap(p)} // Fase A: reparte la población en estratos · techo agrario
 }
+// CAPACIDAD AGRARIA (design/capacidad-agraria.md): p.K = campesinos que alimenta la tierra de la provincia con las
+// técnicas de 1444. Se calcula aquí, con la población de 1444 (o la editada a mano), antes de que una partida guardada
+// ponga la población viva: por eso no se guarda. K = campesinos de 1444 × factor de su región, con
+// factor = 1 + LAND_CAP_ALPHA·(R−1), R = población ~1300 / ~1444 (cronista, 2026-09-28: Broadberry, Malanima,
+// Federico & Malanima, NCMH VII…) y suelo LAND_CAP_MIN. En las fronteras de colonización (Castilla, Polonia, Rus,
+// Anatolia, Balcanes, Magreb) el techo no era la población de 1300 → factor fijo; en Egipto el techo cayó (el riego).
+// LAND_CAP_ALPHA es la perilla de tensión (más baja = más aprieto).
+const LAND_CAP_ALPHA=0.6, LAND_CAP_MIN=1.2, LAND_CAP_MOUNTAIN=0.1, LAND_CAP_DEFAULT=1.3;
+const LAND_CAP_REGIONS=[ // [lon0,lon1,lat0,lat1, R | {fix}] — gana la primera que contiene la provincia
+  [24,36,21,32,{fix:1.15}],        // Egipto (el riego del Delta, arruinado: el techo también cayó)
+  [2.5,7.2,50.4,53.7,1.3],         // Países Bajos (la Peste fue más suave)
+  [-11,2,49.8,61,2.4],             // Islas Británicas (Inglaterra 1348 → 1450: 4,8 M → 1,9 M)
+  [-1.5,3.5,38,43.5,2.0],          // Aragón, Cataluña y Valencia
+  [-10,3.5,35.5,44,{fix:1.3}],     // Castilla y Portugal (frontera; Castilla perdió <25%)
+  [7,19,36,46.3,1.67],             // Italia
+  [-5,8,42.3,51.2,1.85],           // Francia
+  [4,13,57.9,72,2.2],              // Noruega
+  [8,14.6,54.5,56.5,1.6],[8,11,56.5,57.9,1.6], // Dinamarca (y Escania)
+  [11,32,55,72,1.25],              // Suecia y Finlandia
+  [5,17.5,45.5,55,1.45],           // el Imperio
+];                                 // el resto (Polonia-Lituania, Rus, Hungría-Balcanes, Anatolia, Magreb): LAND_CAP_DEFAULT
+function landCapFactor(p){
+  const[lon,lat]=pxToLonLat(p.x,p.y); let f=LAND_CAP_DEFAULT;
+  for(const[a,b,c,d,r]of LAND_CAP_REGIONS)if(lon>=a&&lon<=b&&lat>=c&&lat<=d){
+    f=typeof r==="object"?r.fix:Math.max(LAND_CAP_MIN,1+LAND_CAP_ALPHA*(r-1));break}
+  return p.terrain==="montana"?f-LAND_CAP_MOUNTAIN:f;
+}
+function seedLandCap(p){p.K=p.pops&&!p.wasteland?(p.pops.campesino||0)*landCapFactor(p):0}
 // Reparte p.pop en estratos (p.pops) según ciudad/campo e inicializa la riqueza por estrato
 // (p.wealth) si aún no existe. Determinista; los estratos se recalibran proporcionalmente en el
 // tick demográfico. La riqueza NO se resiembra (la acumulará el mercado en la Fase B).
@@ -1339,5 +1367,5 @@ function sprinkleTerrain(on) {
 }
 
 export {
-  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, seedStrata, rebuildProvinceData, buildDuchies, isDuchyCap, seedCities, renameProvincesHistorical, buildMarketEdges, assignMarkets, assignHubs, ensureMarketTopology, MKT_LINK_KM, kmBetween, roadKey, hasRoad, roadLvl, landPath, generateRoads, sprinkleTerrain, CITY_POP, popNormKey, localize
+  mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, landCapFactor, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, seedStrata, rebuildProvinceData, buildDuchies, isDuchyCap, seedCities, renameProvincesHistorical, buildMarketEdges, assignMarkets, assignHubs, ensureMarketTopology, MKT_LINK_KM, kmBetween, roadKey, hasRoad, roadLvl, landPath, generateRoads, sprinkleTerrain, CITY_POP, popNormKey, localize
 };

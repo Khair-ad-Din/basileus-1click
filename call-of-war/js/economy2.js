@@ -63,6 +63,26 @@ const GRAIN_RESERVE=1.2;  // guarda un 20% más de lo que necesita hasta la pró
 const GRAIN_SELL_DAYS=30; // el sobrante se va vendiendo en ~un mes (no de golpe)
 // NATALIDAD: el grano acumulado se convierte en súbditos (más grano → más natalidad → más consumo → equilibrio). Es el
 // tope natural del exceso de alimento y el motor de crecimiento que quiere todo rey. Meses de reserva → factor.
+// RENDIMIENTO DECRECIENTE (design/capacidad-agraria.md): la cosecha por campesino según la ocupación x = campesinos / K
+// de su provincia (p.K, mapgen.js seedLandCap). Rinde pleno hasta LAND_FULL (tierra de sobra); por encima, cada
+// campesino nuevo labra peor tierra y parcelas más pequeñas; con x = 1, en un año normal y en tierra de fertilidad
+// media, la cosecha por cabeza es justo lo que come (1/GRAIN_YIELD). Por encima de 1 no se alimentan: el hambre la
+// pone el granero de siempre, en cuanto se encadenan los malos años. La ciudad no tiene techo: come de la plaza.
+const LAND_FULL=0.7, LAND_FLOOR=0.25;
+const LAND_SLOPE=(1-1/GRAIN_YIELD)/(1-LAND_FULL);
+// EL TECHO SE DESPLAZA: capacidad = tierra de 1444 (p.K, fija) × lo que sabe cultivar la NACIÓN (N.agro: tecnologías de
+// roturación, rotación, arado, cultivos nuevos — el árbol tecnológico, futuro) × las obras de la provincia (drenaje,
+// regadío: futuro, se multiplican aquí). El reino que no lo desplaza vive pegado al techo y lo paga en hambrunas.
+function landCap(p){const K=p.K||0;if(!(K>0))return 0;const N=S.nations[p.owner];return K*(N&&N.agro>0?N.agro:1)}
+function landOcc(p){const K=landCap(p);return K>0?(p.pops.campesino||0)/K:0}
+function landYield(p){const x=landOcc(p);
+  return x<=LAND_FULL?1:Math.max(LAND_FLOOR,1-LAND_SLOPE*(x-LAND_FULL))}
+// FRENO PREVENTIVO: con la tierra llena, parcelas pequeñas → boda tardía → menos nacimientos (el patrón de Hajnal).
+// Parcial a propósito: en x = 1 la natalidad sigue a ×LAND_BIRTH_AT_K, así que la población sigue empujando contra el
+// techo. Quien lo desplaza convierte ese empuje en crecimiento; quien no, lo paga en hambre cada mal año.
+const LAND_BIRTH_AT_K=0.4, LAND_BIRTH_MIN=0.15;
+function landBirth(p){const x=landOcc(p);
+  return x<=LAND_FULL?1:Math.max(LAND_BIRTH_MIN,1-(1-LAND_BIRTH_AT_K)*(x-LAND_FULL)/(1-LAND_FULL))}
 function foodGrowth(months){return months<=1?0.3:months<=12?0.3+0.7*(months-1)/11:Math.min(1.8,1+0.8*(months-12)/6)}
 // Lo que produce TODA provincia según su terreno (la categoría "mar" solo rinde en la COSTA: sal marina y pesca de bajura).
 // Revisado 2026-09-27 con el informe regional (--regiones): sal y pescado faltaban en todo el Mediterráneo y el Este,
@@ -438,7 +458,7 @@ function economyTick2(dt=24,doArb=true){
     if(p.store.comida==null)p.store.comida=storeCap(p,"comida")*0.6;
     {const cal=calOf(S.hour);
       if(cal.m===harvestMonth(p)&&p.store.hy!==cal.y){p.store.hy=cal.y;
-        const gh=c*GRAIN_YIELD*terrMul(p,"comida")*harvestMul(p);   // la cosecha del AÑO (la Granja no la multiplica: es la explotación de su dueño, BLD2)
+        const gh=c*GRAIN_YIELD*landYield(p)*terrMul(p,"comida")*harvestMul(p);   // la cosecha del AÑO, con el techo de la tierra (la Granja no la multiplica: es la explotación de su dueño, BLD2)
         p.store.comida+=gh; N.e2.st.prodV+=gh*REF2.comida; pmProd(p,"comida",gh)}}
     p.store.comida-=c*f;
     p._grainNeed=0;p._grainGot=0;
@@ -648,7 +668,7 @@ function economyTick2(dt=24,doArb=true){
       const cons=c*f; if(cons>0&&left/cons>FAMINE_DEF){p.pop=Math.max(0,pop0-left*STARVE_RATE);famine=true}}
     p.famine=famine;
     if(!famine){const vida=N.e2.cov.campesino.vida;   // la natalidad sigue a los MESES de grano del granero de su ducado
-      p.pop=pop0*(1+POP_GROWTH_BASE*foodGrowth(p._gm!=null?p._gm:6)*(0.5+0.5*vida)*dt)}
+      p.pop=pop0*(1+POP_GROWTH_BASE*foodGrowth(p._gm!=null?p._gm:6)*landBirth(p)*(0.5+0.5*vida)*dt)}
     if(pop0>0){const r=(p.pop||0)/pop0;for(const k in p.pops)p.pops[k]*=r}
     const base=(p.pops.campesino||0)+(p.pops.burgues||0);
     if(base>0){let move=(targetBurgFrac(p)*base-(p.pops.burgues||0))*PROMO_RATE*dt;
@@ -824,4 +844,4 @@ function granaryOf(p){
 }
 
 export { economyTick2, siteOK2, seedEstates2, upkeepScale, seedOwner2, seedWealth2, GOODS2, LABEL2, REF2, NEED2, WANT2, TIERS, BLD2, ESTATE_BUILDS2, buildingProfit2, buildingOutput2,
-  transport, tradeCost2, moneyStock, sinkAdd, ARTISAN_IN, ctrOut, ctrIn, granaryOf, foodGrowth, GRAIN_RESERVE, reliefQuote, reliefSend, isMarketDay, MARKET_DAYS, PRICE_SCALE, JORNAL, MARGIN, CROWN_STOCK, CROWN_STOCK_WANT, crownStockOut, specialty2, obsolete2 };
+  transport, tradeCost2, moneyStock, sinkAdd, ARTISAN_IN, ctrOut, ctrIn, granaryOf, foodGrowth, landYield, landCap, landOcc, landBirth, LAND_FULL, GRAIN_RESERVE, reliefQuote, reliefSend, isMarketDay, MARKET_DAYS, PRICE_SCALE, JORNAL, MARGIN, CROWN_STOCK, CROWN_STOCK_WANT, crownStockOut, specialty2, obsolete2 };
