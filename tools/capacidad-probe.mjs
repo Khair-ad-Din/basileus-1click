@@ -42,7 +42,7 @@ e2.seedWealth2();
 const names=NATIONS.map(n=>n.name);
 const fmt=v=>{const a=Math.abs(v);return a>=1e6?(v/1e6).toFixed(2)+"M":a>=1e3?(v/1e3).toFixed(1)+"k":v.toFixed(a<10?2:0)};
 const TAG=process.env.TAG||"run";
-const YEARS=+(process.argv[2]||80), DEC=+(process.argv[3]||10);
+const YEARS=+(process.argv[2]||80), DEC=Math.min(YEARS,+(process.argv[3]||10));   // la década no puede ser más larga que la corrida
 const LP=S.provs.filter(p=>p.owner<NPLAY&&!p.wasteland&&p.pops);
 const REG=[["Iberia",-10,3.5,35.5,44],["Islas Británicas",-11,2,49.5,61],["Francia",-5,7.5,42.5,51],["Italia",6.5,19,36,47],["P.Bajos-Alemania",3,16,47,55.5],["Escandinavia",4,32,55.5,71],["Polonia-Lituania",14,32,49,57],["Rusia",32,60,50,70],["Hungría-Balcanes",13,30,39,49],["Anatolia-Levante",25,50,29,42.5],["Egipto-Magreb",-10,35,20,37]];
 const regOfXY=(x,y)=>{const[lo,la]=mg.pxToLonLat(x,y);for(const[r,a,b,c,d]of REG)if(lo>=a&&lo<=b&&la>=c&&la<=d)return r;return "Otras"};

@@ -47,6 +47,15 @@ if command -v curl >/dev/null 2>&1; then
     fi
 fi
 
+# Simulaciones en GitHub Actions (skill /simular): las que corren o terminaron hace poco, para no olvidar resultados.
+if command -v gh >/dev/null 2>&1; then
+    SIMS=$(timeout 4 gh run list --workflow simulacion.yml --limit 3 --json databaseId,status,conclusion,headBranch,createdAt         -q '.[] | "   \(.headBranch) \(.status) \(.conclusion // "") \(.createdAt[0:10]) (id \(.databaseId))"' 2>/dev/null)
+    if [ -n "$SIMS" ]; then
+        echo "Simulaciones (GitHub Actions; leer con: node tools/sim.mjs resultados <nombre>):"
+        echo "$SIMS"
+    fi
+fi
+echo "Simulaciones largas: SIEMPRE en GitHub -> /simular (node tools/sim.mjs lanzar <nombre>), nunca en el PC"
 echo "Consejo: /consejo (5 estamentos + arbitro) · /ux (director de UX) · /destilar (poso de sesion)"
 echo "======================="
 exit 0
