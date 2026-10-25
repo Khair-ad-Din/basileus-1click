@@ -1,0 +1,48 @@
+# Simulaciones largas de la economía (sonda de capacidad agraria) en GitHub, sin ocupar el PC.
+# Se lanza al hacer push a una rama sim/** (o a mano, si el workflow está en master). Cada variante de
+# tools/sim-variants.json ("run") corre en su propia máquina, en paralelo. Resultados: artefacto "sim-<variante>"
+# (texto completo) y el resumen adelantados/atrasados en la página de la ejecución.
+name: Simulación
+on:
+  push:
+    branches: ["sim/**"]
+  workflow_dispatch:
+    inputs:
+      variants: {description: "Variantes separadas por comas (vacío = las de 'run')", required: false, default: ""}
+      years: {description: "Años", required: false, default: "80"}
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      variants: ${{ steps.v.outputs.variants }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: |
+          IN="${{ github.event.inputs.variants }}"
+          if [ -n "$IN" ]; then V=$(node -e 'console.log(JSON.stringify(process.argv[1].split(",").map(s=>s.trim()).filter(Boolean)))' "$IN")
+          else V=$(node -e 'console.log(JSON.stringify(require("./tools/sim-variants.json").run))'); fi
+          echo "variants=$V" >> "$GITHUB_OUTPUT"
+  sim:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: ${{ fromJSON(needs.plan.outputs.variants) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: "24"}
+      - name: Sonda (${{ matrix.variant }})
+        run: |
+          set -o pipefail
+          node tools/sim-run.mjs "${{ matrix.variant }}" "${{ github.event.inputs.years || '80' }}" 10 | tee "out_${{ matrix.variant }}.txt"
+      - name: Resumen
+        if: always()
+        run: |
+          { echo "### Variante ${{ matrix.variant }}"; echo '```'; sed -n '/ADELANTADOS/,$p' "out_${{ matrix.variant }}.txt"; grep "población total" "out_${{ matrix.variant }}.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: "sim-${{ matrix.variant }}", path: "out_${{ matrix.variant }}.txt"}
