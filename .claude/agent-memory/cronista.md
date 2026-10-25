@@ -88,3 +88,14 @@
   - **SUELO de acceso >0 (buhonero/trueque/feria anual en casi toda aldea): cualitativamente sí**
     (Dyer material world `[19]` campesino — A); el **número 10-15% es perilla de DISEÑO, no dato
     histórico**. **Grokipedia** reapareció en las búsquedas de báltico → descartada por norma.
+
+- **2026-09-28 — [PASADA · capacidad agraria, ratio pob. ~1300 / ~1444 por región]** Fuentes en
+  `bibliografia.md` (añadidos 2026-09-28). Resultado: Europa ~1,4-1,45 (Malanima vía Pamuk; Russell);
+  Inglaterra ~2,3-2,5; Francia ≥1,8; Italia 1,67; Castilla ~1,1-1,3 (crece en el XV); Cataluña ~2;
+  Países Bajos ~1,25-1,35; Noruega ~2,2-2,6; Dinamarca ~1,6; **Polonia <1 (0,65-0,7: más gente en
+  1444 que en 1340)**; Rus/Balcanes/Anatolia/Magreb ❓. **Clave de diseño:** en fronteras de
+  colonización (Polonia, Castilla, Rus, Anatolia) el techo NO es la población de 1300 — usar el
+  pico ~1580-1600 como prueba de K. En **Egipto el techo mismo cayó** (riego arruinado >60%).
+  **Atajos:** erenow NCMH VII 25.php/26.php = demografía y variación regional; Federico & Malanima
+  2004 (Stanford PDF) tabla 4 = Italia; Pamuk 2007 tabla 1 (usar `pdftotext -raw`, -layout la
+  descoloca); scholarworks.wmich.edu tiene Cloudflare → `curl r.jina.ai/<url>` sí entra.
