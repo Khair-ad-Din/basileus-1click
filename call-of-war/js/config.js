@@ -391,10 +391,10 @@ const EMBARK_HOURS=96;    // ~4 días de preparar el embarque
 // nobleza tendrán mecánicas propias más adelante. Orden = de base a cúspide.
 const STRATA=["campesino","burgues","clero","nobleza"];
 const STRATA_INFO={
-  campesino:{label:"Campesinos",icon:"<span class='icoPh' data-ico='campesino'>[ ]</span>"},
-  burgues:{label:"Burgueses",icon:"<span class='icoPh' data-ico='burgues'>[ ]</span>"},
-  clero:{label:"Clero",icon:"<span class='icoPh' data-ico='clero'>[ ]</span>"},
-  nobleza:{label:"Nobleza",icon:"<span class='icoPh' data-ico='nobleza'>[ ]</span>"},
+  campesino:{label:"Campesinos"},
+  burgues:{label:"Burgueses"},
+  clero:{label:"Clero"},
+  nobleza:{label:"Nobleza"},
 };
 // Reparto inicial de la población por provincia (rural vs ciudad); tunable, cada bloque suma 1.
 // Clero y nobleza ≈2% del reino cada uno de media: la NOBLEZA se concentra en el campo (señoríos)

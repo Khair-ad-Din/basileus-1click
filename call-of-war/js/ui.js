@@ -32,7 +32,11 @@ function tipBox(title,blocks,sub){
   return h;
 }
 // Hueco de icono: donde iría un icono que aún no tiene sprite (regla 2: nada de iconos Unicode). data-ico dice cuál.
-const ph=name=>"<span class='icoPh' data-ico='"+name+"' title='icono: "+name+"'>[ ]</span>";
+// Iconos de interfaz con sprite en assets/ui/<nombre>.png. Al llegar un dibujo nuevo, se suelta en assets/ui y se añade
+// su nombre aquí: todos los ph("nombre") de la app pasan solos del hueco al sprite (lista de pendientes: design/arte/iconos-pendientes.md).
+const UI_ART=new Set(["poblacion","soldadesca","espadas","estandarte","trabajo","edificios","despensa","defensa","ducado","caminos","mantenimiento","pergamino","leyes"]);
+const ph=name=>UI_ART.has(name)?"<img class='uic' src='assets/ui/"+name+".png' alt='' title='"+name+"'>"
+  :"<span class='icoPh' data-ico='"+name+"' title='icono: "+name+"'>[ ]</span>";
 // Flecha de tendencia dibujada en CSS: up = sube (rojo: encarece), dn = baja (verde); upg/dnr = colores al revés.
 const arw=k=>"<i class='arw "+k+"'></i>";
 const COIN=()=>resImg("dinero");
@@ -284,7 +288,7 @@ function buildTilesHTML(p){
         const own2=bOwnerOf(p,b);
         if(own2!=="corona"){ // v2: el taller de un estamento lo gestiona su dueño (lo cierra si no le rinde)
           ctrl="<div style='"+bs+"background:#262b31' data-tip=\""+ta("De "+STRATA_INFO[own2].label.toLowerCase()+": lo gestiona su dueño"+(off?" (ahora cerrado)":""))+"\">"+
-            profTxt+"<span style='color:#9aa3ad;white-space:nowrap'>"+STRATA_INFO[own2].icon+(off?" cerrado":"")+"</span></div>";
+            profTxt+"<span style='color:#9aa3ad;white-space:nowrap'>"+ph(own2)+(off?" cerrado":"")+"</span></div>";
         } else if(off){
           const cond=(p.bCond&&p.bCond[b]!=null)?p.bCond[b]:1;
           let rep=0;const base=costFor(p,b);for(const k in base)rep+=base[k]*(1-cond);rep=Math.round(rep);
@@ -1351,11 +1355,16 @@ function crownBook(which){ // which: "prev"|"cur" (por defecto, lo elegido en la
   if(!S.cPrev&&days>=1){const k=30/days;for(const c in cats)cats[c]*=k;return {book,cats,cur:true,forecast:true,inc:inc*k,exp:exp*k,net:delta*k}}
   return {book,cats,cur,inc,exp,net:delta};
 }
+// icono de cada partida del libro de la corona (ph: sprite si existe en assets/ui, si no el hueco [ ])
+const CAT_ICO={"Pecho":"pecho","Alcabala":"alcabala","Almojarifazgo":"almojarifazgo","Renta del realengo":"realengo","Ventas de sus talleres":"taller",
+  "Portazgo":"caminos","Minas de plata y oro":"minas","Paces y tributos":"pergamino","Diplomacia":"paz","Ejército":"espadas",
+  "Mantenimiento de edificios":"mantenimiento","Obras":"edificios","Reclutamiento":"estandarte","Caminos":"caminos","Reparaciones":"mantenimiento",
+  "Socorro":"socorro","Gastos varios":"otros","Otros":"otros"};
 function crownRow(cat,amt,drill){
   const m=CROWN_CAT[cat]||["",""], lever=m[2];
   const chip=lever?"<span class='e2chip' data-tip='Ajustar en Hacienda' onclick='event.stopPropagation();openFiscal()'>"+pctE(crownRate(lever))+"%</span>":"";
   return "<div class='trow"+(drill?" click":"")+"'"+(drill?" onclick=\"treasuryDrill('"+cat+"')\"":"")+(m[1]?" data-tip=\""+ta(m[1])+"\"":"")+">"+
-    "<span>"+ph(cat)+" "+cat+chip+(drill?" <span class='tarrow'>›</span>":"")+"</span>"+
+    "<span>"+ph(CAT_ICO[cat]||"otros")+" "+cat+chip+(drill?" <span class='tarrow'>›</span>":"")+"</span>"+
     "<b class='"+(amt<0?"neg":"pos")+"'>"+sgnE(amt)+" "+resImg("dinero")+"</b></div>";
 }
 function treasuryTesoro2(){
@@ -1521,7 +1530,7 @@ function sparkPrice(N,g){
 function renderMktGood2(body,N,g){
   const mi=(N.mktInfo&&N.mktInfo[g])||{},p=N.mktPrice[g]!=null?N.mktPrice[g]:gRef(g),r=p/gRef(g),t=TIER2[g]||"mat";
   let h="<div class='tcrumb' style='margin-bottom:10px'><span class='tcrumbi' onclick='closeMktGood()'>"+ph('mercado')+" Mercado</span> › <b class='tcrumbc'>"+resImg(g)+" "+gLabel(g)+"</b></div>";
-  const who=t==="mat"?"":STRATA.filter(e=>WANT2[e][t]>0).map(e=>"<span data-tip=\""+ta(STRATA_INFO[e].label)+"\">"+STRATA_INFO[e].icon+"</span>").join(" ");
+  const who=t==="mat"?"":STRATA.filter(e=>WANT2[e][t]>0).map(e=>"<span data-tip=\""+ta(STRATA_INFO[e].label)+"\">"+ph(e)+"</span>").join(" ");
   const ch=chain2(g), lab=ks=>ks.map(k=>resImg(k)+" "+gLabel(k)).join(" ");
   const kv=(k,v,tip)=>"<div"+(tip?" style='cursor:help' data-tiph=\""+ta(tip)+"\"":"")+"><div class='k'>"+k+"</div><div class='v'>"+v+"</div></div>";
   h+="<div class='kvg'>"+kv("Precio",prE(p)+" "+resImg("dinero"),tipBox(gLabel(g),priceBlocks(N,g)))+kv("Normal",prE(gRef(g)))+kv("Relación",ratioTxt(r))+kv("Tendencia",sparkPrice(N,g))+"</div>";
@@ -1595,7 +1604,7 @@ function refreshEstates2(body){
   h+="<table class='e2t'><tr><th>Estamento</th><th>Habitantes</th>"+tierTh()+
     "<th data-tip='Ingreso medio del último mes'>Ingreso/mes</th><th data-tip='Ahorro medido en meses de su cesta'>Ahorro</th></tr>";
   for(const e of STRATA){const I=STRATA_INFO[e];
-    h+="<tr class='click' onclick=\"openEstate('"+e+"')\"><td>"+I.icon+" <b>"+I.label+"</b></td><td data-tip=\""+ta(popPct(cnt[e],pop)+" de la población")+"\">"+nfE(cnt[e])+"</td>"+
+    h+="<tr class='click' onclick=\"openEstate('"+e+"')\"><td>"+ph(e)+" <b>"+I.label+"</b></td><td data-tip=\""+ta(popPct(cnt[e],pop)+" de la población")+"\">"+nfE(cnt[e])+"</td>"+
       covCell(N,e,"subs",cnt)+covCell(N,e,"vida",cnt)+covCell(N,e,"lujo",cnt)+
       "<td>"+nfE((N.e2.inc&&N.e2.inc[e])||0)+" "+resImg("dinero")+"</td><td>"+savingsTxt(N,e)+" <span class='tarrow'>›</span></td></tr>"}
   h+="</table>";
@@ -1610,7 +1619,7 @@ function refreshEstates2(body){
 function renderEstate2(body,N,e){
   const I=STRATA_INFO[e];
   const fl=S.sFlowPrev?S.sFlowPrev[e]||{}:(S.sFlow&&S.sFlow[e])||{}, cons=S.sConsumePrev?S.sConsumePrev[e]||{}:(S.sConsume&&S.sConsume[e])||{};
-  let h="<div class='tcrumb' style='margin-bottom:10px'><span class='tcrumbi' onclick='openEstate(null)'>Estamentos</span> › <b class='tcrumbc'>"+I.icon+" "+I.label+"</b></div>";
+  let h="<div class='tcrumb' style='margin-bottom:10px'><span class='tcrumbi' onclick='openEstate(null)'>Estamentos</span> › <b class='tcrumbc'>"+ph(e)+" "+I.label+"</b></div>";
   const {cnt,pop}=estateCounts();
   if(e==="burgues"||e==="campesino"){let up=0,dn=0,cur=false;for(const p of S.provs){if(p.owner!==S.player)continue;const b=provBook(p);if(!b)continue;cur=cur||b.cur;up+=b.m.up||0;dn+=b.m.down||0}
     const pr=N.prosp!=null?N.prosp:1, poor=pr<0.5;
@@ -1650,7 +1659,7 @@ function manorIcon(p){ // quién es el señor de la tierra: la corona (su escudo
   const lab={realengo:"Realengo",abadengo:"Abadengo",solariego:"Señorío solariego"}[m]||m;
   const tip=tipRows(lab,[["Renta en especie",Math.round((MANOR_RENT[m]||0)*100)+"% <i class='arw r'></i> "+(who?STRATA_INFO[who].label:"la corona")],
     ["Diezmo",pctE(DIEZMO)+"% <i class='arw r'></i> Clero"],["Portazgo","<i class='arw r'></i> "+(who?STRATA_INFO[who].label:"la corona")]]);
-  return "<span data-tiph=\""+ta(tip)+"\" style='cursor:help;font-size:15px'>"+(who?STRATA_INFO[who].icon:escOf(p.owner))+"</span>";
+  return "<span data-tiph=\""+ta(tip)+"\" style='cursor:help;font-size:15px'>"+(who?ph(who):escOf(p.owner))+"</span>";
 }
 function estateBar(p,w){ // los cuatro estamentos apilados (ancho = su parte de la población)
   const pops=p.pops||{};let tot=0;for(const e of STRATA)tot+=pops[e]||0;
@@ -1783,7 +1792,7 @@ function tradeRow2(p){ // su centro de comercio y lo que cuesta llevar allí cad
 }
 // ---------- Ficha de provincia (v2): Produce, Rinde y la ventana Economía (libro de la provincia: p.m / p._m) ----------
 const WHO_ORDER=["campesino","burgues","clero","nobleza","corona"];
-const whoIcon=(w,n)=>w==="corona"?escOf(n):STRATA_INFO[w].icon;
+const whoIcon=(w,n)=>w==="corona"?escOf(n):ph(w);
 const whoLabel=w=>w==="corona"?"Corona":STRATA_INFO[w].label;
 const WHO_COL=Object.assign({corona:"#d8c191"},ESTATE_COL);
 function provBook(p){ // el mes cerrado (estable) o, si aún no hay, el que va en curso
