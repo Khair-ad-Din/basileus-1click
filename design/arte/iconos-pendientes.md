@@ -26,18 +26,18 @@ El de los existentes en `assets/res/` y `assets/ui/` (para ver los once bienes j
   construcción entera con algo de terreno, como `granja.png` o `templo.png`.
 - Un objeto o grupo compacto que se lea a 16 px: silueta clara antes que detalle.
 
-## Prioridad 1: estamentos y necesidades (salen en casi todas las pantallas económicas)
+## Prioridad 1: estamentos y necesidades — HECHA (2026-10-26)
 
 | Icono | Archivo | Motivo sugerido |
 |---|---|---|
-| Campesinos | `ui/campesino.png` | Sombrero de paja y hoz sobre una gavilla de trigo |
-| Burgueses | `ui/burgues.png` | Bolsa de monedas atada junto a una balanza de mercader |
-| Clero | `ui/clero.png` | Mitra o cruz de altar dorada sobre un libro de horas |
-| Nobleza | `ui/nobleza.png` | Yelmo con cimera y una corona de barón sobre un escudo |
-| Subsistencia | `ui/subsistencia.png` | Hogaza de pan y escudilla de barro |
-| Comodidades | `ui/comodidades.png` | Banqueta de madera con una manta de lana doblada y una jarra |
-| Lujo | `ui/lujo.png` | Cáliz dorado con piedras y un collar de perlas |
-| Materias | `ui/materias.png` | Fardo atado con cuerda sobre un palé de madera |
+| ~~Campesinos~~ | `ui/campesino.png` | HECHO (2026-10-26) |
+| ~~Burgueses~~ | `ui/burgues.png` | HECHO (2026-10-26) |
+| ~~Clero~~ | `ui/clero.png` | HECHO (2026-10-26) |
+| ~~Nobleza~~ | `ui/nobleza.png` | HECHO (2026-10-26) |
+| ~~Subsistencia~~ | `ui/subsistencia.png` | HECHO (2026-10-26) |
+| ~~Comodidades~~ | `ui/comodidades.png` | HECHO (2026-10-26) |
+| ~~Lujo~~ | `ui/lujo.png` | HECHO (2026-10-26) |
+| ~~Materias~~ | `ui/materias.png` | HECHO (2026-10-26) |
 
 ## Prioridad 2: edificios base (panel de construcción desde el primer día)
 
