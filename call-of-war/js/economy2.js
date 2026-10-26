@@ -68,7 +68,9 @@ const GRAIN_SELL_DAYS=30; // el sobrante se va vendiendo en ~un mes (no de golpe
 // campesino nuevo labra peor tierra y parcelas más pequeñas; con x = 1, en un año normal y en tierra de fertilidad
 // media, la cosecha por cabeza es justo lo que come (1/GRAIN_YIELD). Por encima de 1 no se alimentan: el hambre la
 // pone el granero de siempre, en cuanto se encadenan los malos años. La ciudad no tiene techo: come de la plaza.
-const LAND_FULL=0.7, LAND_FLOOR=0.25;
+// LAND_FULL 0,8 (medido, variante D): con 0,7 Europa arrancaba en 1444 ya dentro de la banda decreciente (x ≈ 0,77-0,80)
+// y pasaba hambre desde el primer mal año. En la práctica el techo queda en x ≈ 0,88: hace falta margen para el mal año.
+const LAND_FULL=0.8, LAND_FLOOR=0.25;
 const LAND_SLOPE=(1-1/GRAIN_YIELD)/(1-LAND_FULL);
 // EL TECHO SE DESPLAZA: capacidad = tierra de 1444 (p.K, fija) × lo que sabe cultivar la NACIÓN (N.agro: tecnologías de
 // roturación, rotación, arado, cultivos nuevos — el árbol tecnológico, futuro) × las obras de la provincia (drenaje,

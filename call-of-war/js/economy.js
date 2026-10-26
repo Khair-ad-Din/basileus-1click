@@ -222,7 +222,8 @@ const FLETE_MAX=0.85;    // techo del flete (fracción del valor): ancla histór
 const TOLL_FRAC=0.15;    // porción del flete que queda como PORTAZGO del señor de origen (~15%, DISEÑO no dato: el cronista no halló cifra para 1444); el resto lo cobran los transportistas
 // constantes del tick demográfico (las usa economy2.js)
 const SOLD_REGEN=0.0012;          // la soldadesca recupera este % del hueco hasta su techo, por tick
-const POP_GROWTH_BASE=0.008/8760; // crecimiento con la despensa llena ≈1.1%/año; escala con el llenado
+const POP_GROWTH_BASE=0.006/8760; // crecimiento con la despensa llena; escala con el llenado. 0,006 (antes 0,008): con el techo
+                                  // agrario da ~0,25%/año hasta ~1490 sin tecnología, el ritmo de mediados del XV (design/capacidad-agraria.md)
 const STARVE_RATE=0.6;            // en hambruna, fracción del déficit que se lleva por delante a la población
 const FAMINE_DEF=0.12;            // déficit (fracción del consumo sin cubrir) por encima del cual hay hambruna
 

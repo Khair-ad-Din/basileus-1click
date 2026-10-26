@@ -146,3 +146,23 @@ La divergencia sale (el diseño funciona) y B acierta el ritmo, pero: (1) los at
 final encogen en vez de vivir pegados al techo. **Siguiente (variante C):** B + LAND_FULL 0,8 + LAND_BIRTH_AT_K 0,2.
 Las simulaciones largas se lanzan en GitHub Actions (`.github/workflows/simulacion.yml`, variantes en
 `tools/sim-variants.json`).
+
+## Tercera ronda (2026-10-26, GitHub Actions, run 40240492552) — CALIBRACIÓN ADOPTADA: D
+
+| Atrasados | B (control) | C: B + LAND_FULL 0,8 + freno ×0,2 | **D: B + LAND_FULL 0,8** |
+|---|---|---|---|
+| Hambre 1444-1464 | 0,24%/año | 0,13-0,14% | 0,13-0,15% |
+| Crecimiento hasta ~1494 | 0,04-0,24% | ~0,25% | **~0,25%** |
+| x máxima | 0,86 | 0,90 | 0,89 |
+| Peor década (1514) | −0,22%/año, hambre 0,45% | −0,16%, 0,38% | −0,15%, 0,39% |
+| Población 1524 | 66,1 M | 69,1 M | 69,3 M |
+
+Adelantados en las tres: +0,4%/año, hambre ~0. B reproduce exactamente la medición local (el arnés de GitHub es fiable).
+
+**Lectura:** el umbral 0,8 es lo que arregla el arranque; el freno ×0,2 no aporta (C ≈ D): el hambre llega en x ≈ 0,88
+(hace falta margen para el mal año), antes de que el freno muerda. La caída final coincide con la peor racha de la
+secuencia FIJA de cosechas (`harvestYear`: 1504-1523, 8 años malos de 20; 1444-1453 también arranca mal), la misma en
+todas las partidas: en esos años los adelantados no pasan hambre. **Es el diseño: el mismo mal tiempo mata al atrasado.**
+
+**Adoptado (D):** `LAND_FULL` 0,8 · `POP_GROWTH_BASE` 0,006 · freno de natalidad ×0,4 en x = 1. Siguiente: válvula del
+artesano (decisión 5, medida con /simular) y `/ux` de la fila Tierra.

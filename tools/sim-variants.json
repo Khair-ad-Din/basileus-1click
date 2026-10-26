@@ -1,15 +1,8 @@
 {
-  "_doc": "Variantes de simulación (tools/sim-run.mjs, workflow .github/workflows/simulacion.yml). Cada variante = cambios de texto EXACTOS sobre una copia de call-of-war (archivo, texto actual, texto nuevo); si un texto no aparece una vez exacta, la variante falla. 'run' = las que lanza el workflow.",
-  "run": ["B", "C", "D"],
+  "_doc": "Variantes de simulación (skill /simular: node tools/sim.mjs lanzar <nombre> [variantes]). Cada variante = cambios de texto EXACTOS sobre una copia de call-of-war: [archivo, texto actual, texto nuevo]; si un texto no aparece exactamente una vez, la variante falla. 'run' = las que se lanzan por defecto; 'years' = años. Deja siempre la de control ('actual', el código tal cual) para comparar en las mismas condiciones. Las rondas pasadas (B, C, D de la capacidad agraria) están en design/capacidad-agraria.md.",
+  "run": ["actual"],
+  "years": 80,
   "variants": {
-    "B": {"desc": "control (ronda 2): freno x0,4 + crecimiento base 0,006",
-      "edits": [["js/economy.js", "const POP_GROWTH_BASE=0.008/8760;", "const POP_GROWTH_BASE=0.006/8760;"]]},
-    "C": {"desc": "B + rendimiento pleno hasta 0,8 + freno x0,2 en el techo",
-      "edits": [["js/economy.js", "const POP_GROWTH_BASE=0.008/8760;", "const POP_GROWTH_BASE=0.006/8760;"],
-                ["js/economy2.js", "const LAND_FULL=0.7,", "const LAND_FULL=0.8,"],
-                ["js/economy2.js", "const LAND_BIRTH_AT_K=0.4,", "const LAND_BIRTH_AT_K=0.2,"]]},
-    "D": {"desc": "B + rendimiento pleno hasta 0,8 (freno x0,4): aísla el efecto del umbral",
-      "edits": [["js/economy.js", "const POP_GROWTH_BASE=0.008/8760;", "const POP_GROWTH_BASE=0.006/8760;"],
-                ["js/economy2.js", "const LAND_FULL=0.7,", "const LAND_FULL=0.8,"]]}
+    "actual": {"desc": "control: el código tal cual", "edits": []}
   }
 }
