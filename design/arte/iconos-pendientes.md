@@ -62,11 +62,11 @@ El de los existentes en `assets/res/` y `assets/ui/` (para ver los once bienes j
 | Almacén | `ui/almacen.png` | Pila de cajas y barriles bajo un tejadillo |
 | Pecho | `ui/pecho.png` | Saca de monedas con el sello de la corona |
 | Alcabala | `ui/alcabala.png` | Puesto de mercado con un recaudador y su libro |
-| Almojarifazgo | `ui/almojarifazgo.png` | Barril con el sello de aduana junto a un ancla |
-| Diezmo | `ui/diezmo.png` | Gavilla de trigo marcada con una cruz |
-| Realengo | `ui/realengo.png` | Corona sobre una gavilla |
-| Taller | `ui/taller.png` | Banco de trabajo con herramientas |
-| Minas | `ui/minas.png` | Monedas de plata y oro sobre una vagoneta de mina |
+| ~~Almojarifazgo~~ | `ui/almojarifazgo.png` | HECHO (2026-10-26) |
+| ~~Diezmo~~ | `ui/diezmo.png` | HECHO (2026-10-26) |
+| ~~Realengo~~ | `ui/realengo.png` | HECHO (2026-10-26) |
+| ~~Taller~~ | `ui/taller.png` | HECHO (2026-10-26) |
+| ~~Minas~~ | `ui/minas.png` | HECHO (2026-10-26) |
 | Otros | `ui/otros.png` | Cofre entreabierto |
 
 ## Prioridad 4: diplomacia, obras, terreno e interfaz

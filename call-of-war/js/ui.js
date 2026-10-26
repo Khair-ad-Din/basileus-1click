@@ -35,7 +35,8 @@ function tipBox(title,blocks,sub){
 // Iconos de interfaz con sprite en assets/ui/<nombre>.png. Al llegar un dibujo nuevo, se suelta en assets/ui y se añade
 // su nombre aquí: todos los ph("nombre") de la app pasan solos del hueco al sprite (lista de pendientes: design/arte/iconos-pendientes.md).
 const UI_ART=new Set(["poblacion","soldadesca","espadas","estandarte","trabajo","edificios","despensa","defensa","ducado","caminos","mantenimiento","pergamino","leyes",
-  "campesino","burgues","clero","nobleza","subsistencia","comodidades","lujo","materias"]);
+  "campesino","burgues","clero","nobleza","subsistencia","comodidades","lujo","materias",
+  "almojarifazgo","diezmo","realengo","taller","minas"]);
 const ph=name=>UI_ART.has(name)?"<img class='uic' src='assets/ui/"+name+".png' alt='' title='"+name+"'>"
   :"<span class='icoPh' data-ico='"+name+"' title='icono: "+name+"'>[ ]</span>";
 // Flecha de tendencia dibujada en CSS: up = sube (rojo: encarece), dn = baja (verde); upg/dnr = colores al revés.
