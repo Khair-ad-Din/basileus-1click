@@ -39,16 +39,16 @@ El de los existentes en `assets/res/` y `assets/ui/` (para ver los once bienes j
 | ~~Lujo~~ | `ui/lujo.png` | HECHO (2026-10-26) |
 | ~~Materias~~ | `ui/materias.png` | HECHO (2026-10-26) |
 
-## Prioridad 2: edificios base (panel de construcción desde el primer día)
+## Prioridad 2: edificios base — HECHA (2026-10-26)
 
 | Edificio | Archivo | Motivo sugerido |
 |---|---|---|
-| Viñedo | `buildings/vinedo.png` | Hileras de cepas en ladera con un lagar de piedra |
-| Salina | `buildings/salina.png` | Balsas de evaporación cuadriculadas con montones blancos de sal |
-| Telar | `buildings/telar.png` | Taller de entramado con un telar de pedales visible por la puerta |
-| Sedería | `buildings/sederia.png` | Casa urbana con madejas de seda de colores tendidas al sol |
-| Especiería | `buildings/especiar.png` | Almacén portuario con sacos abiertos de especias y una balanza |
-| Yeguada | `buildings/yeguada.png` | Cerca de madera con caballos y un establo |
+| ~~Viñedo~~ | `buildings/vinedo.png` | HECHO (2026-10-26) |
+| ~~Salina~~ | `buildings/salina.png` | HECHO (2026-10-26) |
+| ~~Telar~~ | `buildings/telar.png` | HECHO (2026-10-26) |
+| ~~Sedería~~ | `buildings/sederia.png` | HECHO (2026-10-26) |
+| ~~Especiería~~ | `buildings/especiar.png` | HECHO (2026-10-26) |
+| ~~Yeguada~~ | `buildings/yeguada.png` | HECHO (2026-10-26) |
 
 ## Prioridad 3: provincia y Hacienda
 
