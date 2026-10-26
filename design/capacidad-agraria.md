@@ -166,3 +166,21 @@ todas las partidas: en esos años los adelantados no pasan hambre. **Es el dise�
 
 **Adoptado (D):** `LAND_FULL` 0,8 · `POP_GROWTH_BASE` 0,006 · freno de natalidad ×0,4 en x = 1. Siguiente: válvula del
 artesano (decisión 5, medida con /simular) y `/ux` de la fila Tierra.
+
+## Cuarta ronda (2026-10-26, run 40283026553): la válvula del oficio — ADOPTADA a +10
+
+`LAND_VALVE` (economy2.js): por encima de x = 0,8 la fracción objetivo de burgueses sube hasta +LAND_VALVE en x = 1, sin
+esperar a la prosperidad (necesidad, no atracción); si el oficio no da para vivir, vuelven al campo igual.
+
+| Atrasados | Sin válvula | **+10 (adoptada)** | +20 |
+|---|---|---|---|
+| Burgueses en 1524 | 8,3% | 9,4% | 11,3% |
+| Hambre 1444-64 | 0,13-0,15%/año | 0,12% | 0,10-0,11% |
+| Crecimiento hasta ~1494 | ~0,25%/año | ~0,28% | ~0,30% |
+| Peor década (1514) | −0,15%/año, hambre 0,40% | −0,12%, 0,38% | −0,09%, 0,36% |
+| Población 1524 | 69,2 M | 70,3 M | 71,4 M |
+
+**Lectura:** hace lo que debe pero poco. Pasa gente al oficio y suaviza el hambre del arranque, pero **no baja la
+ocupación** (la natalidad rellena el hueco): en la mala racha de 1504-1523 el hambre sigue casi igual. La salida contra el
+techo es el árbol tecnológico; la válvula da forma a la sociedad. +20 sube los burgueses un 36% sin que la sonda mida si
+la plaza absorbe tanto oficio (precios, prosperidad): por eso +10.

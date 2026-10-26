@@ -85,6 +85,13 @@ function landYield(p){const x=landOcc(p);
 const LAND_BIRTH_AT_K=0.4, LAND_BIRTH_MIN=0.15;
 function landBirth(p){const x=landOcc(p);
   return x<=LAND_FULL?1:Math.max(LAND_BIRTH_MIN,1-(1-LAND_BIRTH_AT_K)*(x-LAND_FULL)/(1-LAND_FULL))}
+// LA VÁLVULA DEL OFICIO (consejo 2026-09-28, decisión 5 del artesano): cuando la tierra aprieta, el campesino no solo
+// pasa hambre: hila y teje a destajo en su casa (Prato 1390-92: 88 cardadores en el taller frente a ≥356 hilanderas en
+// las aldeas). Por encima de LAND_FULL la fracción objetivo de burgueses sube hasta +LAND_VALVE en x = 1. Es NECESIDAD,
+// no atracción: no espera a que los burgueses prosperen; pero si el oficio no da para vivir (POOR_LINE), vuelven al
+// campo igual que los demás. El que sale de la tierra come de la plaza: la presión pasa al precio del grano.
+const LAND_VALVE=0.10;
+function landPush(p){const x=landOcc(p);return x<=LAND_FULL?0:LAND_VALVE*Math.min(1,(x-LAND_FULL)/(1-LAND_FULL))}
 function foodGrowth(months){return months<=1?0.3:months<=12?0.3+0.7*(months-1)/11:Math.min(1.8,1+0.8*(months-12)/6)}
 // Lo que produce TODA provincia según su terreno (la categoría "mar" solo rinde en la COSTA: sal marina y pesca de bajura).
 // Revisado 2026-09-27 con el informe regional (--regiones): sal y pescado faltaban en todo el Mediterráneo y el Este,
@@ -673,8 +680,9 @@ function economyTick2(dt=24,doArb=true){
       p.pop=pop0*(1+POP_GROWTH_BASE*foodGrowth(p._gm!=null?p._gm:6)*landBirth(p)*(0.5+0.5*vida)*dt)}
     if(pop0>0){const r=(p.pop||0)/pop0;for(const k in p.pops)p.pops[k]*=r}
     const base=(p.pops.campesino||0)+(p.pops.burgues||0);
-    if(base>0){let move=(targetBurgFrac(p)*base-(p.pops.burgues||0))*PROMO_RATE*dt;
-      if(move>0)move*=Math.max(0,N.prosp==null?1:N.prosp);
+    if(base>0){const bu=p.pops.burgues||0, att=Math.max(0,targetBurgFrac(p)*base-bu), gap=(targetBurgFrac(p)+landPush(p))*base-bu;
+      // hasta el objetivo de siempre, el ascenso espera a que los burgueses prosperen; lo que empuja la tierra llena, no
+      let move=(gap>0?Math.min(gap,att)*Math.max(0,N.prosp==null?1:N.prosp)+Math.max(0,gap-att):gap)*PROMO_RATE*dt;
       if(N.prosp!=null&&N.prosp<POOR_LINE)move-=(p.pops.burgues||0)*PROMO_RATE*dt*(POOR_LINE-N.prosp)*2; // el artesano que no gana para vivir vuelve al campo
       move=Math.max(-p.pops.burgues,Math.min(p.pops.campesino,move));p.pops.burgues+=move;p.pops.campesino-=move}
     const sc=soldCap(p),s=p.sold!=null?p.sold:sc;p.sold=s+(sc-s)*regen;

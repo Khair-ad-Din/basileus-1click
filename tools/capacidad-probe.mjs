@@ -72,8 +72,8 @@ for(let y=0;y<YEARS;y++){
     for(const r of RN)snap.r[r]={c:0,K:0,pop:0,hi:0};
     for(const p of LP){const s=snap.r[preg.get(p)],c=p.pops.campesino||0,Kc=e2.landCap(p);s.c+=c;s.K+=Kc;s.pop+=p.pop||0;if(Kc>0&&c/Kc>0.9)s.hi+=Kc}
     for(const r of RN){const s=snap.r[r],A=acc[r];s.x=s.K?s.c/s.K:0;s.hi=s.K?s.hi/s.K:0;s.fam=A.fam.size;s.dead=A.dead;s.pr=A.prN?A.pr/A.prN:0;s.cap=A.cap;s.rent=A.rent/DEC}
-    for(const k of ["adv","rest"]){let pop=0,c=0,K=0;for(const p of LP){if((k==="adv")!==isAdv(p))continue;pop+=p.pop||0;c+=p.pops.campesino||0;K+=e2.landCap(p)}
-      grp[k].push({y:y+1,pop,x:c/K,dead:gAcc[k].dead,fam:gAcc[k].fam.size})}
+    for(const k of ["adv","rest"]){let pop=0,c=0,K=0,bu=0;for(const p of LP){if((k==="adv")!==isAdv(p))continue;pop+=p.pop||0;c+=p.pops.campesino||0;bu+=p.pops.burgues||0;K+=e2.landCap(p)}
+      grp[k].push({y:y+1,pop,x:c/K,burg:bu/(bu+c),dead:gAcc[k].dead,fam:gAcc[k].fam.size})}
     rows.push(snap);
     // progreso con el resumen de grupos de la década (se puede leer a medias en el log)
     const ga=grp.adv[grp.adv.length-1],gr=grp.rest[grp.rest.length-1];
@@ -84,4 +84,4 @@ for(const r of RN){if(!rows[0].r[r].K)continue;console.log(`\n${r}  (pobl. → f
 let pop=0;for(const p of LP)pop+=p.pop||0;console.log(`\npoblación total final ${fmt(pop)}`);
 console.log(`\n[${TAG}] ADELANTADOS (${ADVN.map(n=>names[n]).join(", ")}; capacidad +10% cada 20 años) frente a ATRASADOS (el resto, capacidad fija):`);
 for(const k of ["adv","rest"]){console.log(k==="adv"?"  adelantados":"  atrasados");let prev=P0[k];
-  for(const r of grp[k]){console.log(`    ${1444+r.y}  pobl. ${fmt(r.pop)} (${(100*(Math.pow(r.pop/prev,1/DEC)-1)).toFixed(2)}%/año) · x ${r.x.toFixed(2)} · hambre ${r.fam} · muertos ${fmt(r.dead)} (${(100*r.dead/r.pop/DEC).toFixed(2)}%/año)`);prev=r.pop}}
+  for(const r of grp[k]){console.log(`    ${1444+r.y}  pobl. ${fmt(r.pop)} (${(100*(Math.pow(r.pop/prev,1/DEC)-1)).toFixed(2)}%/año) · x ${r.x.toFixed(2)} · burgueses ${(100*r.burg).toFixed(1)}% · hambre ${r.fam} · muertos ${fmt(r.dead)} (${(100*r.dead/r.pop/DEC).toFixed(2)}%/año)`);prev=r.pop}}

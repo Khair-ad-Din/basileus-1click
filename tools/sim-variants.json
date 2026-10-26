@@ -1,8 +1,35 @@
 {
   "_doc": "Variantes de simulación (skill /simular: node tools/sim.mjs lanzar <nombre> [variantes]). Cada variante = cambios de texto EXACTOS sobre una copia de call-of-war: [archivo, texto actual, texto nuevo]; si un texto no aparece exactamente una vez, la variante falla. 'run' = las que se lanzan por defecto; 'years' = años. Deja siempre la de control ('actual', el código tal cual) para comparar en las mismas condiciones. Las rondas pasadas (B, C, D de la capacidad agraria) están en design/capacidad-agraria.md.",
-  "run": ["actual"],
+  "run": [
+    "sin-valvula",
+    "valvula",
+    "valvula20"
+  ],
   "years": 80,
   "variants": {
-    "actual": {"desc": "control: el código tal cual", "edits": []}
+    "sin-valvula": {
+      "desc": "control: calibración D sin la válvula del oficio",
+      "edits": [
+        [
+          "js/economy2.js",
+          "const LAND_VALVE=0.10;",
+          "const LAND_VALVE=0;"
+        ]
+      ]
+    },
+    "valvula": {
+      "desc": "válvula del oficio +10 puntos de burgueses en x = 1 (el código tal cual)",
+      "edits": []
+    },
+    "valvula20": {
+      "desc": "válvula del oficio +20 puntos",
+      "edits": [
+        [
+          "js/economy2.js",
+          "const LAND_VALVE=0.10;",
+          "const LAND_VALVE=0.20;"
+        ]
+      ]
+    }
   }
 }
