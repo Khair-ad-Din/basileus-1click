@@ -67,7 +67,7 @@ El de los existentes en `assets/res/` y `assets/ui/` (para ver los once bienes j
 | ~~Realengo~~ | `ui/realengo.png` | HECHO (2026-10-26) |
 | ~~Taller~~ | `ui/taller.png` | HECHO (2026-10-26) |
 | ~~Minas~~ | `ui/minas.png` | HECHO (2026-10-26) |
-| Otros | `ui/otros.png` | Cofre entreabierto |
+| ~~Otros~~ | `ui/otros.png` | HECHO (2026-10-26) |
 
 ## Prioridad 4: diplomacia, obras, terreno e interfaz
 
