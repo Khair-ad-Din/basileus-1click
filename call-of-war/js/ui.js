@@ -1,5 +1,5 @@
 // ui.js
-import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, RES_DESC, RES_ICON, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, WAR_LOCK_HOURS, terrainFx, STRATA, STRATA_INFO, RES_ART, RES_CAT } from "./config.js";
+import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, RES_DESC, RES_ICON, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, WAR_LOCK_HOURS, terrainFx, STRATA, STRATA_INFO, RES_ART, RES_FILE, RES_CAT } from "./config.js";
 import { S } from "./state.js";
 import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildJobs, buildMax, buildSlots, canAfford, costFor, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationProvCount, nationStrength, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, resetTsyLedger, tsyAvail, tsyMonthBal, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, provProdMul, YR_TICKS, manorOf, MANOR_RENT, bOwnerOf } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
@@ -67,12 +67,12 @@ function fmtDur(h){ // horas de juego -> texto legible
 }
 // icono de UI (stats, pestañas, menús): sprite de assets/ui. big = tamaño de botón/pestaña.
 function uiIcon(name,big){return "<img class='uic"+(big?" big":"")+"' src='assets/ui/"+name+".png' alt=''>"}
-// icono de recurso: sprite de assets/res para los 11 bienes de stock; emoji para plata/oro (sin sprite)
+// icono de recurso: sprite de assets/res (archivo = nombre del bien, RES_FILE); sin sprite, el hueco [ ]
 // nombre de un bien: en la v2 algunas claves de la v1 cambian de sentido (ganado=Carne, vino=Bebida, petroleo=Caballos…)
 function gLabel(k){return LABEL2[k]||RES_LABEL[k]||k}
 function resImg(k){
   return RES_ART.has(k) // ¿tiene sprite .png? si no, se pinta con su emoji (bienes nuevos)
-    ?"<img class='ric' src='assets/res/"+k+".png' alt='"+gLabel(k)+"' title='"+gLabel(k)+"'>"
+    ?"<img class='ric' src='assets/res/"+(RES_FILE[k]||k)+".png' alt='"+gLabel(k)+"' title='"+gLabel(k)+"'>"
     :ph(k);
 }
 function buildResBar(){

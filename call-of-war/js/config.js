@@ -201,8 +201,12 @@ for(const[k,label,short,icon,price,strat,desc]of NEW_GOODS){
   // consumo en el grupo de comercio. Así la barra de recursos se llena (2 filas) con todo el catálogo.
   RES_KEYS.push(k); START_STOCK[k]=0; (strat?RES_STRAT:RES_TRADE).push(k);
 }
-// Bienes con SPRITE .png (assets/res/); los demás se pintan con su emoji (RES_ICON). El resbar y resImg lo usan.
-const RES_ART=new Set(["dinero","comida","materiales","piedra","metal","petroleo","raros","pano","vino","sal","seda"]);
+// Bienes con SPRITE .png (assets/res/); los demás se pintan con el hueco [ ] (ui.js ph). El resbar y resImg lo usan.
+const RES_ART=new Set(["dinero","comida","materiales","piedra","metal","petroleo","raros","pano","vino","sal","seda",
+  "lienzo","ganado","pescado","herramientas","pieles","lana","armas"]);
+// El ARCHIVO de cada sprite lleva el nombre del bien; la clave interna, no siempre (viene de la economía v1 y la usan las
+// partidas guardadas: no se renombra). Clave → archivo, solo donde difieren.
+const RES_FILE={materiales:"madera",petroleo:"caballos",raros:"especias",ganado:"carne"};
 // Fábricas de los bienes nuevos. inputs = CADENA: la fábrica consume esos bienes del mercado por nivel (ver economy).
 // key, etiqueta, icono, bien que produce, inputs(cadena) | null, empleos, ¿coste con piedra?
 const NEW_BLDGS=[
@@ -409,5 +413,5 @@ export {
   GH_PER_SEC, START_DATE, MESES, WAR_LOCK_HOURS, LOOT_FRAC, GOLD_PER_WS, WS_DUCHY_BASE, WS_DUCHY_PER, WS_BATTLE,
   LEVY_RAISE_HOURS, SIEGE_BASE_H, GARR_MIN, GARR_FORT, GARR_CITADEL, SEA_KM_MULT, NAV_KM, EMBARK_HOURS, CENTER_POP, CURATED_HUBS, CITY_MIN,
   MW, MH, NATIONS, NPLAY, NEUTRAL, RES_KEYS, RES_STRAT, RES_TRADE, RES_LABEL, RES_SHORT, RES_ICON, RES_DESC, START_STOCK, BUILDINGS, BUILD_JOBS, BUILD_CATS, RES_BUILDING, newBuildings, UNITS, TERRAINS, TERRAIN_KEYS, terrainFx, SEA_TERRAIN, isSea,
-  STRATA, STRATA_INFO, STRATA_SEED, RES_ART, EXTRA_GOODS, RES_CAT, RES_RAW_CATS
+  STRATA, STRATA_INFO, STRATA_SEED, RES_ART, RES_FILE, EXTRA_GOODS, RES_CAT, RES_RAW_CATS
 };
