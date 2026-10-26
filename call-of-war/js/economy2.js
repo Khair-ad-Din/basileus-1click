@@ -807,12 +807,12 @@ function saleSplit(p,g,kind,owner){
   const n=p.owner, alc=alcabalaOf(n), net0=1-MARGIN-alc, t=transport(p,g), m=manorOf(p);
   const lord=m==="abadengo"?"clero":m==="solariego"?"nobleza":"corona", cs=cartShare(p), net=net0*(1-t), out=[];
   const add=(who,concept,f)=>{if(f>1e-9)out.push({who,concept,f})};
-  add("burgues","Comisión del comerciante",MARGIN); add("corona","Alcabala",alc);
-  add(lord,"Portazgo",net0*t*TOLL_FRAC); add("campesino","Acarreo",net0*t*(1-TOLL_FRAC)*cs); add("burgues","Flete largo",net0*t*(1-TOLL_FRAC)*(1-cs));
-  if(kind==="taller"){add("campesino","Jornales",net*JORNAL);add(owner||"burgues","Su taller",net*(1-JORNAL))}
+  add("burgues","Comisión",MARGIN); add("corona","Alcabala",alc);
+  add(lord,"Portazgo",net0*t*TOLL_FRAC); add("campesino","Acarreo",net0*t*(1-TOLL_FRAC)*cs); add("burgues","Flete",net0*t*(1-TOLL_FRAC)*(1-cs));
+  if(kind==="taller"){add("campesino","Jornales",net*JORNAL);add(owner||"burgues","Taller",net*(1-JORNAL))}
   else{const rent=MANOR_RENT[m]||0, camp=net*(1-DIEZMO_KIND-rent), tax=taxRateOf(n);
-    add("clero","Diezmo",net*DIEZMO_KIND); add(lord,m==="realengo"?"Renta del realengo":"Renta del señorío",net*rent);
-    add("corona","Pecho",camp*tax); add("campesino","Su parte",camp*(1-tax))}
+    add("clero","Diezmo",net*DIEZMO_KIND); add(lord,"Renta",net*rent);
+    add("corona","Pecho",camp*tax); add("campesino","Parte",camp*(1-tax))}
   return {rows:out, flete:t, manor:m};
 }
 // POR QUÉ TIENE ESTE PRECIO (misma fórmula que weeklyPrice, sin escribir): demanda y oferta previstas si el día de

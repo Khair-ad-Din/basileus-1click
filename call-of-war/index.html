@@ -105,6 +105,28 @@
   #tip .tipR{display:flex;justify-content:space-between;gap:14px}
   #tip .tipR span:last-child{font-weight:600}
   #tip .tipTot{border-top:1px solid #3a4047;margin-top:4px;padding-top:3px}
+  /* tipBox (design/ux/guia-estilo.md §1b, patrón Victoria 3): título con banda, un bloque por tema con separador, rejillas
+     con cabecera por columna (1.ª a la izquierda, resto a la derecha) y fondo alterno. Nada de "·" ni iconos Unicode. */
+  #tip.rich{max-width:440px}
+  #tip .tbT{font-weight:600;color:#e8dcc0;margin:-7px -10px 6px;padding:6px 10px 5px;background:linear-gradient(#1f262d,#181d22);border-bottom:1px solid #3a4047;border-radius:6px 6px 0 0}
+  #tip .tbS{color:#aab3bc;margin-bottom:2px}
+  #tip .tipSep{height:1px;margin:7px -4px;background:linear-gradient(90deg,transparent,#5a6570 18%,#5a6570 82%,transparent)}
+  #tip .tbH{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#c9a44e;margin-bottom:3px}
+  #tip .tipR.in span:first-child{padding-left:12px;color:#aab3bc}
+  .tipGrid{display:grid;column-gap:14px;align-items:baseline}
+  .tipGrid>.gh{font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:#8a949e;border-bottom:1px solid #3a4047;padding-bottom:2px;margin-bottom:2px;text-align:right}
+  .tipGrid>.gh:first-child,.tipGrid>.gc.c0{text-align:left}
+  .tipGrid>.gc{text-align:right;padding:1px 0;font-variant-numeric:tabular-nums}
+  .tipGrid>.gc.odd{background:rgba(255,255,255,.035)}
+  .tipGrid>.gc.tot{border-top:1px solid #3a4047;font-weight:600;padding-top:3px;margin-top:2px}
+  .sw{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;vertical-align:0}
+  .kvg{display:grid;grid-template-columns:repeat(auto-fit,minmax(78px,auto));justify-content:center;column-gap:20px;row-gap:6px;text-align:center;margin:2px 0 10px}
+  .kvg .k{font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#8a949e}
+  .kvg .v{font-size:14px;font-weight:600;color:var(--title)}
+  .e2t th.r,.e2t td.r{text-align:right}
+  .icoPh{display:inline-block;font:600 10px/1 monospace;color:#7d8790;letter-spacing:-1px;vertical-align:1px}
+  .arw{display:inline-block;width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;vertical-align:1px;margin-left:3px}
+  .arw.up{border-bottom:6px solid #d08080}.arw.dn{border-top:6px solid #8fb04a}.arw.upg{border-bottom:6px solid #8fb04a}.arw.dnr{border-top:6px solid #d08080}
   /* filas de selección (lista con escudo + nombre) en los popups de acción */
   .dList{display:flex;flex-direction:column;gap:2px;max-height:300px;overflow:auto}
   .dRow{display:flex;align-items:center;gap:7px;padding:4px 7px;border:1px solid #3a4047;border-radius:4px;background:#262b31;cursor:pointer;font-size:12px}

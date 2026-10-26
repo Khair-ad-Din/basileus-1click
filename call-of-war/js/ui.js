@@ -11,6 +11,32 @@ import { armiesIn, atWar, duchyValue, fortGarrison, occupiedDuchiesBy, tryBuild,
 import { getRel, relTier, THRESH, canDeclareWar, canInsult, isEmbargoed, hasClaim, relBreakdown, hasPact, canPact, MAX_LEAGUE, leagueOf, leagueById, sameLeague, canApplyLeague, MAX_RIVALS, rivalsOf, isRival, canRival, NAP_BONUS, ALLY_BONUS } from "./diplomacy.js";
 
 
+// ===== tipBox: EL tooltip estructurado (design/ux/guia-estilo.md §1b, patrón Victoria 3). No se escribe otro a mano. =====
+// blocks: [{h:"Cabecera" (1-2 palabras), sub:"resumen", rows:[[etiqueta,valor,color?,{in:1} sangrado?]], tot:[etiqueta,valor],
+//           cols:["Concepto","Pide","Consigue"], trows:[[c0,c1,c2,...]], ttot:[c0,c1,...]}]. Entre bloques, un separador.
+function tipBox(title,blocks,sub){
+  let h="<div class='tbT'>"+title+"</div>"+(sub?"<div class='tbS'>"+sub+"</div>":"");
+  blocks.filter(b=>b&&((b.rows&&b.rows.length)||(b.trows&&b.trows.length)||b.tot)).forEach((b,i)=>{
+    if(i>0||sub)h+="<div class='tipSep'></div>";
+    if(b.h)h+="<div class='tbH'>"+b.h+"</div>";
+    if(b.sub)h+="<div class='tbS'>"+b.sub+"</div>";
+    for(const r of b.rows||[])h+="<div class='tipR"+(r[3]&&r[3].in?" in":"")+"'><span>"+r[0]+"</span><span"+(r[2]?" style='color:"+r[2]+"'":"")+">"+r[1]+"</span></div>";
+    if(b.cols){const n=b.cols.length;h+="<div class='tipGrid' style='grid-template-columns:1fr"+" auto".repeat(n-1)+"'>";
+      for(const c of b.cols)h+="<span class='gh'>"+c+"</span>";
+      b.trows.forEach((r,j)=>{for(let k=0;k<n;k++){const c=r[k];const col=c&&typeof c==="object"&&c.c?c.c:null,v=c&&typeof c==="object"&&"v" in c?c.v:c;
+        h+="<span class='gc"+(k===0?" c0":"")+(j%2?" odd":"")+"'"+(col?" style='color:"+col+"'":"")+">"+(v==null?"":v)+"</span>"}});
+      if(b.ttot)for(let k=0;k<n;k++)h+="<span class='gc tot"+(k===0?" c0":"")+"'>"+(b.ttot[k]==null?"":b.ttot[k])+"</span>";
+      h+="</div>"}
+    if(b.tot)h+="<div class='tipR tipTot'><span>"+b.tot[0]+"</span><span>"+b.tot[1]+"</span></div>";
+  });
+  return h;
+}
+// Hueco de icono: donde iría un icono que aún no tiene sprite (regla 2: nada de iconos Unicode). data-ico dice cuál.
+const ph=name=>"<span class='icoPh' data-ico='"+name+"' title='icono: "+name+"'>[ ]</span>";
+// Flecha de tendencia dibujada en CSS: up = sube (rojo: encarece), dn = baja (verde); upg/dnr = colores al revés.
+const arw=k=>"<i class='arw "+k+"'></i>";
+const COIN=()=>resImg("dinero");
+
 function log(msg){
   const el=document.getElementById("log");
   const d=document.createElement("div");
@@ -47,7 +73,7 @@ function gLabel(k){return LABEL2[k]||RES_LABEL[k]||k}
 function resImg(k){
   return RES_ART.has(k) // ¿tiene sprite .png? si no, se pinta con su emoji (bienes nuevos)
     ?"<img class='ric' src='assets/res/"+k+".png' alt='"+gLabel(k)+"' title='"+gLabel(k)+"'>"
-    :"<span class='ric ricEmoji' title='"+gLabel(k)+"'>"+(RES_ICON[k]||"")+"</span>";
+    :ph(k);
 }
 function buildResBar(){
   const bar=document.getElementById("resbar");
@@ -69,11 +95,10 @@ function buildResBar(){
 function topBookTips(cb){
   const ks=Object.keys(cb.cats), inc=ks.filter(c=>cb.cats[c]>=0.5).sort((a,b)=>cb.cats[b]-cb.cats[a]),
     exp=ks.filter(c=>cb.cats[c]<=-0.5).sort((a,b)=>cb.cats[a]-cb.cats[b]);
-  const row=c=>[((CROWN_CAT[c]||[""])[0]||"")+" "+c,sgnE(cb.cats[c])+" 🪙",cb.cats[c]<0?"#d08080":null];
-  const when=cb.cur?"este mes":"mes pasado";
-  const tips={t_incBox:tipRows("Ingresos · "+when,inc.map(row),["Total",sgnE(cb.inc)+" 🪙"]),
-    t_expBox:tipRows("Gastos · "+when,exp.map(row),["Total",sgnE(cb.exp)+" 🪙"]),
-    t_netBox:tipRows("Balance · "+when,[["Ingresos",sgnE(cb.inc)+" 🪙"],["Gastos",sgnE(cb.exp)+" 🪙","#d08080"]],["Tesoro",sgnE(cb.net)+" 🪙"])};
+  const when=cb.forecast?"Previsión":cb.cur?"Este mes":"Mes pasado", row=c=>[c,{v:sgnE(cb.cats[c]),c:cb.cats[c]<0?"#d08080":null}];
+  const tips={t_incBox:tipBox("Ingresos",[{cols:["Partida","Ducados"],trows:inc.map(row),ttot:["Total",sgnE(cb.inc)]}],when),
+    t_expBox:tipBox("Gastos",[{cols:["Partida","Ducados"],trows:exp.map(row),ttot:["Total",sgnE(cb.exp)]}],when),
+    t_netBox:tipBox("Balance",[{cols:["Concepto","Ducados"],trows:[["Ingresos",sgnE(cb.inc)],["Gastos",{v:sgnE(cb.exp),c:"#d08080"}]],ttot:["Tesoro",sgnE(cb.net)]}],when)};
   for(const id in tips){const el=document.getElementById(id);if(el&&el.getAttribute("data-tiph")!==tips[id])el.setAttribute("data-tiph",tips[id])}
 }
 function refreshTop(){
@@ -1190,9 +1215,9 @@ window.refreshGranLegend=function(){
     const ps=S.provs.filter(p=>p.owner===S.player&&p.pops&&landCap(p)>0).sort((a,b)=>landOcc2(b)-landOcc2(a));
     const sc=LAND_LBL.map((l,i)=>"<span style='white-space:nowrap'><i style='display:inline-block;width:9px;height:9px;border-radius:2px;background:"+GRAN_CSS[i]+";vertical-align:middle'></i> "+l+"</span>").join(" &nbsp;");
     let li="";for(const p of ps.slice(0,GRAN_ROWS)){const x=landOcc2(p),st=landState(p);
-      li+="<div class='prow' style='gap:6px'><span style='cursor:pointer;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' onclick='granFocus("+p.id+")'><span style='color:"+GRAN_CSS[st]+"'>■</span> "+p.name+"</span><b>"+barE(Math.min(100,Math.round(100*x)),34,GRAN_CSS[st])+" "+Math.round(100*x)+"%</b></div>"}
+      li+="<div class='prow' style='gap:6px'><span style='cursor:pointer;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' onclick='granFocus("+p.id+")'><i class='sw' style='background:"+GRAN_CSS[st]+"'></i>"+p.name+"</span><b>"+barE(Math.min(100,Math.round(100*x)),34,GRAN_CSS[st])+" "+Math.round(100*x)+"%</b></div>"}
     if(ps.length>GRAN_ROWS)li+="<div class='prow'><span class='dim'>+"+(ps.length-GRAN_ROWS)+" más</span></div>";
-    el.innerHTML="<b style='font-size:12px'>🌱 Tierra</b>"+iInfo("Cuánto de su capacidad agraria ocupan los campesinos de cada provincia. Por encima del 80% cada campesino nuevo cosecha menos y nacen menos; al 100%, en un año normal, cosechan justo lo que comen. La lista: las más apretadas.")+
+    el.innerHTML="<b style='font-size:12px'>"+ph("tierra")+" Tierra</b>"+iInfo("Cuánto de su capacidad agraria ocupan los campesinos de cada provincia. Por encima del 80% cada campesino nuevo cosecha menos y nacen menos; al 100%, en un año normal, cosechan justo lo que comen. La lista: las más apretadas.")+
       chips+"<div style='font-size:10px;margin:4px 0 6px'>"+sc+"</div>"+li;
     el.style.display="block";return}
   const G=new Map();
@@ -1204,13 +1229,13 @@ window.refreshGranLegend=function(){
   let list="";
   for(const r of rows.slice(0,GRAN_ROWS)){const p=S.provs[r.pid],q=reliefQuote(S.player,p);
     const dn=p.duchy>=0&&S.duchies[p.duchy]?S.duchies[p.duchy].name.replace(/^Ducado de /,""):p.name;
-    const ic=r.st===3?"☠":"⚠",m=r.gm<1?"&lt;1":Math.floor(r.gm);
+    const ic="<i class='sw' style='background:"+GRAN_CSS[r.st]+"'></i>",m=r.gm<1?"&lt;1":Math.floor(r.gm);
     list+="<div class='prow' style='gap:6px'><span style='cursor:pointer' onclick='granFocus("+r.pid+")' data-tip=\""+ta("Siega en "+MONTHS_ES[r.hm])+"\">"+
-      "<span style='color:"+GRAN_CSS[r.st]+"'>"+ic+"</span> "+dn+"</span><b>"+barE(Math.min(100,Math.round(100*r.gm/12)),34)+" "+m+" m "+
-      (q&&q.falta>0?"<button class='bbtn' "+(q.ok?"":"disabled")+" onclick='granRelief("+r.pid+")' data-tip=\""+ta(q.ok?"Socorro hasta la siega (desglose en la ficha)":q.why)+"\">🛒 "+nfE(q.total)+"</button>":"")+"</b></div>";}
+      ic+dn+"</span><b>"+barE(Math.min(100,Math.round(100*r.gm/12)),34)+" "+m+" m "+
+      (q&&q.falta>0?"<button class='bbtn' "+(q.ok?"":"disabled")+" onclick='granRelief("+r.pid+")' data-tip=\""+ta(q.ok?"Socorro hasta la siega (desglose en la ficha)":q.why)+"\">"+nfE(q.total)+" "+COIN()+"</button>":"")+"</b></div>";}
   if(rows.length>GRAN_ROWS)list+="<div class='prow'><span class='dim'>+"+(rows.length-GRAN_ROWS)+" más</span></div>";
   if(!rows.length)list="<div class='prow'><span class='dim'>Todos llegan a la siega</span></div>";
-  el.innerHTML="<b style='font-size:12px'>🌾 Graneros</b>"+iInfo("Cada ducado de tu reino según si su grano llega a la próxima siega. La lista: los que no llegan, del que antes se vacía; pulsa el nombre para ir, 🛒 para socorrerlo hasta la siega (grano del almacén de la corona y lo que falte comprado en la plaza, más el flete).")+
+  el.innerHTML="<b style='font-size:12px'>"+ph("granero")+" Graneros</b>"+iInfo("Cada ducado de tu reino según si su grano llega a la próxima siega. La lista: los que no llegan, del que antes se vacía; pulsa el nombre para ir, 🛒 para socorrerlo hasta la siega (grano del almacén de la corona y lo que falte comprado en la plaza, más el flete).")+
     chips+"<div style='font-size:10px;margin:4px 0 6px'>"+scale+"</div>"+list;
   el.style.display="block";
 };
@@ -1239,16 +1264,16 @@ function refreshFiscal(){
       "<input type='range' min='"+min+"' max='"+max+"' value='"+pct(val)+"' step='1' style='width:100%;margin-top:6px' oninput='setTax(\""+kind+"\",this.value)'></div>";
   // lo que rindió cada impuesto el mes pasado (libro de la corona)
   const cb=crownBook("prev"),got=c=>cb.cats[c]||0,lab=cb.cur?"este mes":"el mes pasado";
-  const TAX_WHO={feudal:"El campesino, sobre lo que vende de su parte",alcabala:"Quien vende a la plaza: cobra un punto menos del precio por cada punto",almoj:"El mercader, sobre su margen en el comercio exterior"};
+  const TAX_WHO={feudal:"Campesino",alcabala:"Vendedor",almoj:"Mercader"};
   const taxTip=(label,kind,val,inc)=>{const base=val>0?inc/val:0;
-    return tipRows(label+" · "+pct(val)+"%",[["Lo paga",TAX_WHO[kind]],["Rindió "+lab,"+"+nf(inc)+" 🪙"],...(base>0?[["Base gravada",nf(base)+" 🪙"],["Cada punto más","≈ +"+nf(base/100)+" 🪙/mes"]]:[])])};
-  const slider2=(label,val,min,max,kind,info,inc)=>slider(label,val,min,max,kind,info,null,taxTip(label,kind,val,inc)).replace("</span></div>","</span></div><div style='font-size:11px;color:#8aa478'>+"+nf(inc)+" 🪙 "+lab+"</div>");
+    return tipBox(label.replace(/^\S+\s/,""),[{cols:["Concepto","Valor"],trows:[["Tipo",pct(val)+"%"],["Paga",TAX_WHO[kind]],["Rindió","+"+nf(inc)],...(base>0?[["Base",nf(base)],["Por punto","+"+nf(base/100)+" /mes"]]:[])]}],lab)};
+  const slider2=(label,val,min,max,kind,info,inc)=>slider(label,val,min,max,kind,info,null,taxTip(label,kind,val,inc)).replace("</span></div>","</span></div><div style='font-size:11px;color:#8aa478'>+"+nf(inc)+" "+COIN()+" "+lab+"</div>");
   let h="<div style='text-align:center;font-size:12px;color:#9aa3ad;margin-bottom:11px'>Ingresos de la corona "+lab+": <b style='color:var(--title)'>"+nf(cb.inc)+" 🪙</b></div>";
-  h+=slider2("🌾 Pecho",feud,2,20,"feudal","Lo paga el campesino sobre lo que vende de su cosecha en la plaza. Más pecho, menos le queda para sus comodidades.",got("Pecho"));
-  h+=slider2("🏪 Alcabala",alc,0,30,"alcabala","Sobre cada venta en la plaza del reino: el comprador paga el precio y la corona se queda su parte, así que el que vende cobra menos.",got("Alcabala"));
-  h+=slider2("⚓ Almojarifazgo",alm,0,60,"almoj","Aduana sobre el comercio con otros reinos: resta margen al mercader.",got("Almojarifazgo"));
+  h+=slider2(ph("pecho")+" Pecho",feud,2,20,"feudal","Lo paga el campesino sobre lo que vende de su cosecha en la plaza. Más pecho, menos le queda para sus comodidades.",got("Pecho"));
+  h+=slider2(ph("alcabala")+" Alcabala",alc,0,30,"alcabala","Sobre cada venta en la plaza del reino: el comprador paga el precio y la corona se queda su parte, así que el que vende cobra menos.",got("Alcabala"));
+  h+=slider2(ph("almojarifazgo")+" Almojarifazgo",alm,0,60,"almoj","Aduana sobre el comercio con otros reinos: resta margen al mercader.",got("Almojarifazgo"));
   h+="<div style='background:#1c2026;border:1px solid #2a2f36;border-radius:8px;padding:9px 13px;margin-bottom:4px;opacity:.75'>"+
-    "<div style='display:flex;justify-content:space-between;align-items:baseline'><span>⛪ Diezmo"+iInfo("La décima de la cosecha va al clero: del grano, de lo que el granero vende en la plaza; del resto, de todo lo que se produce. Es derecho de la Iglesia: no se toca.")+"</span><span style='font-family:monospace'>"+pct(DIEZMO)+"%</span></div></div>";
+    "<div style='display:flex;justify-content:space-between;align-items:baseline'><span>"+ph("diezmo")+" Diezmo"+iInfo("La décima de la cosecha va al clero: del grano, de lo que el granero vende en la plaza; del resto, de todo lo que se produce. Es derecho de la Iglesia: no se toca.")+"</span><span style='font-family:monospace'>"+pct(DIEZMO)+"%</span></div></div>";
   body.innerHTML=h;
 }
 /* ============================= ECONOMÍA v2: Tesorería, Mercado y Estamentos =============================
@@ -1256,7 +1281,7 @@ function refreshFiscal(){
  * Datos: el libro de la corona (S.cBook/S.cPrev, economy.js recCrown), los flujos de los estamentos del mes cerrado
  * (S.sFlowPrev/S.sConsumePrev), N.e2 (cobertura de las 3 necesidades, ingreso, cesta) y N.mktInfo (u/mes). */
 const TIER2={};for(const t in NEED2)for(const g in NEED2[t])TIER2[g]=t;
-const TIER_META={subs:["🍞","Subsistencia","Subsist."],vida:["🏠","Comodidades","Comodidades"],lujo:["👑","Lujo","Lujo"],mat:["⚒","Materias","Materias"]}; // [icono, nombre, cabecera corta]
+const TIER_META={subs:[ph("subsistencia"),"Subsistencia","Subsist."],vida:[ph("comodidades"),"Comodidades","Comodidades"],lujo:[ph("lujo"),"Lujo","Lujo"],mat:[ph("materias"),"Materias","Materias"]}; // [icono, nombre, cabecera corta]
 const tierTh=()=>["subs","vida","lujo"].map(t=>"<th>"+TIER_META[t][0]+" "+TIER_META[t][2]+"</th>").join("");
 function estateCounts(){const cnt={};let pop=0;for(const k of STRATA)cnt[k]=0;
   for(const p of S.provs){if(p.owner!==S.player||p.wasteland)continue;pop+=p.pop||0;if(p.pops)for(const k of STRATA)cnt[k]+=p.pops[k]||0}
@@ -1326,7 +1351,7 @@ function crownRow(cat,amt,drill){
   const m=CROWN_CAT[cat]||["·",""], lever=m[2];
   const chip=lever?"<span class='e2chip' data-tip='Ajustar en Hacienda' onclick='event.stopPropagation();openFiscal()'>"+pctE(crownRate(lever))+"%</span>":"";
   return "<div class='trow"+(drill?" click":"")+"'"+(drill?" onclick=\"treasuryDrill('"+cat+"')\"":"")+(m[1]?" data-tip=\""+ta(m[1])+"\"":"")+">"+
-    "<span>"+m[0]+" "+cat+chip+(drill?" <span class='tarrow'>›</span>":"")+"</span>"+
+    "<span>"+ph(cat)+" "+cat+chip+(drill?" <span class='tarrow'>›</span>":"")+"</span>"+
     "<b class='"+(amt<0?"neg":"pos")+"'>"+sgnE(amt)+" "+resImg("dinero")+"</b></div>";
 }
 function treasuryTesoro2(){
@@ -1370,25 +1395,22 @@ function refreshTreasury2(body){
 window.setTsyMonth=function(k){S.tsyMonth=k;S.treasuryPath=[];refreshTreasury()};
 
 // ---------- Mercado ----------
-function priceRows(N,g){ // economy2 priceWhy: la misma fórmula que el día de mercado
+function priceBlocks(N,g){ // economy2 priceWhy: la misma fórmula que el día de mercado
   const w=priceWhy(N,g); if(!w)return [];
   const x=v=>"×"+(Math.round(v*100)/100).toLocaleString("es-ES"), up=w.next>w.now*1.005, dn=w.next<w.now*0.995;
-  return [["<b>Cómo se forma el precio</b>",""],["Demanda prevista",nfE(w.D)+" /mes"],["Oferta prevista",nfE(w.P)+" /mes"],
-    ...(w.ratio!=null?[["Demanda ÷ oferta",x(w.ratio)]]:[]),...(w.stockF<0.999?[["Sobra en la plaza",x(w.stockF)]]:[]),
-    ...(w.r!==w.clamped?[["Topado (entre ×0,5 y ×3)",x(w.clamped)]]:[]),
-    ["Objetivo",prE(w.target)+" 🪙"],
-    ["Mercado en "+w.inDays+(w.inDays===1?" día":" días"),prE(w.next)+" 🪙"+(up?" ▲":dn?" ▼":""),up?"#d08080":dn?"#8fb04a":null]];
+  return [{h:"Formación",cols:["Factor","Valor"],trows:[["Demanda",nfE(w.D)+" /mes"],["Oferta",nfE(w.P)+" /mes"],
+      ...(w.ratio!=null?[["Cociente",x(w.ratio)]]:[]),...(w.stockF<0.999?[["Excedente",x(w.stockF)]]:[]),
+      ...(w.r!==w.clamped?[["Tope",x(w.clamped)]]:[])],ttot:["Objetivo",prE(w.target)]},
+    {h:"Próximo",cols:["Concepto","Valor"],trows:[["Días",w.inDays],["Precio",{v:prE(w.next)+(up?arw("up"):dn?arw("dn"):""),c:up?"#d08080":dn?"#8fb04a":null}]]}];
 }
 function mktRowTip(g,mi,N){
   const p=N.mktPrice[g]!=null?N.mktPrice[g]:gRef(g);
-  return tipRows(gLabel(g)+" · "+prE(p)+" 🪙 (normal "+prE(gRef(g))+")",[...priceRows(N,g),["<b>Este mes</b>",""],
-    ["Producido",nfE(mi.prod)+" /mes"],["Importado",nfE(mi.imp)+" /mes"],["Exportado",nfE(mi.exp)+" /mes"],
-    ["Demanda",nfE(mi.dem)+" /mes"],["Comprado",nfE(mi.sold)+" /mes"],
-    ...(mi.unsold>0.5?[[g==="comida"?"Sin comprador ← granero":"Sin comprador ✗ perdido",nfE(mi.unsold)+" /mes","#d6a15a"]]:[]),
-    ["En la plaza",nfE(N.mkt[g])]]);
+  const un=mi.unsold>0.5?[[g==="comida"?"Devuelto":"Perdido",{v:nfE(mi.unsold),c:"#d6a15a"}]]:[];
+  return tipBox(gLabel(g),[...priceBlocks(N,g),{h:"Mes",cols:["Flujo","Unidades"],trows:[["Producido",nfE(mi.prod)],["Importado",nfE(mi.imp)],["Exportado",nfE(mi.exp)],
+    ["Demanda",nfE(mi.dem)],["Comprado",nfE(mi.sold)],...un,["Plaza",nfE(N.mkt[g])]]}],"Precio "+prE(p)+" "+COIN()+" (normal "+prE(gRef(g))+")");
 }
 function ratioTxt(r){ // precio frente al normal: ×r con flecha (rojo caro, verde barato)
-  const col=r>=1.15?"var(--neg)":r<=0.87?"var(--pos)":"var(--muted)", ar=r>=1.15?" ▲":r<=0.87?" ▼":"";
+  const col=r>=1.15?"var(--neg)":r<=0.87?"var(--pos)":"var(--muted)", ar=r>=1.15?arw("up"):r<=0.87?arw("dn"):"";
   return "<span style='color:"+col+"'>×"+(Math.round(r*10)/10).toLocaleString("es-ES")+ar+"</span>";
 }
 function plazaCell(mi){ // ¿se cubre la demanda? barra comprado/demanda + aviso si sobra género
@@ -1412,8 +1434,8 @@ function refreshMercado2(body){
     const goods=GOODS2.filter(g=>(TIER2[g]||"mat")===t); if(!goods.length)continue;
     h+="<tr class='grp'><td colspan='5' data-tip=\""+ta(TIER_TIP[t])+"\">"+TIER_META[t][0]+" "+TIER_META[t][1]+"</td></tr>";
     for(const g of goods){const mi=info[g]||{},p=NA.mktPrice[g]!=null?NA.mktPrice[g]:gRef(g);
-      const ext0=[(mi.exp>0.5?"<span class='pos'>↗"+nfE(mi.exp)+"</span>":""),(mi.imp>0.5?"<span style='color:#d6a15a'>↙"+nfE(mi.imp)+"</span>":"")].filter(Boolean).join(" ");
-      const ct=ctrRows(NA,S.player,g), ext=ext0?(ct.length?"<span style='cursor:help' data-tiph=\""+ta(tipRows("Contratos · "+gLabel(g),ct))+"\">"+ext0+"</span>":ext0):"<span class='e2sub'>—</span>";
+      const ext0=[(mi.exp>0.5?"<span class='pos' data-tip='Exporta'>+"+nfE(mi.exp)+"</span>":""),(mi.imp>0.5?"<span style='color:#d6a15a' data-tip='Importa'>−"+nfE(mi.imp)+"</span>":"")].filter(Boolean).join(" ");
+      const ct=ext0?ctrTip(NA,S.player,g):null, ext=ext0?(ct?"<span style='cursor:help' data-tiph=\""+ta(ct)+"\">"+ext0+"</span>":ext0):"<span class='e2sub'>—</span>";
       h+="<tr class='click' onclick=\"openMktGood('"+g+"')\" data-tiph=\""+ta(mktRowTip(g,mi,NA))+"\">"+
         "<td>"+resImg(g)+" "+gLabel(g)+"</td><td>"+prE(p)+" "+resImg("dinero")+"</td><td>"+ratioTxt(p/gRef(g))+"</td>"+
         "<td>"+plazaCell(mi)+"</td><td>"+ext+"</td></tr>"}
@@ -1438,54 +1460,55 @@ function ctrList(N,n,g){
     for(const c of l)if(c.b===n)out.push({dir:"imp",b:a,q:c.q*30,cut:cutA(A.gl,n)})}
   return out.sort((x,y)=>y.q-x.q);
 }
-function ctrRows(N,n,g){return ctrList(N,n,g).slice(0,8).map(c=>[(c.dir==="exp"?"↗ a ":"↙ de ")+NATIONS[c.b].name,nfE(c.q)+" /mes"+(c.cut?" · "+c.cut:""),c.cut?"#d08080":null])}
+function ctrTip(N,n,g){const L=ctrList(N,n,g).slice(0,10); if(!L.length)return null;
+  return tipBox("Contratos",[{cols:["Reino","Sentido","Mes","Estado"],trows:L.map(c=>[NATIONS[c.b].name,c.dir==="exp"?"Exporta":"Importa",nfE(c.q),c.cut?{v:c.cut,c:"#d08080"}:"Activo"])}],gLabel(g))}
 // LIBRO DEL BIEN (economy2 N.gl): el mes cerrado o, si aún no hay, el que va (escalado a 30 días)
 function glMonth(N,g){const G=N.gl;if(!G)return null;const M=G.prev&&G.prev.days>=20?G.prev:G.cur;if(!M||!(M.days>0))return null;
   const x=M.g[g];return x?{x,k:30/M.days}:null}
 // barra apilada con tooltip (el patrón de estateBar): parts = [{lab,v,col,tip?}]
-function stackBar(parts,w,title,total){
+function stackBar(parts,w,tip){ // barra apilada con tooltip ya hecho (tipBox); parts = [{v,col}]
   const tot=parts.reduce((t,x)=>t+Math.max(0,x.v),0)||1;let seg="";
   for(const x of parts)if(x.v>0)seg+="<i style='display:block;height:100%;width:"+(100*x.v/tot).toFixed(2)+"%;background:"+x.col+"'></i>";
-  const rows=parts.filter(x=>x.v>=0.5).map(x=>["<span style='color:"+x.col+"'>■</span> "+x.lab,x.tip||nfE(x.v)]);
-  return "<span data-tiph=\""+ta(tipRows(title,rows,total))+"\" style='display:inline-flex;width:"+(w||170)+"px;height:9px;border-radius:3px;overflow:hidden;background:#241a14;vertical-align:middle;cursor:help'>"+seg+"</span>";
+  return "<span data-tiph=\""+ta(tip)+"\" style='display:inline-flex;width:"+(w||170)+"px;height:9px;border-radius:3px;overflow:hidden;background:#241a14;vertical-align:middle;cursor:help'>"+seg+"</span>";
 }
-const DEM_ORDER=[["socorro","🌾 Graneros vacíos","#c0563e"],["talleres","⚒ Talleres","#8d7a4a"],["nobleza"],["clero"],["burgues"],["campesino"]];
+const DEM_ORDER=[["socorro","Graneros","#c0563e"],["talleres","Talleres","#8d7a4a"],["nobleza"],["clero"],["burgues"],["campesino"]];
 function goodFlowHTML(N,g){
   const gm=glMonth(N,g); if(!gm)return "";
-  const {x,k}=gm, sup=x.sup, h=[];
-  const sp=[{lab:"El campo",v:(sup.campo||0)*k,col:WHO_COL.campesino},{lab:"Artesanos",v:(sup.artesanos||0)*k,col:WHO_COL.burgues},
+  const {x,k}=gm, sup=x.sup, sw=c=>"<i class='sw' style='background:"+c+"'></i>";
+  const sp=[{lab:"Campo",v:(sup.campo||0)*k,col:WHO_COL.campesino},{lab:"Artesanos",v:(sup.artesanos||0)*k,col:WHO_COL.burgues},
     {lab:"Talleres",v:(sup.talleres||0)*k,col:"#8d7a4a"},{lab:"Importado",v:(x.imp||0)*k,col:"#d6a15a"}];
-  const supT=sp.reduce((t,y)=>t+y.v,0);
-  const dp=[];let wantT=0,gotT=0;
+  const supT=sp.reduce((t,y)=>t+y.v,0), pc=v=>Math.round(100*v/(supT||1))+"%";
+  const supTip=tipBox("Oferta",[{cols:["Origen","Unidades","Parte"],trows:sp.filter(y=>y.v>=0.5).map(y=>[sw(y.col)+y.lab,nfE(y.v),pc(y.v)]),ttot:["Total",nfE(supT),"100%"]}],"Al mes");
+  const dp=[],drows=[];let wantT=0,gotT=0;
   for(const [key,lab0,col0] of DEM_ORDER){const d=x.dem[key];if(!d)continue;const w=d[0]*k,gq=d[1]*k;wantT+=w;gotT+=gq;
-    const lab=lab0||STRATA_INFO[key].icon+" "+STRATA_INFO[key].label, col=col0||WHO_COL[key];
-    dp.push({lab,v:gq,col,tip:"pide "+nfE(w)+" · consigue "+(w>0?Math.round(100*gq/w):100)+"%"})}
-  if((x.exp||0)*k>=0.5)dp.push({lab:"↗ Exportado",v:x.exp*k,col:"#6fae5a"});
-  const miss=Math.max(0,wantT-gotT); if(miss>=0.5)dp.push({lab:"Se queda sin",v:miss,col:"#4a2a26"});
-  const row=(lab,bar,val)=>"<div class='prow'><span style='display:inline-flex;gap:8px;align-items:center'><span style='width:62px'>"+lab+"</span>"+bar+"</span><b>"+val+"</b></div>";
-  h.push(row("Oferta",stackBar(sp,170,"De dónde sale · /mes",["Total",nfE(supT)]),nfE(supT)));
-  h.push(row("Demanda",stackBar(dp,170,"Quién compra, en orden · /mes",["Pide · consigue",nfE(wantT)+" · "+(wantT>0?Math.round(100*gotT/wantT):100)+"%"]),nfE(wantT)));
-  const left=[];
-  if(x.unsold*k>=0.5)left.push(g==="comida"?"<span style='color:#d6a15a' data-tip='Grano que la plaza no acepta: vuelve al granero de su ducado'>← granero "+nfE(x.unsold*k)+"</span>"
-    :"<span class='neg' data-tip='Llega por encima de lo que se compra y se puede guardar: no se paga y se pierde'>✗ perdido "+nfE(x.unsold*k)+"</span>");
-  if(x.merma*k>=0.5)left.push("<span class='neg' data-tip='La plaza guarda como mucho 2 meses de demanda: lo que pasa se estropea'>🗑 se estropea "+nfE(x.merma*k)+"</span>");
-  left.push("<span data-tip='Lo que guarda la plaza ahora'>📦 en la plaza "+nfE(N.mkt[g]||0)+"</span>");
-  h.push("<div class='prow'><span>Sobrante</span><b style='display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end'>"+left.join("")+"</b></div>");
-  return h.join("");
+    const lab=lab0||STRATA_INFO[key].label, col=col0||WHO_COL[key], r=w>0?gq/w:1;
+    dp.push({v:gq,col});drows.push([sw(col)+lab,nfE(w),nfE(gq),{v:Math.round(100*r)+"%",c:r<0.9?"#d08080":null}])}
+  const ex=(x.exp||0)*k; if(ex>=0.5){dp.push({v:ex,col:"#6fae5a"});drows.push([sw("#6fae5a")+"Exportado",nfE(ex),nfE(ex),"100%"])}
+  const miss=Math.max(0,wantT-gotT); if(miss>=0.5)dp.push({v:miss,col:"#4a2a26"});
+  const demTip=tipBox("Demanda",[{h:"Orden de compra",cols:["Comprador","Pide","Consigue","Parte"],trows:drows,ttot:["Total",nfE(wantT+ex),nfE(gotT+ex),""]},
+    ...(miss>=0.5?[{rows:[["Sin cubrir",nfE(miss),"#d08080"]]}]:[])],"Al mes");
+  let h="<table class='e2t' style='margin-top:4px'><tr><th>Flujo</th><th>Composición</th><th class='r'>Al mes</th></tr>"+
+    "<tr><td>Oferta</td><td>"+stackBar(sp,170,supTip)+"</td><td class='r'>"+nfE(supT)+"</td></tr>"+
+    "<tr><td>Demanda</td><td>"+stackBar(dp,170,demTip)+"</td><td class='r'>"+nfE(wantT+ex)+"</td></tr></table>";
+  const un=x.unsold*k, me=x.merma*k;
+  h+="<table class='e2t' style='margin-top:8px'><tr><th>"+(g==="comida"?"Devuelto":"Perdido")+"</th><th>Merma</th><th>Plaza</th></tr><tr>"+
+    "<td data-tip='"+(g==="comida"?"Vuelve al granero de su ducado":"Llega sin comprador y no se paga")+"'"+(un>=0.5?" class='"+(g==="comida"?"":"neg")+"'":"")+">"+nfE(un)+"</td>"+
+    "<td data-tip='Se estropea en la plaza'"+(me>=0.5?" class='neg'":"")+">"+nfE(me)+"</td><td>"+nfE(N.mkt[g]||0)+"</td></tr></table>";
+  return h;
 }
 function ctrBlockHTML(N,g){
   const L=ctrList(N,S.player,g); if(!L.length)return "";
-  const col=(title,list)=>"<div style='flex:1;min-width:0'><div class='bsec'>"+title+" <span class='u'>/mes</span></div>"+(list.length?list.slice(0,6).map(c=>
-    "<div class='prow'"+(c.cut?" style='opacity:.5' data-tip=\""+ta("Este mes no sale: "+c.cut)+"\"":"")+"><span>"+nameChip(c.b)+"</span><b>"+nfE(c.q)+(c.cut?" ✖":"")+"</b></div>").join(""):"<div class='prow'><span class='dim'>—</span></div>")+"</div>";
-  return "<div style='display:flex;gap:14px;margin-top:6px'>"+col("↗ Exporta (contratos)",L.filter(c=>c.dir==="exp"))+col("↙ Importa (contratos)",L.filter(c=>c.dir==="imp"))+"</div>";
+  let h="<div class='bsec' style='margin-top:8px'>Contratos <span class='u'>/mes</span></div><table class='e2t'><tr><th>Reino</th><th>Sentido</th><th class='r'>Cantidad</th><th>Estado</th></tr>";
+  for(const c of L.slice(0,8))h+="<tr"+(c.cut?" style='opacity:.55'":"")+"><td>"+nameChip(c.b)+"</td><td>"+(c.dir==="exp"?"Exporta":"Importa")+"</td><td class='r'>"+nfE(c.q)+"</td><td"+(c.cut?" class='neg'":"")+">"+(c.cut?c.cut:"Activo")+"</td></tr>";
+  return h+"</table>";
 }
 // Gráfica de las últimas semanas de precio (economy2 N.ph; la línea punteada es el precio normal)
 function sparkPrice(N,g){
-  const H=N.ph&&N.ph[g]; if(!H||H.length<2)return "";
+  const H=N.ph&&N.ph[g]; if(!H||H.length<2)return "<span class='e2sub'>—</span>";
   const ref=gRef(g), all=H.concat([ref]), lo=Math.min(...all), hi=Math.max(...all), W=84, Hh=22, sp=hi-lo||1;
   const X=i=>(i*(W-4)/(H.length-1)+2).toFixed(1), Y=v=>(Hh-2-(v-lo)/sp*(Hh-4)).toFixed(1);
   const pts=H.map((v,i)=>X(i)+","+Y(v)).join(" "), last=H[H.length-1], up=last>=H[0];
-  const tip=tipRows("Precio · últimas "+H.length+" semanas",[["Hace "+(H.length-1)+" semanas",prE(H[0])+" 🪙"],["Mínimo",prE(Math.min(...H))+" 🪙"],["Máximo",prE(Math.max(...H))+" 🪙"],["Ahora",prE(last)+" 🪙"],["Normal",prE(ref)+" 🪙"]]);
+  const tip=tipBox("Tendencia",[{cols:["Momento","Precio"],trows:[["Inicio",prE(H[0])],["Mínimo",prE(Math.min(...H))],["Máximo",prE(Math.max(...H))],["Ahora",prE(last)],["Normal",prE(ref)]]}],H.length+" semanas");
   return "<span data-tiph=\""+ta(tip)+"\" style='cursor:help'><svg width='"+W+"' height='"+Hh+"' style='vertical-align:middle'>"+
     "<line x1='2' x2='"+(W-2)+"' y1='"+Y(ref)+"' y2='"+Y(ref)+"' stroke='#6a7077' stroke-dasharray='2 3'/>"+
     "<polyline points='"+pts+"' fill='none' stroke='"+(up?"#d08080":"#8fb04a")+"' stroke-width='1.6'/>"+
@@ -1494,15 +1517,12 @@ function sparkPrice(N,g){
 function renderMktGood2(body,N,g){
   const mi=(N.mktInfo&&N.mktInfo[g])||{},p=N.mktPrice[g]!=null?N.mktPrice[g]:gRef(g),r=p/gRef(g),t=TIER2[g]||"mat";
   let h="<div class='tcrumb' style='margin-bottom:10px'><span class='tcrumbi' onclick='closeMktGood()'>🏪 Mercado</span> › <b class='tcrumbc'>"+resImg(g)+" "+gLabel(g)+"</b></div>";
-  h+="<div style='display:flex;align-items:baseline;gap:12px;justify-content:center'><span class='e2big' style='cursor:help' data-tiph=\""+ta(tipRows(gLabel(g)+" · "+prE(p)+" 🪙",priceRows(N,g)))+"\">"+prE(p)+" "+resImg("dinero")+"</span>"+ratioTxt(r)+
-    "<span class='e2sub'>normal "+prE(gRef(g))+"</span>"+sparkPrice(N,g)+"</div>";
   const who=t==="mat"?"":STRATA.filter(e=>WANT2[e][t]>0).map(e=>"<span data-tip=\""+ta(STRATA_INFO[e].label)+"\">"+STRATA_INFO[e].icon+"</span>").join(" ");
-  h+="<div style='text-align:center;margin:4px 0 10px' class='e2sub'><span data-tip=\""+ta(TIER_TIP[t])+"\">"+TIER_META[t][0]+" "+TIER_META[t][1]+"</span>"+(who?" · "+who:"")+"</div>";
-  const ch=chain2(g);
-  if(ch.from.length||ch.to.length){
-    const lab=ks=>ks.map(k=>resImg(k)+" "+gLabel(k)).join(" + ");
-    h+="<div style='text-align:center;margin-bottom:8px'>"+(ch.from.length?lab(ch.from)+" → ":"")+"<b>"+resImg(g)+" "+gLabel(g)+"</b>"+(ch.to.length?" → "+lab(ch.to):"")+"</div>";
-  }
+  const ch=chain2(g), lab=ks=>ks.map(k=>resImg(k)+" "+gLabel(k)).join(" ");
+  const kv=(k,v,tip)=>"<div"+(tip?" style='cursor:help' data-tiph=\""+ta(tip)+"\"":"")+"><div class='k'>"+k+"</div><div class='v'>"+v+"</div></div>";
+  h+="<div class='kvg'>"+kv("Precio",prE(p)+" "+resImg("dinero"),tipBox(gLabel(g),priceBlocks(N,g)))+kv("Normal",prE(gRef(g)))+kv("Relación",ratioTxt(r))+kv("Tendencia",sparkPrice(N,g))+"</div>";
+  h+="<div class='kvg'>"+kv("Necesidad","<span data-tip=\""+ta(TIER_TIP[t])+"\">"+TIER_META[t][1]+"</span>")+(who?kv("Compradores",who):"")+
+    (ch.from.length?kv("Insumo",lab(ch.from)):"")+(ch.to.length?kv("Uso",lab(ch.to)):"")+"</div>";
   h+="<div class='bsum'><div class='bsec'>En "+NATIONS[S.player].name+" <span class='u'>/mes</span></div>";
   const line=(lab,val,col,tip)=>"<div class='prow'"+(tip?" data-tip=\""+ta(tip)+"\"":"")+"><span>"+lab+"</span><b"+(col?" style='color:"+col+"'":"")+">"+val+"</b></div>";
   const flow=goodFlowHTML(N,g);
@@ -1537,12 +1557,12 @@ function estateOwned(e){ // edificios del estamento en el reino: {b:{lv,off}}
 }
 function covCell(N,e,t,cnt){
   if(!WANT2[e][t])return "<td></td>";
-  const v=N.e2.cov[e][t],pc=pctE(v), cons=S.sConsumePrev?S.sConsumePrev[e]||{}:(S.sConsume&&S.sConsume[e])||{}, rows=[];
+  const v=N.e2.cov[e][t],pc=pctE(v), cons=S.sConsumePrev?S.sConsumePrev[e]||{}:(S.sConsume&&S.sConsume[e])||{}, trows=[];
+  if(e==="campesino"&&t==="subs")trows.push([resImg("comida")+" Grano","granero","",""]);
   if(cnt)for(const g in NEED2[t]){if(e==="campesino"&&g==="comida")continue;
     const want=NEED2[t][g]*WANT2[e][t]*(cnt[e]||0)/12, got=(cons[g]&&cons[g][0])||0; if(want<0.5)continue;
-    const r=got/want;rows.push([resImg(g)+" "+gLabel(g),nfE(got)+" / "+nfE(want)+" · "+Math.min(999,Math.round(100*r))+"%",r<0.9?"#d08080":null])}
-  if(e==="campesino"&&t==="subs")rows.unshift([resImg("comida")+" Grano","de su granero"]);
-  const tip=tipRows(TIER_META[t][0]+" "+TIER_META[t][1]+" · "+STRATA_INFO[e].label,rows.length?[["<span class='e2sub'>consigue / pide al mes</span>",""],...rows]:[[TIER_TIP[t],""]]);
+    const r=got/want;trows.push([resImg(g)+" "+gLabel(g),nfE(got),nfE(want),{v:Math.min(999,Math.round(100*r))+"%",c:r<0.9?"#d08080":null}])}
+  const tip=trows.length?tipBox(TIER_META[t][1],[{cols:["Bien","Consigue","Pide","Parte"],trows}],STRATA_INFO[e].label+", al mes"):tipBox(TIER_META[t][1],[{rows:[[TIER_TIP[t],""]]}]);
   return "<td style='cursor:help' data-tiph=\""+ta(tip)+"\">"+barE(pc,52)+" <span style='display:inline-block;width:32px'>"+pc+"%</span></td>";
 }
 function estateNet(e){ // balance del mes de un estamento (lo que entra − lo que gasta): sus cuentas, el mismo libro que su ficha
@@ -1553,16 +1573,16 @@ function savingsTxt(N,e){ // ahorro en MESES de su cesta (más de un año → pi
   const m=w/bm, col=m<3?"var(--neg)":m>=12?"var(--pos)":"var(--txt)";
   const txt=m>=24?Math.round(m/12)+" años":Math.round(m)+" m";
   const net=estateNet(e), dn=net!=null&&net<-0.5&&w>0, left=dn?w/-net:null;
-  const arrow=net==null||Math.abs(net)<0.5?"":(net<0?" <span class='neg'>▼</span>":" <span class='pos'>▲</span>");
-  const tip=tipRows("Ahorro · "+STRATA_INFO[e].label,[["Riqueza",nfE(w)+" 🪙"],["Su cesta cuesta",nfE(bm)+" 🪙/mes"],
-    ...(net!=null?[["Balance del mes",sgnE(net)+" 🪙",net<0?"#d08080":null]]:[]),
-    ...(dn?[["Al ritmo de este mes",(left>=24?Math.round(left/12)+" años":Math.round(left)+" meses")+" de ahorro","#d08080"]]:[]),
-    ...(m>=12?[["Más de un año ahorrado","pide más comodidades y lujo"]]:[])]);
+  const arrow=net==null||Math.abs(net)<0.5?"":(net<0?arw("dnr"):arw("upg"));
+  const tip=tipBox("Ahorro",[{cols:["Concepto","Valor"],trows:[["Riqueza",nfE(w)],["Cesta",nfE(bm)+" /mes"],
+    ...(net!=null?[["Balance",{v:sgnE(net)+" /mes",c:net<0?"#d08080":null}]]:[]),
+    ...(dn?[["Duración",{v:left>=24?Math.round(left/12)+" años":Math.round(left)+" meses",c:"#d08080"}]]:[]),
+    ...(m>=12?[["Consumo","aumentado"]]:[])]}],STRATA_INFO[e].label);
   return "<span style='color:"+col+";cursor:help' data-tiph=\""+ta(tip)+"\">"+txt+arrow+"</span>";
 }
-const BUD_ACT={cierra:["neg","✖ Cierra"],reabre:["pos","✔ Reabre"],invierte:["","🔨 Levanta"]};
-function budWhy(x){return x.why==="pierde"?"Pierde "+nfE(-x.prof)+" 🪙/mes":x.why==="gana"?"Gana "+nfE(x.prof)+" 🪙/mes":
-  x.why==="presupuesto"?(x.act==="cierra"?"No le llega para el mantenimiento":"Le sobra para mantenerlo"):x.act==="invierte"?"Obra de "+nfE(x.cost||0)+" 🪙":""}
+const BUD_ACT={cierra:["neg","Cierra"],reabre:["pos","Reabre"],invierte:["","Levanta"]};
+function budWhy(x){return x.why==="pierde"?"Pierde "+nfE(-x.prof)+" al mes":x.why==="gana"?"Gana "+nfE(x.prof)+" al mes":
+  x.why==="presupuesto"?(x.act==="cierra"?"Sin presupuesto":"Presupuesto holgado"):x.act==="invierte"?"Coste "+nfE(x.cost||0):""}
 function refreshEstates2(body){
   const N=S.nations[S.player];
   if(S.estSel&&STRATA.indexOf(S.estSel)>=0){renderEstate2(body,N,S.estSel);return}
@@ -1577,10 +1597,10 @@ function refreshEstates2(body){
   h+="</table>";
   // cierres y reaperturas recientes de edificios (la gestión por presupuesto de cada dueño)
   const ev=(N.budLog||[]).slice(-8).reverse();
-  if(ev.length){h+="<div class='bsum' style='margin-top:10px'><div class='bsec'>Últimas decisiones de los dueños</div>";
+  if(ev.length){h+="<div class='bsum' style='margin-top:10px'><div class='bsec'>Decisiones</div><table class='e2t'><tr><th>Acción</th><th>Edificio</th><th>Provincia</th><th>Dueño</th><th class='r'>Fecha</th></tr>";
     for(const x of ev){const P=S.provs[x.p],a=BUD_ACT[x.act]||["",x.act],why=budWhy(x);
-      h+="<div class='prow'"+(why?" data-tip=\""+ta(why)+"\"":"")+"><span><span class='"+a[0]+"'>"+a[1]+"</span> "+(BUILDINGS[x.b]?BUILDINGS[x.b].label:x.b)+" · "+(P?P.name:"")+"</span><b class='e2sub'>"+(STRATA_INFO[x.o]?STRATA_INFO[x.o].icon+" "+STRATA_INFO[x.o].label:"Corona")+" · "+reportDate(x.h)+"</b></div>"}
-    h+="</div>"}
+      h+="<tr"+(why?" data-tip=\""+ta(why)+"\"":"")+"><td class='"+a[0]+"'>"+a[1]+"</td><td>"+(BUILDINGS[x.b]?BUILDINGS[x.b].label:x.b)+"</td><td>"+(P?P.name:"")+"</td><td>"+(STRATA_INFO[x.o]?STRATA_INFO[x.o].label:"Corona")+"</td><td class='r e2sub'>"+reportDate(x.h)+"</td></tr>"}
+    h+="</table></div>"}
   body.innerHTML=h;
 }
 function renderEstate2(body,N,e){
@@ -1590,9 +1610,8 @@ function renderEstate2(body,N,e){
   const {cnt,pop}=estateCounts();
   if(e==="burgues"||e==="campesino"){let up=0,dn=0,cur=false;for(const p of S.provs){if(p.owner!==S.player)continue;const b=provBook(p);if(!b)continue;cur=cur||b.cur;up+=b.m.up||0;dn+=b.m.down||0}
     const pr=N.prosp!=null?N.prosp:1, poor=pr<0.5;
-    h+="<div class='prow' data-tiph=\""+ta(tipRows("Movilidad · "+(cur?"este mes":"mes pasado"),[["Prosperidad del burgués (su vida diaria)",pctE(pr)+"%",poor?"#d08080":null],
-      ["Por debajo del 50%","vuelven al campo"],["Del campo al oficio","+"+nfE(up)],["Del oficio al campo","−"+nfE(dn),dn>0?"#d08080":null]]))+"\" style='cursor:help'>"+
-      "<span>Del campo al oficio</span><b><span class='pos'>+"+nfE(up)+"</span> · <span class='"+(dn>0?"neg":"e2sub")+"'>−"+nfE(dn)+"</span></b></div>"}
+    h+="<table class='e2t' style='margin-bottom:8px' data-tip=\""+ta("Ascensos: del campo al oficio. Retornos: del oficio al campo. Con la prosperidad del burgués por debajo del 50%, vuelven al campo.")+"\"><tr><th>Ascensos</th><th>Retornos</th><th>Prosperidad</th></tr>"+
+      "<tr><td class='pos'>+"+nfE(up)+"</td><td class='"+(dn>0?"neg":"e2sub")+"'>−"+nfE(dn)+"</td><td"+(poor?" class='neg'":"")+">"+pctE(pr)+"%</td></tr></table>"}
   h+="<table class='e2t'><tr><th>Habitantes</th>"+tierTh()+"<th>Ingreso/mes</th><th>Ahorro</th></tr>"+
     "<tr><td>"+nfE(cnt[e])+" <span class='e2sub'>"+popPct(cnt[e],pop)+"</span></td>"+covCell(N,e,"subs",cnt)+covCell(N,e,"vida",cnt)+covCell(N,e,"lujo",cnt)+"<td>"+nfE((N.e2.inc&&N.e2.inc[e])||0)+" "+resImg("dinero")+"</td><td>"+savingsTxt(N,e)+"</td></tr></table>";
   // sus cuentas del mes (mismo libro que la Tesorería)
@@ -1600,15 +1619,16 @@ function renderEstate2(body,N,e){
   const inc=ks.filter(c=>fl[c]>0).sort((a,b)=>fl[b]-fl[a]),exp=ks.filter(c=>fl[c]<0).sort((a,b)=>fl[a]-fl[b]);
   let net=0;for(const c of ks)net+=fl[c];
   const row=c=>"<div class='trow'><span>"+flowLabel(c)+"</span><b class='"+(fl[c]<0?"neg":"pos")+"'>"+sgnE(fl[c])+" "+resImg("dinero")+"</b></div>";
-  h+="<div class='tbook' style='margin-top:10px'><div class='tsec'>Ingresos"+(S.sFlowPrev?"":" · este mes")+"</div>"+(inc.length?inc.map(row).join(""):"<div class='trow tdim'>—</div>")+
+  h+="<div class='tbook' style='margin-top:10px'><div class='tsec'>Ingresos"+(S.sFlowPrev?"":" (este mes)")+"</div>"+(inc.length?inc.map(row).join(""):"<div class='trow tdim'>—</div>")+
     "<div class='tsec'>Gastos</div>"+(exp.length?exp.map(row).join(""):"<div class='trow tdim'>—</div>")+
     "<div class='ttotal'><span>Balance del mes</span><b class='"+(net<0?"neg":"pos")+"'>"+sgnE(net)+" "+resImg("dinero")+"</b></div></div>";
   // qué compra, por necesidad
   const gs=Object.keys(cons).filter(g=>cons[g][1]>=0.5);
   if(gs.length){h+="<div class='bsum' style='margin-top:10px'>";
     for(const t of ["subs","vida","lujo","mat"]){const tg=gs.filter(g=>(TIER2[g]||"mat")===t).sort((a,b)=>cons[b][1]-cons[a][1]);if(!tg.length)continue;
-      h+="<div class='bsec'>"+TIER_META[t][0]+" "+(t==="mat"?"Materias para sus talleres":TIER_META[t][1])+" <span class='u'>gasto · cantidad</span></div>";
-      for(const g of tg)h+="<div class='prow'><span>"+resImg(g)+" "+gLabel(g)+"</span><b>"+nfE(cons[g][1])+" "+resImg("dinero")+" <span class='e2sub'>· "+nfE(cons[g][0])+"</span></b></div>"}
+      h+="<table class='e2t' style='margin-bottom:6px'><tr><th>"+TIER_META[t][0]+" "+(t==="mat"?"Materias":TIER_META[t][1])+"</th><th class='r'>Gasto</th><th class='r'>Cantidad</th></tr>";
+      for(const g of tg)h+="<tr><td>"+resImg(g)+" "+gLabel(g)+"</td><td class='r'>"+nfE(cons[g][1])+" "+resImg("dinero")+"</td><td class='r e2sub'>"+nfE(cons[g][0])+"</td></tr>";
+      h+="</table>"}
     h+="</div>"}
   // sus edificios
   const own=estateOwned(e),bs=Object.keys(own).sort((a,b)=>own[b].lv-own[a].lv);
@@ -1677,24 +1697,23 @@ function nextHint2(p,b,lvl){ // lo que AÑADE el siguiente nivel (marginal), no 
 }
 // CRECIMIENTO de la provincia, sumado como en EU4 (economy2 popGrowthWhy: la misma fórmula que el tick)
 function popTip(p){
-  const w=popGrowthWhy(p), x=v=>"×"+v.toFixed(2), pc=v=>(v>=0?"+":"")+(v*100).toFixed(2).replace(".",",")+"%";
-  const rows=w.famine?[["⚠ Hambre","el granero no llega: muere gente","#d08080"]]:[
-    ["Natalidad base",pc(w.base)+"/año"],
-    ["Grano en el granero ("+(w.months>=24?"24+":w.months.toFixed(0))+" m)",x(w.food),w.food<1?"#d08080":null],
-    ["Tierra ("+Math.round(100*landOcc2(p))+"% ocupada)",x(w.land),w.land<1?"#d08080":null],
-    ["Comodidades del campesino ("+pctE(w.vida)+"%)",x(w.life),w.life<1?"#d08080":null]];
-  const bt=w.burgTarget+w.push, up=w.burgNow<bt-0.002, poor=w.prosp!=null&&w.prosp<w.poor;
-  rows.push(["Burgueses",pctE(w.burgNow)+"% · tienden a "+pctE(bt)+"%"]);
-  if(w.push>0.0005)rows.push(["&nbsp;&nbsp;la tierra llena empuja al oficio","+"+pctE(w.push)+" puntos"]);
-  if(poor)rows.push(["&nbsp;&nbsp;el oficio no da para vivir","vuelven al campo","#d08080"]);
-  else if(up&&w.prosp!=null&&w.prosp<1)rows.push(["&nbsp;&nbsp;ascienden según la prosperidad",pctE(w.prosp)+"%"]);
+  const w=popGrowthWhy(p), x=v=>"×"+v.toFixed(2), pc=v=>(v>=0?"+":"")+(v*100).toFixed(2).replace(".",",")+"%", red=v=>v<1?"#d08080":null;
+  const blocks=[];
+  if(w.famine)blocks.push({h:"Hambre",rows:[["Granero","vacío","#d08080"]]});
+  else blocks.push({h:"Crecimiento",cols:["Factor","Estado","Efecto"],trows:[
+    ["Natalidad","",pc(w.base)],
+    ["Granero",(w.months>=24?"24+":w.months.toFixed(0))+" meses",{v:x(w.food),c:red(w.food)}],
+    ["Tierra",Math.round(100*landOcc2(p))+"%",{v:x(w.land),c:red(w.land)}],
+    ["Comodidades",pctE(w.vida)+"%",{v:x(w.life),c:red(w.life)}]],
+    ttot:["Total",sgnE((p.pop||0)*w.rate)+" al año",pc(w.rate)]});
+  const poor=w.prosp!=null&&w.prosp<w.poor;
+  blocks.push({h:"Burgueses",cols:["Concepto","Valor"],trows:[["Ahora",pctE(w.burgNow)+"%"],["Objetivo",pctE(w.burgTarget+w.push)+"%"],
+    ...(w.push>0.0005?[["Válvula","+"+pctE(w.push)+" puntos"]]:[]),...(w.prosp!=null?[["Prosperidad",{v:pctE(w.prosp)+"%",c:poor?"#d08080":null}]]:[])]});
   const b=provBook(p);
-  if(b&&(b.m.born||b.m.dead||b.m.up||b.m.down)){rows.push(["<b>"+(b.cur?"Este mes":"Mes pasado")+"</b>",""]);
-    if(b.m.born>=0.5)rows.push(["Nacen (neto)","+"+nfE(b.m.born)]);
-    if(b.m.dead>=0.5)rows.push(["Mueren de hambre","−"+nfE(b.m.dead),"#d08080"]);
-    if((b.m.up||0)>=0.5)rows.push(["Pasan a burgueses","+"+nfE(b.m.up)]);
-    if((b.m.down||0)>=0.5)rows.push(["Vuelven al campo","−"+nfE(b.m.down),"#d08080"])}
-  return tipRows("Población · "+p.name,rows,w.famine?null:["Crecimiento",pc(w.rate)+"/año ≈ "+sgnE((p.pop||0)*w.rate)+" hab."]);
+  if(b&&(b.m.born||b.m.dead||b.m.up||b.m.down))blocks.push({h:b.cur?"Este mes":"Mes pasado",cols:["Movimiento","Personas"],trows:[
+    ["Nacimientos","+"+nfE(b.m.born||0)],["Hambre",{v:"−"+nfE(b.m.dead||0),c:(b.m.dead||0)>=0.5?"#d08080":null}],
+    ["Ascensos","+"+nfE(b.m.up||0)],["Retornos",{v:"−"+nfE(b.m.down||0),c:(b.m.down||0)>=0.5?"#d08080":null}]]});
+  return tipBox("Población",blocks,p.name);
 }
 function landOcc2(p){const K=landCap(p);return K>0&&p.pops?(p.pops.campesino||0)/K:0}
 function provStats2(p,own){ // población + moral/soldadesca/dotación/huecos en UNA fila (sus desgloses, al hover)
@@ -1711,21 +1730,17 @@ function pantryRow2(p){ // el GRANERO del ducado: cuántos meses de grano quedan
   const g=granaryOf(p); if(!g)return "";
   const hv=Math.round((g.harvest-1)*100),m=manorOf(p),troop=troopDrainOn(p)*730,need=p._grainNeed||0,got=p._grainGot||0;
   const mo=Math.floor(g.months),cal=calOf(S.hour),until=MONTHS_ES[(cal.m+mo)%12],hm=MONTHS_ES[g.harvestMonth];
-  const dn=p.duchy>=0&&S.duchies&&S.duchies[p.duchy]?S.duchies[p.duchy].name:"esta provincia";
-  const state=p.famine?"<b class='neg'>⚠ Hambre</b>"
-    :need>0?"<span class='neg'>🛒 comprando</span>"
-    :g.short?"<span class='neg'>⚠ no llega a "+hm+"</span>"
-    :mo>=12?"<span class='pos'>de sobra</span>":"<span class='dim'>hasta "+until+"</span>";
-  const tip=tipRows("Granero · "+dn,[
-    ["Grano guardado",nfE(g.st)+" / "+nfE(g.cap)],["Alcanza para",(g.months>=24?"más de 2 años":g.months.toFixed(1)+" meses")],
-    ["Próxima siega",hm+" · "+Math.ceil(g.monthsToHarvest)+" m"],["Cosecha del ducado este año",(hv>=0?"+":"")+hv+"%"],
-    ["Comen sus campesinos",nfE(g.c/12)+" /mes"],...(troop>0.5?[["Tropas",nfE(troop)+" /mes","#d08080"]]:[]),
-    ["Diezmo + renta",pctE(DIEZMO)+"% + "+Math.round((MANOR_RENT[m]||0)*100)+"% de lo que se vende"],
-    ["Traer grano cuesta",nfE(g.price)+" + flete "+pctE(g.flete)+"% = "+nfE(g.priceIn)+" 🪙/u"],["El grano viene de",g.from+" · "+Math.round(g.km)+" km"],
-    ...(need>0?[["Granero vacío: compra",Math.round(100*got/need)+"% conseguido","#d08080"]]:[]),
-    ["Lo que sobra hasta la siega","se vende en la plaza"]]);
+  const dn=p.duchy>=0&&S.duchies&&S.duchies[p.duchy]?S.duchies[p.duchy].name:p.name;
+  const state=p.famine?"<b class='neg'>Hambre</b>":need>0?"<span class='neg'>Comprando</span>"
+    :g.short?"<span class='neg'>No llega</span>":mo>=12?"<span class='pos'>Sobra</span>":"<span class='dim'>Hasta "+until+"</span>";
+  const tip=tipBox("Granero",[
+    {h:"Reserva",cols:["Concepto","Valor"],trows:[["Guardado",nfE(g.st)],["Capacidad",nfE(g.cap)],["Duración",g.months>=24?"24+ meses":g.months.toFixed(1)+" meses"],
+      ["Siega",hm+", en "+Math.ceil(g.monthsToHarvest)+" m"],["Cosecha",(hv>=0?"+":"")+hv+"%"],["Consumo",nfE(g.c/12)+" /mes"],...(troop>0.5?[["Tropas",{v:nfE(troop)+" /mes",c:"#d08080"}]]:[]),
+      ...(need>0?[["Compra",{v:Math.round(100*got/need)+"%",c:"#d08080"}]]:[])]},
+    {h:"Importación",cols:["Concepto","Valor"],trows:[["Precio",nfE(g.price)],["Flete",pctE(g.flete)+"%"],["Origen",g.from],["Distancia",Math.round(g.km)+" km"]],ttot:["Total",nfE(g.priceIn)+" /u"]},
+    {h:"Excedente",cols:["Concepto","Valor"],trows:[["Destino","Plaza"],["Diezmo",pctE(DIEZMO)+"%"],["Renta",Math.round((MANOR_RENT[m]||0)*100)+"%"]]}],dn);
   const pc=Math.min(100,Math.round(100*g.months/12));
-  return "<div class='prow' data-tiph=\""+ta(tip)+"\" style='cursor:help'><span>🌾 Granero</span><b>"+barE(pc,64)+" "+(g.months>=24?"24+":g.months<1?"&lt;1":mo)+" m &nbsp;"+state+"</b></div>"+
+  return "<div class='prow' data-tiph=\""+ta(tip)+"\" style='cursor:help'><span>"+ph("granero")+" Granero</span><b>"+barE(pc,64)+" "+(g.months>=24?"24+":g.months<1?"&lt;1":mo)+" m &nbsp;"+state+"</b></div>"+
     reliefRow2(p,g,hm);
 }
 // TIERRA (design/capacidad-agraria.md): cuánto de su capacidad agraria ocupan los campesinos de la provincia. Por encima
@@ -1734,13 +1749,11 @@ function pantryRow2(p){ // el GRANERO del ducado: cuántos meses de grano quedan
 function landRow2(p){
   const K=p.pops?landCap(p):0; if(!(K>0))return "";
   const c=p.pops.campesino||0,x=c/K,pc=Math.round(100*x),y=landYield(p);
-  const state=x>1?"<b class='neg'>⚠ no los alimenta</b>":x>LAND_FULL?"<span class='dim'>rinde ×"+y.toFixed(2)+"</span>":"<span class='pos'>de sobra</span>";
-  const tip=tipRows("Tierra · "+p.name,[
-    ["Capacidad agraria",nfE(K)+" campesinos"],["Campesinos",nfE(c)],["Ocupación",pc+"%"],
-    ["Cosecha por campesino","×"+y.toFixed(2),y<1?"#d08080":null],
-    ["Rinde pleno","hasta el "+Math.round(LAND_FULL*100)+"%"],
-    ["Al 100%","cosechan justo lo que comen"]]);
-  return "<div class='prow' data-tiph=\""+ta(tip)+"\" style='cursor:help'><span>🌱 Tierra</span><b>"+
+  const state=x>1?"<b class='neg'>Desborda</b>":x>LAND_FULL?"<span class='dim'>Rinde ×"+y.toFixed(2)+"</span>":"<span class='pos'>Holgada</span>";
+  const tip=tipBox("Tierra",[{cols:["Concepto","Valor"],trows:[["Capacidad",nfE(K)],["Campesinos",nfE(c)],["Ocupación",pc+"%"],
+      ["Rendimiento",{v:"×"+y.toFixed(2),c:y<1?"#d08080":null}],["Natalidad",{v:"×"+landBirth(p).toFixed(2),c:landBirth(p)<1?"#d08080":null}]]},
+    {h:"Umbrales",cols:["Tramo","Ocupación"],trows:[["Pleno","hasta "+Math.round(LAND_FULL*100)+"%"],["Límite","100%"]]}],p.name);
+  return "<div class='prow' data-tiph=\""+ta(tip)+"\" style='cursor:help'><span>"+ph("tierra")+" Tierra</span><b>"+
     barE(pc,64,x>1?"#c0563e":x>LAND_FULL?"#c98a3a":"#6fae5a")+" "+pc+"% &nbsp;"+state+"</b></div>";
 }
 // SOCORRO: solo en ducados propios que no llegan a la siega (o con hambre). Un clic llena el granero hasta la siega; el
@@ -1749,15 +1762,12 @@ function reliefRow2(p,g,hm){
   if(p.owner!==S.player||!(g.short||p.famine||(p._grainNeed||0)>0))return "";
   const q=reliefQuote(S.player,p); if(!q||q.falta<=0)return "";
   const dn=p.duchy>=0&&S.duchies&&S.duchies[p.duchy]?S.duchies[p.duchy].name:p.name;
-  const tip=tipRows("Socorro · "+dn,[
-    ["Falta hasta "+hm,nfE(q.falta)+" 🌾"],
-    ...(q.almacen>=0.5?[["Del almacén de la corona",nfE(q.almacen)+" 🌾"]]:[]),
-    ...(q.compra>=0.5?[["Comprado en la plaza",nfE(q.compra)+" × "+nfE(q.price)+" 🪙"]]:[]),
-    ["Flete "+q.from+" · "+Math.round(q.km)+" km","+"+pctE(q.fletePct)+"% · "+nfE(q.flete)+" 🪙"],
-    ...(q.why?[["No se puede",q.why,"#d08080"]]:[])],
-    ["Total",nfE(q.total)+" 🪙"]);
+  const tip=tipBox("Socorro",[{cols:["Concepto","Cantidad","Ducados"],trows:[["Falta",nfE(q.falta),""],
+      ...(q.almacen>=0.5?[["Almacén",nfE(q.almacen),""]]:[]),...(q.compra>=0.5?[["Compra",nfE(q.compra),nfE(q.compra*q.price)]]:[]),
+      ["Flete",Math.round(q.km)+" km",nfE(q.flete)]],ttot:["Total","",nfE(q.total)]},
+    ...(q.why?[{rows:[["Bloqueo",q.why,"#d08080"]]}]:[])],dn+", hasta "+hm);
   return "<div class='prow' data-tiph=\""+ta(tip)+"\"><span></span><b><button class='bbtn' "+(q.ok?"":"disabled")+
-    " onclick='reliefSendProv("+p.id+")'>🛒 Socorro → "+hm+" · <span class='"+(q.ok?"":"neg")+"'>"+nfE(q.total)+"</span> 🪙</button></b></div>";
+    " onclick='reliefSendProv("+p.id+")'>"+ph("socorro")+" Socorro "+hm+" <span class='"+(q.ok?"":"neg")+"'>"+nfE(q.total)+"</span> "+COIN()+"</button></b></div>";
 }
 function tradeRow2(p){ // su centro de comercio y lo que cuesta llevar allí cada bien (flete)
   const hub=(p.hubOf!=null&&p.hubOf>=0)?S.provs[p.hubOf]:null, km=Math.round(p.hubKm||0);
@@ -1787,33 +1797,31 @@ function saleKind(p,g){
   if(ARTISAN_MIX[g]!=null||g==="armas")return ["taller","burgues"];
   return ["campo",null];
 }
-function splitRows(p,g){
-  const [kind,owner]=saleKind(p,g), sp=saleSplit(p,g,kind,owner), by={};
-  for(const r of sp.rows){const x=by[r.who]||(by[r.who]={f:0,parts:[]});x.f+=r.f;x.parts.push(r.concept+" "+Math.round(100*r.f))}
-  const rows=[["<b>De cada 100 🪙 del comprador</b>",kind==="taller"?"taller":"cosecha"]];
-  for(const w of WHO_ORDER){const x=by[w];if(!x||x.f<0.005)continue;
-    rows.push(["<span style='color:"+WHO_COL[w]+"'>■</span> "+whoLabel(w)+" <span class='e2sub'>"+x.parts.join(" · ")+"</span>",Math.round(100*x.f)+""])}
-  return rows;
+function splitBlock(p,g){ // reparto de cada 100 ducados del comprador (economy2 saleSplit)
+  const [kind,owner]=saleKind(p,g), sp=saleSplit(p,g,kind,owner);
+  const trows=[];for(const w of WHO_ORDER)for(const r of sp.rows)if(r.who===w&&r.f>=0.005)trows.push(["<i class='sw' style='background:"+WHO_COL[w]+"'></i>"+whoLabel(w),r.concept,Math.round(100*r.f)]);
+  return {h:"Reparto",sub:kind==="taller"?"Taller":"Cosecha",cols:["Quién","Concepto","De 100"],trows,ttot:["Total","",100]};
 }
-function produceRow2(p){ // lo que sale de la provincia, los bienes de más valor (u/mes; tooltip con su valor)
+function produceRow2(p){ // lo que sale de la provincia, los bienes de más valor (u/mes; tooltip con su valor y su reparto)
   const b=provBook(p); if(!b)return "";
   const gs=goodsByValue(b.m), st=Object.keys(b.m.stock).filter(k=>b.m.stock[k]>=0.5);
   if(!gs.length&&!st.length)return "";
-  const cell=(g,q,v,extra)=>"<span data-tiph=\""+ta(tipRows(gLabel(g),[["Producido",nfE(q)+" /mes"],...(v!=null?[["Pagado en la plaza",nfE(v)+" 🪙"]]:[]),...(extra||[]),...(v!=null?splitRows(p,g):[])]))+"\" style='cursor:help;white-space:nowrap'>"+resImg(g)+nfE(q)+"</span>";
+  const cell=(g,q,v)=>{const blocks=[{h:"Producción",cols:["Concepto","Valor"],trows:[["Unidades",nfE(q)+" /mes"],v!=null?["Plaza",nfE(v)+" "+COIN()]:["Destino","Almacén"]]}];
+    if(v!=null)blocks.push(splitBlock(p,g));
+    return "<span data-tiph=\""+ta(tipBox(gLabel(g),blocks))+"\" style='cursor:help;white-space:nowrap'>"+resImg(g)+nfE(q)+"</span>"};
   return "<div class='bsec'>Produce <span class='u'>/mes</span></div><div style='display:flex;flex-wrap:wrap;gap:3px 10px;font-size:var(--fs)'>"+
-    gs.slice(0,6).map(g=>cell(g,b.m.prod[g],b.m.val[g]||0)).join("")+
-    st.map(k=>cell(k,b.m.stock[k],null,[["Destino","almacén de la corona 📦"]])).join("")+"</div>";
+    gs.slice(0,6).map(g=>cell(g,b.m.prod[g],b.m.val[g]||0)).join("")+st.map(k=>cell(k,b.m.stock[k],null)).join("")+"</div>";
 }
 function yieldBar2(p,b,w){ // barra apilada: a quién va el dinero que paga la plaza; el FLETE aparte (lo cobran los que transportan)
   let seg="";const tot=b.val||1, fr={};let frT=0;
   for(const k in b.m.pay){const v=b.m.pay[k].Transporte||0;if(v>0){fr[k]=v;frT+=v}}
-  const own=k=>(b.who[k]||0)-(fr[k]||0);
+  const own=k=>(b.who[k]||0)-(fr[k]||0), pc=v=>Math.round(100*v/tot)+"%";
   for(const k of WHO_ORDER){const v=own(k);if(v<=0)continue;seg+="<i style='display:block;height:100%;width:"+(100*v/tot).toFixed(2)+"%;background:"+WHO_COL[k]+"'></i>"}
   if(frT>0)seg+="<i style='display:block;height:100%;width:"+(100*frT/tot).toFixed(2)+"%;background:#6a7077'></i>";
-  const rows=WHO_ORDER.filter(k=>own(k)>=0.5).map(k=>["<span style='color:"+WHO_COL[k]+"'>■</span> "+whoLabel(k),nfE(own(k))+" 🪙"]);
-  if(frT>=0.5)rows.push(["<span style='color:#6a7077'>■</span> Flete al centro de comercio",nfE(frT)+" 🪙"],
-    ...WHO_ORDER.filter(k=>(fr[k]||0)>=0.5).map(k=>["&nbsp;&nbsp;lo cobra: "+whoLabel(k),nfE(fr[k])+" 🪙"]));
-  return "<span data-tiph=\""+ta(tipRows("A quién va lo que paga la plaza",rows,["Total",nfE(b.val)+" 🪙"]))+"\" style='display:inline-flex;width:"+(w||110)+"px;height:8px;border-radius:3px;overflow:hidden;background:#241a14;vertical-align:middle;cursor:help'>"+seg+"</span>";
+  const trows=WHO_ORDER.filter(k=>own(k)>=0.5).map(k=>["<i class='sw' style='background:"+WHO_COL[k]+"'></i>"+whoLabel(k),nfE(own(k)),pc(own(k))]);
+  const blocks=[{cols:["Quién","Ducados","Parte"],trows,ttot:["Total",nfE(b.val),"100%"]}];
+  if(frT>=0.5)blocks.push({h:"Flete",cols:["Cobra","Ducados","Parte"],trows:WHO_ORDER.filter(k=>(fr[k]||0)>=0.5).map(k=>["<i class='sw' style='background:#6a7077'></i>"+whoLabel(k),nfE(fr[k]),pc(fr[k])])});
+  return "<span data-tiph=\""+ta(tipBox("Rinde",blocks,p.name))+"\" style='display:inline-flex;width:"+(w||110)+"px;height:8px;border-radius:3px;overflow:hidden;background:#241a14;vertical-align:middle;cursor:help'>"+seg+"</span>";
 }
 function yieldRows2(p){ // "Rinde": el valor que la provincia lleva a la plaza, repartido, y lo que te toca a ti
   const b=provBook(p); if(!b||!(b.val>0.5))return "";

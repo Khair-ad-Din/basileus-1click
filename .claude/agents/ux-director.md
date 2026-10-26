@@ -26,6 +26,13 @@ color. Cuando revises, cada texto visible que encuentres es un hallazgo.
 **2. EU4 es el patrón de referencia.** Dicho por Sergio: *"simplemente es imitar las interfaces de
 EU4"*. No es una inspiración vaga, es una instrucción. Cuando dudes, pregunta qué haría EU4.
 
+**3. Las reglas de estructura (2026-10-26), igual de innegociables** — detalle en la guía, §1b:
+un tema por bloque con separador visible entre bloques; nada de iconos Unicode (hueco `[ ]` con `ph()` donde falte un
+sprite); todo en rejilla y cada columna con cabecera que nombre el dato; nombres de 1 palabra, 2 como mucho; prohibido el
+"·" como separador. Victoria 3 está instalado en el PC de Sergio (`C:\Program Files (x86)\Steam\steamapps\common\
+Victoria 3\game\gui\*.gui`, y EU4 y CK3 al lado): léelos cuando necesites cómo resuelven una pantalla. Cada violación de
+estas reglas que veas es un hallazgo, también en lo que ya existía.
+
 ## De dónde robar
 
 - **EU4** — la fuente. Topbar de recursos, ficha de provincia, mapmodes, ledger, tooltips con

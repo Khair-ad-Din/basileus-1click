@@ -37,6 +37,33 @@ Reglas ya derivadas y aplicadas en la vista de diplomacia:
   dorado (`.esc.lead`), no una corona ♛ al lado.
 - Donde no hay nada, un botón **"+"** para actuar, en vez de un "—" muerto.
 
+## 1b. Las reglas de estructura (Sergio, 2026-10-26) — PERMANENTES
+
+Dictadas por Sergio al revisar la UI económica, con capturas. Valen para **toda** pantalla, tooltip y ventana, nueva o
+vieja. Las vigila un hook (`.claude/hooks/lint-ui-texto.mjs`: avisa del "·" y de los iconos Unicode en lo recién escrito).
+
+1. **Un tema por bloque, y separados.** Si un desglose cuenta varias cosas, cada una va en su bloque con un **separador
+   visible** entre ellos. Ejemplo que lo motivó: el tooltip del precio mezclaba "cómo se forma el precio" con "lo que se
+   produjo y movió este mes" en una sola lista: un churro. Son dos bloques.
+2. **Nada de iconos Unicode** (emoji, ▲▼, →, ✖, ■, ☠…). Donde haría falta un icono y aún no hay sprite, se pone el hueco
+   **`[ ]`** con el helper `ph("nombre")`, que deja dicho qué icono va ahí. Si hay sprite (`resImg`, `uiIcon`), se usa el
+   sprite. Las flechas y marcas de estado se dibujan con CSS, no con caracteres.
+3. **Todo en rejilla, y cada dato con su nombre.** El contenido se coloca en una rejilla (visible o invisible según el
+   caso) que separa un concepto de otro, y **las columnas nombran el dato** con su cabecera. Ejemplo que lo motivó: en la
+   ficha del bien salía "4 · ×0,5 ▼ · normal 8 · [gráfica]" en una fila: números e iconos sin decir qué es cada uno.
+4. **Nombres de 1 palabra, 2 como mucho.** Funciones, mecánicas, cabeceras y etiquetas. "Del campo al oficio" es
+   inaceptable: "Ascensos". "Lo que sobra hasta la siega": "Excedente".
+5. **Prohibido el "·" como separador.** Siempre la regla 3: columnas, filas, rejilla. Se corrige también donde ya exista.
+
+**Patrón de Victoria 3** (leído de sus `game/gui/tooltip.gui` y su localización, 2026-10-26):
+- Tooltip: **título** sobre su propia banda de fondo + una línea de resumen; luego `TOOLTIP_DELIMITER`, un **separador**
+  gráfico (línea con degradado a los lados) **entre cada tema**; los desgloses **sangrados** bajo su total.
+- Tablas (`caligula_table`): **cabecera por columna** (26 px) con una línea debajo; la 1.ª columna a la izquierda y el
+  resto a la derecha; filas de 30 px (23 en la versión condensada), **fondo alterno** en las impares; márgenes 20/3 px.
+- Ancho máximo del tooltip: 550 px.
+- Componentes en el código: `tipBox(title, blocks)` (bloques separados, cada uno con su cabecera y sus filas o su
+  tabla), `ph(nombre)` (hueco de icono) y `.tipSep`/`.tipGrid`/`.icoPh` en `index.html`. **No se escribe un tooltip a mano.**
+
 ---
 
 ## 2. Inventario de pantallas

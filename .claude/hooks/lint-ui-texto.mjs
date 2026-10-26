@@ -20,7 +20,27 @@ const fp = (input?.tool_input?.file_path || "").replace(/\\/g, "/");
 if (!/call-of-war\/(js\/(ui|editor|main)\.js|index\.html)$/.test(fp)) process.exit(0);
 
 const nuevo = input?.tool_input?.new_string ?? input?.tool_input?.content ?? "";
-if (!nuevo || nuevo.length < 100) process.exit(0);
+if (!nuevo) process.exit(0);
+
+// REGLAS DE ESTRUCTURA (Sergio, 2026-10-26; design/ux/guia-estilo.md §1b): nada de "·" como separador y nada de
+// iconos Unicode (emoji, flechas, ▲▼, ✖, ■…) en lo que pinta la interfaz. Se miran solo las líneas de código, sin
+// los comentarios (en los comentarios el "·" y las flechas son legítimos).
+{
+  const codigo = nuevo.split("\n").filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l))
+    .map(l => l.replace(/(^|[\s;{}),])\/\/ .*$/, "$1")).join("\n");
+  const ICON = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{25A0}-\u{25FF}\u{2B00}-\u{2BFF}\u{2300}-\u{23FF}]/gu;
+  const puntos = (codigo.match(/·/g) || []).length, iconos = [...new Set(codigo.match(ICON) || [])];
+  if (puntos || iconos.length) {
+    console.error([
+      `AVISO UI — reglas de estructura (guia-estilo.md §1b) en ${fp}`,
+      ...(puntos ? [`  · ${puntos} uso(s) de "·" como separador: prohibido. Usa columnas, filas o rejilla (tipBox, .tipGrid).`] : []),
+      ...(iconos.length ? [`  · iconos Unicode: ${iconos.slice(0, 12).join(" ")} — prohibidos. Sprite si existe (resImg/uiIcon);`,
+        `    si no, el hueco ph("nombre") ("[ ]"). Flechas y marcas de estado, en CSS.`] : []),
+      `Si es un falso positivo (no lo ve el jugador), ignora el aviso.`].join("\n"));
+    process.exit(2);
+  }
+}
+if (nuevo.length < 100) process.exit(0);
 
 // 1) Vaciar los valores de atributo: ahi es DONDE DEBE vivir el texto largo (data-tip, title...).
 //    Si no, marcariamos como violacion justo lo que es la solucion correcta.
