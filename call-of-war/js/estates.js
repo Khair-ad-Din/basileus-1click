@@ -31,6 +31,10 @@ const SUPPLY_MARGIN=1.15; // la IA construye una fábrica SOLO si la oferta prev
 // de telares": Lituania, 175 telares abiertos/cerrados cada ~2 meses). Ahora, cada día de mercado, cada reino cierra
 // como mucho este % de sus talleres de un tipo (primero los que más pierden) y reabre igual (primero los que más ganan).
 const MANAGE_SHARE=0.25;
+// REGISTRO DE DECISIONES (lo lee Estamentos, ui.js): qué cerró, reabrió o levantó cada dueño, dónde y por qué.
+// act: cierra · reabre · invierte; why: "pierde"/"gana" (rentabilidad, prof = ducados/mes) o "presupuesto" (no le llega).
+const BUD_LOG_MAX=40;
+function logBud(N,x){const L=N.budLog||(N.budLog=[]);L.push(Object.assign({h:S.hour},x));if(L.length>BUD_LOG_MAX)L.splice(0,L.length-BUD_LOG_MAX)}
 function reopen(p,b,o,N){                                            // reactivar, reparando la parte degradada
   const cond=(p.bCond&&p.bCond[b]!=null)?p.bCond[b]:1, frac=Math.max(0,1-cond);
   if(o==="corona"){const c={},base=costFor(p,b);for(const k in base)c[k]=Math.round(base[k]*frac);
@@ -56,10 +60,11 @@ function manageWorkshops(){
   for(const G of groups.values()){
     G.lose.sort((x,y)=>x.prof-y.prof);
     const nc=Math.min(G.lose.length,Math.max(1,Math.ceil(G.open*MANAGE_SHARE)));
-    for(let i=0;i<nc;i++){const{p,b}=G.lose[i];(p.bOff||(p.bOff={}))[b]=true;if(!p.bCond)p.bCond={};if(p.bCond[b]==null)p.bCond[b]=1}
+    for(let i=0;i<nc;i++){const{p,b,o,prof}=G.lose[i];(p.bOff||(p.bOff={}))[b]=true;if(!p.bCond)p.bCond={};if(p.bCond[b]==null)p.bCond[b]=1;
+      logBud(G.N,{o,b,p:p.id,act:"cierra",why:"pierde",prof})}
     G.win.sort((x,y)=>y.prof-x.prof);
     const nr=Math.min(G.win.length,Math.max(1,Math.ceil(G.closed*MANAGE_SHARE)));
-    for(let i=0;i<nr;i++){const{p,b,o}=G.win[i];reopen(p,b,o,G.N)}
+    for(let i=0;i<nr;i++){const{p,b,o,prof}=G.win[i];reopen(p,b,o,G.N);if(!(p.bOff&&p.bOff[b]))logBud(G.N,{o,b,p:p.id,act:"reabre",why:"gana",prof})}
   }
 }
 // ¿Hace falta MÁS capacidad de un bien en un reino? La OFERTA PREVISTA cuenta todo lo que llega a la plaza (campo,
@@ -164,6 +169,7 @@ function estateBuild(){
       const bcost=estateCostDinero(costFor(p,b));
       N.sWealth[e]-=bcost;recFlow(p.owner,e,"Construcción",-bcost);sink2(bcost);      // paga la obra de su riqueza
       p.buildQueue.push({b,hoursLeft:timeFor(p,b),owner:e});
+      logBud(N,{o:e,b,p:p.id,act:"invierte",cost:bcost});
       const o=outputOf(p,b,1),x=o.g&&_need[p.owner]&&_need[p.owner][o.g];if(x)x.sup+=o.q; // suma la capacidad recién encolada → las demás provincias ya la cuentan (no todas construyen lo mismo a la vez)
       break;                                             // una obra por provincia
     }
@@ -215,7 +221,7 @@ function budgetManage(){
     if(broke&&e.open.length){                            // no le llega: cierra lo que menos le rinde
       let x=null;for(const c of e.open)if(!x||c.val<x.val)x=c;
       if(x.val<0||purse<=0){(x.p.bOff||(x.p.bOff={}))[x.b]=true;if(!x.p.bCond)x.p.bCond={};if(x.p.bCond[x.b]==null)x.p.bCond[x.b]=1;
-        (N.budLog||(N.budLog=[])).push({h:S.hour,o:e.o,b:x.b,p:x.p.id,act:"cierra"})}
+        logBud(N,{o:e.o,b:x.b,p:x.p.id,act:"cierra",why:"presupuesto"})}
     } else if(e.closed.length){                          // le sobra: reabre el servicio cerrado más barato si su margen lo cubre holgado
       let x=null;for(const c of e.closed)if(!c.prod&&(!x||c.up<x.up))x=c;
       if(x&&margin-x.up>REOPEN_SHARE*inc&&purse>BUDGET_MONTHS*(e.up+x.up)){
@@ -225,7 +231,7 @@ function budgetManage(){
         else{const rep=estateCostDinero(costFor(x.p,x.b))*frac; if(N.sWealth[e.o]<rep)continue;
           if(rep>0){N.sWealth[e.o]-=rep;recFlow(e.n,e.o,"Construcción",-rep);sink2(rep)}}
         delete x.p.bOff[x.b]; x.p.bCond[x.b]=1;
-        (N.budLog||(N.budLog=[])).push({h:S.hour,o:e.o,b:x.b,p:x.p.id,act:"reabre"})
+        logBud(N,{o:e.o,b:x.b,p:x.p.id,act:"reabre",why:"presupuesto"})
       }
     }
   }
