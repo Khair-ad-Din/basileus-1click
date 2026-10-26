@@ -191,7 +191,7 @@ window.openFiscal=function(){
 window.setTax=function(kind,val){
   if(S.player<0)return;
   const N=S.nations[S.player], v=Math.max(0,(+val||0)/100);
-  if(kind==="feudal")N.taxRate=v; else if(kind==="alcabala")N.alcabala=v; else if(kind==="almoj")N.almojarifazgo=v;
+  if(kind==="feudal")N.taxRate=v; else if(kind==="alcabala")N.alcabala=v; else if(kind==="almoj")N.almojarifazgo=v; else if(kind==="posito")N.posito=v;
   refreshFiscal(); refreshTop();
 };
 // --- LOG ECONÓMICO EN VIVO: el motor acumula S.econLog (una foto por mes, ver economy.js logEconMonth). Un

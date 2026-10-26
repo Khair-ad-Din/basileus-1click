@@ -3,7 +3,7 @@ import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, 
 import { S } from "./state.js";
 import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildJobs, buildMax, buildSlots, canAfford, costFor, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationProvCount, nationStrength, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, resetTsyLedger, tsyAvail, tsyMonthBal, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, provProdMul, YR_TICKS, manorOf, MANOR_RENT, bOwnerOf } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
-import { GOODS2, LABEL2, REF2, NEED2, WANT2, BLD2, PRICE_SCALE, CROWN_STOCK, specialty2, obsolete2, siteOK2, transport, buildingProfit2, buildingOutput2, upkeepScale, granaryOf, foodGrowth, reliefQuote, landYield, landCap, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX } from "./economy2.js";
+import { GOODS2, LABEL2, REF2, NEED2, WANT2, BLD2, PRICE_SCALE, CROWN_STOCK, specialty2, obsolete2, siteOK2, transport, buildingProfit2, buildingOutput2, upkeepScale, granaryOf, foodGrowth, positoCap, positoMonth, POSITO_MONTHS, reliefQuote, landYield, landCap, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX } from "./economy2.js";
 import { calOf, MONTHS_ES, monthsToHarvest, harvestMonth } from "./economy.js";
 import { canvas, clampPan, repaintProvince } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
@@ -1258,6 +1258,13 @@ function refreshMercado(){
   refreshMercado2(body);
 }
 // ---- Cortes · Hacienda Real: ajustar los impuestos/gravámenes de la corona ----
+// PÓSITO en Hacienda: % del ingreso mensual de la corona para socorrer graneros solos (economy2 positoPass)
+function positoSlider(slider,N,nf,pct){
+  const P=positoMonth(N), cap=positoCap(N);
+  const tip=tipBox("Pósito",[{cols:["Concepto","Valor"],trows:[["Tope",nf(cap)+" /mes"],["Gastado",nf(P.spent)],["Socorros",P.n],["Actúa","a "+POSITO_MONTHS+" meses"]]}],"Este mes");
+  return slider(ph("posito")+" Pósito",N.posito||0,0,30,"posito","Socorre solo los graneros de tu reino que no llegan a la siega, del más urgente al menos, cuando les quedan "+POSITO_MONTHS+" meses de grano o menos. Gasta como mucho este porcentaje del ingreso mensual de la corona.",null,tip)
+    .replace("</span></div>","</span></div><div style='font-size:11px;color:#8aa478'>"+nf(P.spent)+" de "+nf(cap)+" "+COIN()+" este mes</div>");
+}
 function refreshFiscal(){
   const ov=document.getElementById("fiscalOverlay");
   if(!ov||ov.style.display!=="flex")return;
@@ -1282,6 +1289,7 @@ function refreshFiscal(){
   let h="<div style='text-align:center;font-size:12px;color:#9aa3ad;margin-bottom:11px'>Ingresos de la corona "+lab+": <b style='color:var(--title)'>"+nf(cb.inc)+" "+COIN()+"</b></div>";
   h+=slider2(ph("pecho")+" Pecho",feud,2,20,"feudal","Lo paga el campesino sobre lo que vende de su cosecha en la plaza. Más pecho, menos le queda para sus comodidades.",got("Pecho"));
   h+=slider2(ph("alcabala")+" Alcabala",alc,0,30,"alcabala","Sobre cada venta en la plaza del reino: el comprador paga el precio y la corona se queda su parte, así que el que vende cobra menos.",got("Alcabala"));
+  h+=positoSlider(slider,N,nf,pct);
   h+=slider2(ph("almojarifazgo")+" Almojarifazgo",alm,0,60,"almoj","Aduana sobre el comercio con otros reinos: resta margen al mercader.",got("Almojarifazgo"));
   h+="<div style='background:#1c2026;border:1px solid #2a2f36;border-radius:8px;padding:9px 13px;margin-bottom:4px;opacity:.75'>"+
     "<div style='display:flex;justify-content:space-between;align-items:baseline'><span>"+ph("diezmo")+" Diezmo"+iInfo("La décima de la cosecha va al clero: del grano, de lo que el granero vende en la plaza; del resto, de todo lo que se produce. Es derecho de la Iglesia: no se toca.")+"</span><span style='font-family:monospace'>"+pct(DIEZMO)+"%</span></div></div>";
