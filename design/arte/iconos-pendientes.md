@@ -73,6 +73,7 @@ El de los existentes en `assets/res/` y `assets/ui/` (para ver los once bienes j
 
 | Icono | Archivo | Motivo sugerido |
 |---|---|---|
+| Pósito | `ui/posito.png` | Arcón o silo de madera con una gavilla de trigo atada encima (el granero de socorro de la corona; Hacienda) |
 | Paz | `ui/paz.png` | Rama de olivo sobre un pergamino sellado |
 | Alianza | `ui/alianza.png` | Dos manos con guantelete estrechándose |
 | Enemigo | `ui/enemigo.png` | Calavera sobre dos espadas cruzadas |
