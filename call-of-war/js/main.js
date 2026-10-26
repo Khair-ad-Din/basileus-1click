@@ -14,7 +14,7 @@ import "./debug.js"; // registra window.dbg (herramientas de observación por co
 
 S.rand=mulberry32(193909);
 
-import { GH_PER_SEC, MW, MH, NATIONS, NPLAY, NEUTRAL, RES_KEYS, RES_STRAT, RES_TRADE, RES_LABEL, RES_SHORT, RES_ICON, START_STOCK, BUILDINGS, BUILD_CATS, newBuildings, UNITS, TERRAINS, TERRAIN_KEYS, GOLD_PER_WS, terrainFx, isSea } from "./config.js";
+import { GH_PER_SEC, MW, MH, NATIONS, NPLAY, NEUTRAL, RES_KEYS, RES_STRAT, RES_TRADE, RES_LABEL, RES_SHORT, START_STOCK, BUILDINGS, BUILD_CATS, newBuildings, UNITS, TERRAINS, TERRAIN_KEYS, GOLD_PER_WS, terrainFx, isSea } from "./config.js";
 
 /* ============================= Estado global ============================= */
 // El acumulador del bucle de simulación vive en S.acc (lo resetean también editor.js y
@@ -53,7 +53,7 @@ window.reliefSendProv=function(pid){
   const p=S.provs[pid]; if(!p||p.owner!==S.player)return;
   const q=reliefSend(S.player,p);
   if(q&&q.ok){const dn=p.duchy>=0&&S.duchies[p.duchy]?S.duchies[p.duchy].name:p.name;
-    log("🌾 Socorro a "+dn+": "+fmt(q.falta)+" de grano ("+fmt(q.almacen)+" del almacén) por "+fmt(q.total)+" ducados.")}
+    log("Socorro a "+dn+": "+fmt(q.falta)+" de grano ("+fmt(q.almacen)+" del almacén) por "+fmt(q.total)+" ducados.")}
   refreshBuildBar(); refreshTop(); refreshSide();
   if(window.refreshGranView)window.refreshGranView();   // mapa "Graneros" abierto: el ducado cambia de color y sale de la lista
 };
@@ -158,7 +158,8 @@ window.disbandUnit=function(id,type,n){const a=S.armies.find(x=>x.id===id);if(a)
 
 // panel de Ejército (botón ⚔ del menú de reino): ejércitos + reclutamiento global
 // respaldo del icono de un edificio si su sprite (assets/buildings/<clave>.png) no existe: emoji centrado
-window.bemoji=function(e){const s=document.createElement("span");s.className="bic bemoji";s.textContent=e;return s};
+// edificio sin sprite en assets/buildings: el hueco [ ] (guia-estilo §1b), grande en la tarjeta o pequeño en las listas
+window.bph=function(name,small){const s=document.createElement("span");s.className=small?"icoPh":"bic icoPh";s.dataset.ico=name;s.textContent="[ ]";return s};
 window.openArmyPanel=function(){S.armyPanelOpen=true;refreshArmyPanel();document.getElementById("armyPanel").style.display="block"};
 window.closeArmyPanel=function(){S.armyPanelOpen=false;document.getElementById("armyPanel").style.display="none"};
 // --- Tesorería (libro mayor navegable): abrir, cambiar de pestaña, entrar en una categoría y volver ---
@@ -202,9 +203,9 @@ window.startEconLog=async function(){
   S.econLogOn=true;
   try{
     await fetch("http://localhost:8124/",{method:"GET"});
-    log("📝 Log en vivo ACTIVO: enviando al recolector (puerto 8124). Déjalo correr; Claude lo lee del disco.");
+    log("Log en vivo ACTIVO: enviando al recolector (puerto 8124). Déjalo correr; Claude lo lee del disco.");
   }catch(e){
-    alert("El recolector de log (puerto 8124) no responde.\nPídele a Claude que lo arranque.\nMientras tanto puedes usar 💾 para descargar el log.");
+    alert("El recolector de log (puerto 8124) no responde.\nPídele a Claude que lo arranque.\nMientras tanto puedes descargar el log desde el menú del reino.");
   }
 };
 async function flushEconLog(){
@@ -215,7 +216,7 @@ async function flushEconLog(){
   try{
     await fetch("http://localhost:8124/log",{method:"POST",headers:{"Content-Type":"text/plain"},body});
     _logPosted=S.econLog.length;
-  }catch(e){ if(!_logWarned){console.warn("[econlog] recolector no disponible (puerto 8124); usa 💾 Descargar");_logWarned=true} }
+  }catch(e){ if(!_logWarned){console.warn("[econlog] recolector no disponible (puerto 8124); usa Descargar");_logWarned=true} }
   _logBusy=false;
 }
 setInterval(flushEconLog,2000);
@@ -225,7 +226,7 @@ window.downloadEconLog=function(){
   const url=URL.createObjectURL(blob),a=document.createElement("a");
   a.href=url; a.download="basileus_econ_"+(S.econLog[S.econLog.length-1].d||"log")+".jsonl";
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),1000);
-  log("💾 Log económico descargado ("+S.econLog.length+" meses).");
+  log("Log económico descargado ("+S.econLog.length+" meses).");
 };
 window.clearEconLog=function(){S.econLog.length=0;_logPosted=0;log("Log económico reiniciado.")};
 window.setTreasuryTab=function(t){S.treasuryTab=t;S.treasuryPath=[];refreshTreasury()};
@@ -359,7 +360,7 @@ window.pactSend=function(){
 window.giftSend=function(){
   const M=S.dipModal; if(!M||M.kind!=="gift"||!(M.gold>0))return;
   const n=M.target, r=giftGold(S.player,n,M.gold);
-  if(r.ok){report("🎁","<b>"+NATIONS[S.player].name+"</b> obsequia "+Math.round(r.given)+" ducados a <b>"+NATIONS[n].name+"</b>.",[S.player,n]);
+  if(r.ok){report("regalo","<b>"+NATIONS[S.player].name+"</b> obsequia "+Math.round(r.given)+" ducados a <b>"+NATIONS[n].name+"</b>.",[S.player,n]);
     log("Regalas "+Math.round(r.given)+" ducados a "+NATIONS[n].name+" (+"+r.gain.toFixed(1)+" de concordia).");}
   else if(r.reason==="sinfondos")log("No tienes ducados para ese regalo.");
   window.closeDipModal();
@@ -370,13 +371,13 @@ window.dipRival=function(n){
   const mine=(rivalsOf(S.player)||[]).includes(n);
   if(mine){
     removeRival(S.player,n);
-    report("⚔","<b>"+NATIONS[S.player].name+"</b> deja de considerar rival a <b>"+NATIONS[n].name+"</b>.",[S.player,n]);
+    report("guerra","<b>"+NATIONS[S.player].name+"</b> deja de considerar rival a <b>"+NATIONS[n].name+"</b>.",[S.player,n]);
     log("Retiras la rivalidad con "+NATIONS[n].name+".");
   }else{
     if((rivalsOf(S.player)||[]).length>=MAX_RIVALS){log("Ya tienes "+MAX_RIVALS+" rivales: retira uno primero.");return;}
     if(!canRival(S.player,n)){log("No puedes rivalizar a un aliado ni a un co-miembro de tu liga.");return;}
     addRival(S.player,n);
-    report("⚔","<b>"+NATIONS[S.player].name+"</b> declara públicamente su rivalidad con <b>"+NATIONS[n].name+"</b>.",[S.player,n]);
+    report("guerra","<b>"+NATIONS[S.player].name+"</b> declara públicamente su rivalidad con <b>"+NATIONS[n].name+"</b>.",[S.player,n]);
     log("Declaras rival a "+NATIONS[n].name+". Quien comparta este rival te verá con mejores ojos.");
   }
   if(S.dipModal&&S.dipModal.kind==="rival")window.closeDipModal(); // el popup se cierra al elegir
@@ -385,7 +386,7 @@ window.dipRival=function(n){
 window.dipSelect=function(n){window.openDiplo(n)};
 window.dipInsult=function(n){
   const r=insult(S.player,n);
-  if(r.ok){report("⚡","<b>"+NATIONS[S.player].name+"</b> lanza un insulto a <b>"+NATIONS[n].name+"</b>.",[S.player,n]);
+  if(r.ok){report("insulto","<b>"+NATIONS[S.player].name+"</b> lanza un insulto a <b>"+NATIONS[n].name+"</b>.",[S.player,n]);
     log("Insultas a "+NATIONS[n].name+". La tensión sube.");}
   refreshDiplomacy();
 };
@@ -401,21 +402,21 @@ window.dipEmbargo=function(n){
 window.dipPact=function(n,type){
   const r=formPact(S.player,n,type);
   if(r.ok){const nm=type==="alliance"?"una alianza":"un pacto de no agresión";
-    report("🤝","<b>"+NATIONS[S.player].name+"</b> y <b>"+NATIONS[n].name+"</b> firman "+nm+".",[S.player,n]);
+    report("alianza","<b>"+NATIONS[S.player].name+"</b> y <b>"+NATIONS[n].name+"</b> firman "+nm+".",[S.player,n]);
     log("Firmas "+nm+" con "+NATIONS[n].name+".");}
   else if(r.reason==="tension")log("Necesitas "+Math.ceil(r.need)+" de concordia más para eso.");
   refreshDiplomacy();
 };
 window.dipBreakPact=function(n){
   const r=breakPact(S.player,n);
-  if(r.ok){report("💔","<b>"+NATIONS[S.player].name+"</b> rompe su pacto con <b>"+NATIONS[n].name+"</b>.",[S.player,n]);
+  if(r.ok){report("ruptura","<b>"+NATIONS[S.player].name+"</b> rompe su pacto con <b>"+NATIONS[n].name+"</b>.",[S.player,n]);
     log("Rompes el pacto con "+NATIONS[n].name+". La traición dispara la tensión.");}
   refreshDiplomacy();
 };
 // Fabricar reclamación sobre un ducado del país seleccionado: guarda el casus belli y sube la tensión.
 window.dipClaim=function(duchyId){
   const r=fabricateClaim(S.player,duchyId);
-  if(r.ok){report("📜","<b>"+NATIONS[S.player].name+"</b> fabrica una reclamación sobre el <b>"+r.duchy+"</b> ("+NATIONS[r.owner].name+").",[S.player,r.owner]);
+  if(r.ok){report("tratado","<b>"+NATIONS[S.player].name+"</b> fabrica una reclamación sobre el <b>"+r.duchy+"</b> ("+NATIONS[r.owner].name+").",[S.player,r.owner]);
     log("Reclamas el "+r.duchy+". La tensión con "+NATIONS[r.owner].name+" sube.");}
   refreshDipModal();refreshDiplomacy(); // el popup de reclamaciones sigue abierto
 };
@@ -428,35 +429,35 @@ window.openLeagues=function(id){
 window.leagueBack=function(){S.leagueView=null;refreshLeagues();};
 window.leagueFound=function(){
   const el=document.getElementById("leagueName"), r=createLeague(S.player,el?el.value:"");
-  if(r.ok){report("🛡","<b>"+NATIONS[S.player].name+"</b> funda <b>"+r.league.name+"</b>, una liga defensiva.",[S.player]);log("Fundas "+r.league.name+".");}
+  if(r.ok){report("liga","<b>"+NATIONS[S.player].name+"</b> funda <b>"+r.league.name+"</b>, una liga defensiva.",[S.player]);log("Fundas "+r.league.name+".");}
   else log("No puedes fundar una liga ahora.");
   refreshLeagues();refreshDiplomacy();
 };
 window.leagueApply=function(id){
   if(!applyToLeague(S.player,id).ok){log("No puedes aplicar a esa liga.");return;}
   const r=resolveApplication(id,S.player), L=leagueOf(S.player); // los miembros (IA) votan al momento
-  if(r.admitted){report("🛡","<b>"+NATIONS[S.player].name+"</b> ingresa en <b>"+(L?L.name:"la liga")+"</b>.",[S.player]);log("Te admiten en la liga ("+r.yes+"/"+r.total+" votos).");}
+  if(r.admitted){report("liga","<b>"+NATIONS[S.player].name+"</b> ingresa en <b>"+(L?L.name:"la liga")+"</b>.",[S.player]);log("Te admiten en la liga ("+r.yes+"/"+r.total+" votos).");}
   else log("Tu solicitud fue rechazada ("+r.yes+"/"+r.total+" votos).");
   refreshLeagues();refreshDiplomacy();
 };
 window.leagueVote=function(ap,accept){
   const myL=leagueOf(S.player); if(!myL)return;
   const r=resolveApplication(myL.id,ap,accept);
-  if(r.admitted){report("🛡","<b>"+NATIONS[ap].name+"</b> ingresa en <b>"+myL.name+"</b>.",[S.player,ap]);log(NATIONS[ap].name+" admitido ("+r.yes+"/"+r.total+").");}
+  if(r.admitted){report("liga","<b>"+NATIONS[ap].name+"</b> ingresa en <b>"+myL.name+"</b>.",[S.player,ap]);log(NATIONS[ap].name+" admitido ("+r.yes+"/"+r.total+").");}
   else log(NATIONS[ap].name+" no fue admitido ("+r.yes+"/"+r.total+" votos).");
   refreshLeagues();refreshDiplomacy();
 };
 window.leagueExpel=function(m){
   const myL=leagueOf(S.player); if(!myL)return;
   const r=proposeExpel(myL.id,m,true);
-  if(r.expelled){report("🛡","<b>"+NATIONS[m].name+"</b> es expulsado de <b>"+myL.name+"</b>.",[S.player,m]);log(NATIONS[m].name+" expulsado ("+r.yes+"/"+r.total+").");}
+  if(r.expelled){report("liga","<b>"+NATIONS[m].name+"</b> es expulsado de <b>"+myL.name+"</b>.",[S.player,m]);log(NATIONS[m].name+" expulsado ("+r.yes+"/"+r.total+").");}
   else log("No hay mayoría para expulsar a "+NATIONS[m].name+" ("+r.yes+"/"+r.total+").");
   refreshLeagues();refreshDiplomacy();
 };
 window.leagueLeave=function(){
   const myL=leagueOf(S.player); if(!myL)return;
   const nm=myL.name, r=leaveLeague(S.player);
-  if(r.ok){report("🛡","<b>"+NATIONS[S.player].name+"</b> abandona <b>"+nm+"</b>.",[S.player]);log(r.disbanded?("Sales de "+nm+"; la liga se disuelve."):("Sales de "+nm+"."));}
+  if(r.ok){report("liga","<b>"+NATIONS[S.player].name+"</b> abandona <b>"+nm+"</b>.",[S.player]);log(r.disbanded?("Sales de "+nm+"; la liga se disuelve."):("Sales de "+nm+"."));}
   refreshLeagues();refreshDiplomacy();
 };
 // --- LLAMADA A LAS ARMAS (Fase 7): atacan a un aliado/co-miembro de liga → acudir a defender o rehusar. ---
@@ -465,7 +466,7 @@ window.openCallToArms=function(){if(!S.callToArms)return;document.getElementById
 window.acceptCallToArms=function(){
   const c=S.callToArms;if(!c)return;
   const joined=playerJoinDefense(c.coalId);
-  if(joined)report("⚔","<b>"+NATIONS[S.player].name+"</b> acude a defender a <b>"+NATIONS[c.victim].name+"</b>.",[S.player,c.victim,...c.attackers]);
+  if(joined)report("guerra","<b>"+NATIONS[S.player].name+"</b> acude a defender a <b>"+NATIONS[c.victim].name+"</b>.",[S.player,c.victim,...c.attackers]);
   else log("La guerra ya no admite tu ayuda.");
   S.callToArms=null;closeCallToArms();
   refreshDiplomacy();refreshTop();
@@ -473,7 +474,7 @@ window.acceptCallToArms=function(){
 window.rejectCallToArms=function(){
   const c=S.callToArms;if(!c){closeCallToArms();return;}
   const r=refuseDefense(S.player,c.victim); // rehusar SEVERA el vínculo + reputación (traición)
-  report("💔","<b>"+NATIONS[S.player].name+"</b> rehúsa acudir en defensa de <b>"+NATIONS[c.victim].name+"</b>.",[S.player,c.victim,...(r.hits||[])]);
+  report("ruptura","<b>"+NATIONS[S.player].name+"</b> rehúsa acudir en defensa de <b>"+NATIONS[c.victim].name+"</b>.",[S.player,c.victim,...(r.hits||[])]);
   log("Rehúsas la llamada a las armas de "+NATIONS[c.victim].name+((r.broke&&r.broke.length)?" (rompes "+r.broke.join(" y ")+"; tu reputación sufre).":"."));
   S.callToArms=null;closeCallToArms();
   refreshDiplomacy();refreshLeagues();
@@ -670,9 +671,9 @@ window.scaleProvPop=function(f){
   refreshEditorPanel();
 };
 function syncMapModeUI(){
-  const cur=S.terrainView?"Terreno":S.popView?"Población":S.resView?"Recursos":S.mktView?"Mercados":S.hubView?"Centros":S.goodView?"Comercio":S.granView?"Graneros":"Político";
+  const cur=S.terrainView?"Terreno":S.popView?"Población":S.resView?"Recursos":S.mktView?"Mercados":S.hubView?"Centros":S.goodView?"Bienes":S.granView?"Graneros":"Político";
   const mb=document.getElementById("mapBtn");
-  if(mb){mb.textContent="🗺 "+cur;mb.classList.toggle("active",cur!=="Político");}
+  if(mb){mb.innerHTML="<span class='icoPh' data-ico='mapa'>[ ]</span> "+cur;mb.classList.toggle("active",cur!=="Político");}
   const tl=document.getElementById("terrLegend");if(tl)tl.style.display=S.terrainView?"block":"none";
   const pl=document.getElementById("popLegend");if(pl)pl.style.display=S.popView?"block":"none";
   const rl=document.getElementById("resLegend");if(rl)rl.style.display=S.resView?"block":"none";
@@ -1046,7 +1047,7 @@ document.getElementById("ledgerBtn").addEventListener("click",()=>{refreshLedger
     kl.innerHTML="<b style='font-size:12px'>Mercados"+iInfo("Cada mancha de color es un mercado: las provincias del mismo color acuden todas a la misma plaza a vender su grano y comprar sus bienes. El círculo marca la plaza. Una mancha muy grande es una comarca sin ciudad cerca, que apenas comercia y vive de lo suyo: fundar allí una ciudad partiría la mancha y abarataría el flete de todo su entorno. La frontera no manda: se acude a la plaza más cercana aunque sea extranjera, pagando aduana.")+"</b>"+
       "<div class='row' style='margin:3px 0 0;color:#9aa3ad;font-size:10px'><span>"+
       "<span class='chip' style='background:#8fd0a8'></span> un color = un mercado</span>"+
-      "<span>⬤ la plaza</span></div>";
+      "<span><span class='icoPh' data-ico='plaza'>[ ]</span> la plaza</span></div>";
   }
 }
 {

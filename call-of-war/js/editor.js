@@ -459,7 +459,7 @@ function refreshEditorPanel(){
   h+="<div class='row'>"+tb("shape","Formas")+tb("merge","Fusionar")+tb("split","Dividir")+tb("roads","Caminos")+"</div>";
   h+="<div class='row'>"+tb("owner","Nación")+tb("duchy","Ducado")+tb("erase","Disolver")+"</div>";
   if(S.editTool==="shape"){
-    h+="<p style='font-size:11px;color:#9aa3ad;line-height:1.5'>Clic: seleccionar provincia · arrastra un vértice para remodelar · clic sobre un borde: nuevo vértice · clic derecho en un vértice: borrarlo · Esc: deseleccionar. Los cambios se aplican al soltar, pero no se guardan hasta que pulses <b>Guardar cambios</b>.</p>";
+    h+="<p style='font-size:11px;color:#9aa3ad;line-height:1.5'>Clic: seleccionar provincia<br>Arrastrar un vértice: remodelar<br>Clic sobre un borde: nuevo vértice<br>Clic derecho en un vértice: borrarlo<br>Esc: deseleccionar<br> Los cambios se aplican al soltar, pero no se guardan hasta que pulses <b>Guardar cambios</b>.</p>";
   }else if(S.editTool==="merge"){
     h+="<p style='font-size:11px;color:#9aa3ad;line-height:1.5'>Arrastra desde una provincia hasta otra: la primera se <b>disuelve dentro</b> de la segunda (que conserva su nombre).</p>";
   }else if(S.editTool==="roads"){
@@ -495,9 +495,9 @@ function refreshEditorPanel(){
     // al lado de "Renombrar", pero enterrado a media altura de un panel largo: Sergio lo tuvo
     // delante y no lo encontro, que en interfaz es lo mismo que no existir.
     h+="<h3 style='display:flex;justify-content:space-between;align-items:center;gap:6px'>"+
-       "<span>"+(p.capital?"★ ":"")+"Provincia seleccionada</span>"+
+       "<span>"+(p.capital?"<span class='icoPh' data-ico='capital'>[ ]</span> ":"")+"Provincia seleccionada</span>"+
        "<span onclick='deselectShape()' data-tip='Deseleccionar (Esc)' style='cursor:pointer;color:#9aa3ad;"+
-       "font-size:15px;line-height:1;padding:0 4px;border:1px solid #4a525b;border-radius:4px'>✕</span></h3>";
+       "font-size:15px;line-height:1;padding:0 4px;border:1px solid #4a525b;border-radius:4px'><i class='xk'></i></span></h3>";
     h+="<input id='provName' style='width:100%;background:#1c2127;border:1px solid #4a525b;color:#e8e4d8;padding:4px 6px;border-radius:4px' value='"+p.name.replace(/'/g,"&#39;").replace(/"/g,"&quot;")+"' onkeydown=\"if(event.key==='Enter')renameProvince()\">";
     h+="<div class='row' style='margin-top:6px'><button class='bbtn' style='width:100%' onclick='renameProvince()'>Renombrar</button></div>";
     h+="<div class='row sm'><span>Nación</span><span>"+NATIONS[p.owner].name+"</span></div>";

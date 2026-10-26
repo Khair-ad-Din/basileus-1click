@@ -1,5 +1,5 @@
 // ui.js
-import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, RES_DESC, RES_ICON, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, WAR_LOCK_HOURS, terrainFx, STRATA, STRATA_INFO, RES_ART, RES_CAT } from "./config.js";
+import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, RES_DESC, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, WAR_LOCK_HOURS, terrainFx, STRATA, STRATA_INFO, RES_ART, RES_CAT } from "./config.js";
 import { S } from "./state.js";
 import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildJobs, buildMax, buildSlots, canAfford, costFor, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationProvCount, nationStrength, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, resetTsyLedger, tsyAvail, tsyMonthBal, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, provProdMul, YR_TICKS, manorOf, MANOR_RENT, bOwnerOf } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
@@ -36,6 +36,8 @@ const ph=name=>"<span class='icoPh' data-ico='"+name+"' title='icono: "+name+"'>
 // Flecha de tendencia dibujada en CSS: up = sube (rojo: encarece), dn = baja (verde); upg/dnr = colores al revés.
 const arw=k=>"<i class='arw "+k+"'></i>";
 const COIN=()=>resImg("dinero");
+const bIcon=b=>"<img class='uic' src='assets/buildings/"+b+".png' alt='' onerror=\"this.replaceWith(bph('"+b+"',1))\">"; // icono pequeño de edificio
+const VSEP="<i class='vsep'></i>";   // divisor vertical entre columnas de una fila (en vez del "·")
 
 function log(msg){
   const el=document.getElementById("log");
@@ -51,11 +53,11 @@ function siegeLine(p){ // guarnición del fuerte y progreso de asedio en curso
   if(p.wasteland)return "";
   let s="";
   const g=fortGarrison(p);
-  if(g>0)s+="<div class='tl'>"+uiIcon('defensa')+" Guarnición <b>"+g+"</b> levas"+(p.buildings.fortaleza?" · Castillo "+p.buildings.fortaleza:" · capital de ducado")+"</div>";
+  if(g>0)s+="<div class='tl'>"+uiIcon('defensa')+" Guarnición <b>"+g+"</b> levas"+VSEP+(p.buildings.fortaleza?"Castillo "+p.buildings.fortaleza:"Capital de ducado")+"</div>";
   if(p.siege){
     const pct=Math.round(100*Math.min(1,p.siege.prog/p.siege.need));
     const meses=Math.max(0,Math.round((p.siege.need-p.siege.prog)/730));
-    s+="<div class='tl'><b style='color:#e0a17a'>⚔ ASEDIADA</b> por "+NATIONS[p.siege.by].name+" · "+pct+"% ("+meses+" meses)</div>";
+    s+="<div class='tl'><b style='color:#e0a17a'>"+uiIcon('espadas')+" Asedio</b> "+NATIONS[p.siege.by].name+VSEP+pct+"%"+VSEP+meses+" meses</div>";
   }
   return s;
 }
@@ -104,13 +106,13 @@ function topBookTips(cb){
 function refreshTop(){
   // la fecha avanza siempre (también en modo observador, sin jugador)
   const d0=new Date(START_DATE+S.hour*3600e3);
-  document.getElementById("dateBox").textContent=
-    "Día "+(1+(S.hour/24|0))+" · "+d0.getUTCDate()+" "+MESES[d0.getUTCMonth()]+" "+d0.getUTCFullYear()+
+  document.getElementById("dateBox").innerHTML=
+    "Día "+(1+(S.hour/24|0))+VSEP+d0.getUTCDate()+" "+MESES[d0.getUTCMonth()]+" "+d0.getUTCFullYear()+
     ", "+String(d0.getUTCHours()).padStart(2,"0")+":00";
   if(S.player<0){
     const bar=document.getElementById("resbar");
     bar.dataset.built="";  // fuerza reconstruir los chips al tomar el mando
-    bar.innerHTML="<span style='color:#9aa3ad;font-style:italic;padding:0 10px;font-size:13px'>👁 Modo observador — toma el mando de una nación desde el <b>Registro</b></span>";
+    bar.innerHTML="<span style='color:#9aa3ad;font-style:italic;padding:0 10px;font-size:13px'>"+ph('observador')+" Modo observador — toma el mando de una nación desde el <b>Registro</b></span>";
     return;
   }
   buildResBar();
@@ -152,8 +154,8 @@ function statv(val,brk){return "<b class='statv' data-tip=\""+ta(brk)+"\">"+val+
 // Línea del TERRENO: su nombre + su vocación por CATEGORÍA de producción (cereal/cultivo/ganado/bosque/
 // extractivo/mar). El campo produce según el terreno: verde ×>1 rinde bien, rojo ×<1 rinde mal. Cada bien
 // hereda el factor de su categoría. Va en su propia línea (separada del recurso estratégico).
-const VOC_CATS=[["cereal","🌾","Cereal"],["cultivo","🍇","Cultivo"],["carne","🐑","Ganadería"],
-  ["bosque","🪵","Bosque"],["extractivo","⛏","Minería"],["mar","🐟","Mar"]];
+const VOC_CATS=[["cereal",ph("cereal"),"Cereal"],["cultivo",ph("cultivo"),"Cultivo"],["carne",ph("ganaderia"),"Ganadería"],
+  ["bosque",resImg("madera"),"Bosque"],["extractivo",ph("mineria"),"Minería"],["mar",resImg("pescado"),"Mar"]];
 function terrainVocationHTML(p){
   if(p.wasteland||!p.terrain)return"";
   let cells="";
@@ -217,8 +219,8 @@ function refreshProvPanel(){
   const realmCap=S.nations[p.owner]&&S.nations[p.owner].capital===p.id;
   const duchyCap=p.duchy>=0&&S.duchies[p.duchy]&&S.duchies[p.duchy].cap===p.id;
   let statusIco="";
-  if(realmCap)statusIco=" <span data-tip=\"Capital del reino\" style='color:#e8c24a'>★</span>";
-  else if(duchyCap)statusIco=" <span data-tip=\"Capital de ducado\" style='color:#c9b06a;font-size:12px'>◼</span>";
+  if(realmCap)statusIco=" <span data-tip=\"Capital del reino\" style='color:#e8c24a'>"+ph('capital')+"</span>";
+  else if(duchyCap)statusIco=" <span data-tip=\"Capital de ducado\" style='color:#c9b06a;font-size:12px'>"+uiIcon('ducado')+"</span>";
   const lord=!p.wasteland&&p.owner<NPLAY;
   let s="<div class='ph'><h4 style='font-size:15px;color:#fff;margin:0;display:flex;justify-content:space-between;align-items:center'><span>"+p.name+statusIco+"</span>"+(lord?manorIcon(p):"")+"</h4></div><div class='bsum'>";
   if(p.wasteland){
@@ -229,13 +231,13 @@ function refreshProvPanel(){
   // Identidad: reino (clicable → diplomacia si es otro) + ducado
   s+="<div class='tl'>"+(p.owner!==S.player&&p.owner<NPLAY?nameChip(p.owner):escOf(p.owner)+" "+NATIONS[p.owner].name)+
      (p.duchy>=0&&S.duchies[p.duchy]?" <span style='color:#5c636b'>|</span> "+uiIcon('ducado')+" "+S.duchies[p.duchy].name:"")+"</div>";
-  if(isOccupied(p))s+="<div class='tl' style='color:#e0a17a'>⚔ Ocupada por "+escOf(p.occupier)+" "+NATIONS[p.occupier].name+"</div>";
+  if(isOccupied(p))s+="<div class='tl' style='color:#e0a17a'>"+uiIcon('espadas')+" Ocupada por "+escOf(p.occupier)+" "+NATIONS[p.occupier].name+"</div>";
   const sp=specialty2(p);
-  s+="<div class='tl'>"+(p.urban?"Ciudad":"Campo")+(sp.length?" · "+sp.map(g=>resImg(g)+" "+gLabel(g)).join(" · "):"")+"</div>";
+  s+="<div class='tl'>"+(p.urban?"Ciudad":"Campo")+(sp.length?VSEP+sp.map(g=>resImg(g)+" "+gLabel(g)).join(VSEP):"")+"</div>";
   s+=terrainVocationHTML(p);
   s+=provStats2(p,own)+siegeLine(p)+(own?tradeRow2(p):"")+pantryRow2(p)+landRow2(p)+produceRow2(p)+(own?yieldRows2(p):"");
   if(!own){const blist=Object.keys(BUILDINGS).filter(b=>lvlOf(p,b)>0);
-    if(blist.length)s+="<div class='bsec'>Construcciones</div><div style='display:flex;flex-wrap:wrap;gap:2px 12px'>"+blist.map(b=>"<span>"+BUILDINGS[b].icon+" "+BUILDINGS[b].label+(BUILDINGS[b].unique?"":" ×"+lvlOf(p,b))+"</span>").join("")+"</div>";}
+    if(blist.length)s+="<div class='bsec'>Construcciones</div><div style='display:flex;flex-wrap:wrap;gap:2px 12px'>"+blist.map(b=>"<span>"+bIcon(b)+" "+BUILDINGS[b].label+(BUILDINGS[b].unique?"":" ×"+lvlOf(p,b))+"</span>").join("")+"</div>";}
   const here=armiesIn(p.id);
   if(here.length){
     s+="<div class='bsec'>Ejércitos</div>";
@@ -264,10 +266,10 @@ function buildTilesHTML(p){
       // pie anclado abajo (misma posición en TODAS las tarjetas): mantenimiento · coste · tiempo/estado
       const upStr=B.up?"<div class='up'>"+uiIcon('mantenimiento')+" "+Object.keys(B.up).map(k=>resImg(k)+n1(B.up[k])).join(" ")+"/año</div>":"";
       let foot;
-      if(inQ){const q=p.buildQueue.find(q=>q.b===b);foot="<div class='ftime' style='color:var(--title)'>⏳ En obra · "+fmtDur(q.hoursLeft)+"</div>";}
-      else if(maxed)foot="<div class='ftime pos'>"+(B.unique?"✓ Construida":"Nivel máximo")+"</div>";
+      if(inQ){const q=p.buildQueue.find(q=>q.b===b);foot="<div class='ftime' style='color:var(--title)'>"+ph('obra')+" En obra"+VSEP+fmtDur(q.hoursLeft)+"</div>";}
+      else if(maxed)foot="<div class='ftime pos'>"+(B.unique?"<i class='ck'></i> Construida":"Nivel máximo")+"</div>";
       else foot="<div class='cost'>"+costLine(costFor(p,b),S.player)+"</div>"+
-          "<div class='ftime'>"+(block?"🔒 "+block:"⏱ "+fmtDur(timeFor(p,b)))+"</div>";
+          "<div class='ftime'>"+(block?ph('bloqueado')+" "+block:ph('tiempo')+" "+fmtDur(timeFor(p,b)))+"</div>";
       // beneficios (producción viva + efectos, cada uno en su línea) y empleos en su propia fila
       const jb=jobsOf(b);
       const jobsHtml=jb>0?"<div class='jobs2'>"+uiIcon('poblacion')+" "+fmtPop(jb)+" empleos/niv</div>":"";
@@ -277,7 +279,7 @@ function buildTilesHTML(p){
       let ctrl="";
       if(lvl>0){
         const prof=(BLD2[b]||(B.fx&&B.fx.prodAdd))?bldEcon2(p,b,lvl).profit:null;
-        const profTxt=prof!=null?"<span class='"+(prof>=0?"pos":"neg")+"' style='font-weight:bold'>"+(prof>=0?"+":"−")+fmt(Math.abs(prof))+"🪙/mes</span>":"<span></span>";
+        const profTxt=prof!=null?"<span class='"+(prof>=0?"pos":"neg")+"' style='font-weight:bold'>"+(prof>=0?"+":"−")+fmt(Math.abs(prof))+COIN()+"/mes</span>":"<span></span>";
         const bs="display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:11px;margin-top:5px;padding:3px 7px;border-radius:5px;cursor:pointer;";
         const own2=bOwnerOf(p,b);
         if(own2!=="corona"){ // v2: el taller de un estamento lo gestiona su dueño (lo cierra si no le rinde)
@@ -288,16 +290,16 @@ function buildTilesHTML(p){
           let rep=0;const base=costFor(p,b);for(const k in base)rep+=base[k]*(1-cond);rep=Math.round(rep);
           ctrl="<div style='"+bs+"background:#3a2a22' onclick='event.stopPropagation();toggleBuilding("+p.id+",\""+b+"\")' title='Reactivar (repara la parte degradada)'>"+
             "<span style='flex:1;height:5px;background:#241a14;border-radius:3px;overflow:hidden;display:inline-block'><i style='display:block;height:100%;background:#c98a3a;width:"+Math.round(cond*100)+"%'></i></span>"+
-            "<span style='color:#e0a860;white-space:nowrap'>▶ Reactivar"+(cond<0.995?" · "+rep+"🪙":"")+"</span></div>";
+            "<span style='color:#e0a860;white-space:nowrap'>"+ph('reactivar')+" Reactivar"+(cond<0.995?VSEP+rep+COIN():"")+"</span></div>";
         } else {
           ctrl="<div style='"+bs+"background:#262b31' onclick='event.stopPropagation();toggleBuilding("+p.id+",\""+b+"\")' title='Deshabilitar: libera dotación y deja de producir'>"+
-            profTxt+"<span style='color:#9aa3ad;white-space:nowrap'>⏸ Off</span></div>";
+            profTxt+"<span style='color:#9aa3ad;white-space:nowrap'>"+ph('pausa')+" Off</span></div>";
         }
       }
       // lo que añade el SIGUIENTE nivel (marginal), con la rentabilidad v2 del dueño
       const hint=((BLD2[b]||(B.fx&&B.fx.prodAdd))&&!maxed&&!inQ&&!block)?nextHint2(p,b,lvl):"";
       tiles+="<div class='"+cls+"'"+onclick+(off?" style='opacity:.62'":"")+" data-tip=\""+ta(B.desc)+"\">"+
-        "<img class='bic' src='assets/buildings/"+b+".png' alt='"+B.label+"' title='"+B.label+"' onerror=\"this.replaceWith(bemoji('"+B.icon+"'))\">"+
+        "<img class='bic' src='assets/buildings/"+b+".png' alt='"+B.label+"' title='"+B.label+"' onerror=\"this.replaceWith(bph('"+b+"'))\">"+
         "<div class='th'><span class='nm'>"+B.label+"</span>"+lvBadge+"</div>"+
         "<div class='ben'>"+benefitHTML2(p,b,lvl)+jobsHtml+hint+"</div>"+ctrl+
         "<div class='foot2'>"+upStr+foot+"</div></div>";
@@ -315,11 +317,11 @@ function roadsHTML(p){
     const kmR=Math.round(kmBetween(p,S.provs[b]));
     const key=roadKey(p.id,b), lvl=S.roads.get(key)||0;
     const q=S.roadQueue.find(q=>q.key===key);
-    const name="→ "+S.provs[b].name;
+    const name="<i class='arw r'></i> "+S.provs[b].name;
     if(q){
-      rows+="<div class='recrow'><span class='u'>"+name+" <span class='sm'>(→ nivel "+q.toLvl+")</span></span><span class='cst'>obra "+fmtDur(q.hoursLeft)+"</span></div>";
+      rows+="<div class='recrow'><span class='u'>"+name+" <span class='sm'>(<i class='arw r'></i> nivel "+q.toLvl+")</span></span><span class='cst'>obra "+fmtDur(q.hoursLeft)+"</span></div>";
     }else if(lvl>=3){
-      rows+="<div class='recrow'><span class='u'>"+name+"</span><span class='cst'>✓ nivel 3/3</span></div>";
+      rows+="<div class='recrow'><span class='u'>"+name+"</span><span class='cst'><i class='ck'></i> nivel 3/3</span></div>";
     }else{
       const dis=!canAfford(S.player,{dinero:800,madera:1200});
       const tag=lvl>0?"<span class='cst' style='margin-right:6px'>nivel "+lvl+"/3</span>":"<span class='sm'>("+kmR+" km)</span> ";
@@ -404,7 +406,7 @@ function refreshBuildBar(){refreshProvPanel();refreshProvTabs();refreshProvWin()
  * Dos pestañas: TESORO (el libro de la corona por partidas; cada una abre su detalle, y el total verifica la
  * suma) y ALMACÉN (lo que guarda la corona para obras y ejército). Ver refreshTreasury2 (bloque v2, abajo). */
 function tsyCrumb(path){ // migas de pan de navegación (volver a niveles superiores)
-  let h="<span class='tcrumbi' onclick='treasuryBack(0)'>"+(S.treasuryTab==="tesoro"?"🪙 Tesoro":"📦 Almacén")+"</span>";
+  let h="<span class='tcrumbi' onclick='treasuryBack(0)'>"+(S.treasuryTab==="tesoro"?COIN()+" Tesoro":ph('almacen')+" Almacén")+"</span>";
   for(let i=0;i<path.length;i++){
     const label=(S.treasuryTab==="inv"&&i===0)?RES_LABEL[path[i]]:path[i];
     h+=" › "+(i===path.length-1?"<b class='tcrumbc'>"+label+"</b>":"<span class='tcrumbi' onclick='treasuryBack("+(i+1)+")'>"+label+"</span>");
@@ -428,16 +430,16 @@ function buildRealmMenu(){
     {img:"btn_tesoreria",on:"openTreasury()"},
     {img:"btn_leyes",dis:1},
     {img:"btn_estamentos",on:"openEstates()"},
-    {emoji:"🕊",on:"openDiplo()",title:"Diplomacia: ligas, alianzas y rivalidades (clic derecho en un país para su diplomacia)"},
-    {emoji:"⚖️",on:"openFiscal()",title:"Cortes · Hacienda (ajustar impuestos)"},
-    {emoji:"🏪",on:"openMercado()",title:"Mercado"},
-    {emoji:"📝",on:"startEconLog()",title:"Log económico EN VIVO (elige un fichero; se rellena mientras juegas)"},
-    {emoji:"💾",on:"downloadEconLog()",title:"Descargar el log económico acumulado (JSON)"}
+    {ico:"diplomacia",on:"openDiplo()",title:"Diplomacia: ligas, alianzas y rivalidades (clic derecho en un país para su diplomacia)"},
+    {ico:"leyes",on:"openFiscal()",title:"Hacienda (ajustar impuestos)"},
+    {ico:"mercado",on:"openMercado()",title:"Mercado"},
+    {ico:"registro",on:"startEconLog()",title:"Log económico EN VIVO (elige un fichero; se rellena mientras juegas)"},
+    {ico:"guardar",on:"downloadEconLog()",title:"Descargar el log económico acumulado (JSON)"}
   ];
   el.innerHTML="<div class='rmEscudo' title='"+N.name+"'><span class='rmEscCol' style='background:"+N.color+"'></span>"+
       "<img src='assets/ui/escudo.png' alt='"+N.name+"'></div>"+
-    btns.map(b=>b.emoji
-      ?"<span class='rmBtnEmoji' title='"+b.title+"' onclick='"+b.on+"'>"+b.emoji+"</span>"
+    btns.map(b=>b.ico
+      ?"<span class='rmBtnEmoji' title='"+b.title+"' onclick='"+b.on+"'>"+(b.ico==="leyes"?uiIcon("leyes"):ph(b.ico))+"</span>"
       :"<img class='rmBtnImg"+(b.dis?" dis":"")+"' src='assets/ui/"+b.img+".png' alt=''"+
         (b.dis?" title='Próximamente'":" onclick='"+b.on+"'")+">").join("");
   el.className="show";
@@ -450,7 +452,7 @@ function refreshMetricsLog(){
   let nprov=0,troops=0;for(const p of S.provs)if(p.owner===S.player&&!p.wasteland)nprov++;for(const a of S.armies)if(a.nation===S.player)troops+=armyCount(a);
   let realmPop=0;for(const p of S.provs)if(p.owner===S.player&&!p.wasteland)realmPop+=p.pop||0;
   let h="<div class='mlog'><span class='sh' style='background:"+N.color+"'></span>"+
-    "<div><b>"+N.name+"</b><div style='color:#9aa3ad;font-size:11px'>"+nprov+" provincias · "+uiIcon('poblacion')+" "+fmtPop(realmPop)+"<br>"+Math.round(troops)+" tropas</div></div></div>";
+    "<div><b>"+N.name+"</b><div style='color:#9aa3ad;font-size:11px'>"+nprov+" provincias"+VSEP+uiIcon('poblacion')+" "+fmtPop(realmPop)+"<br>"+Math.round(troops)+" tropas</div></div></div>";
   // balance real del tesoro (libro de la corona) + almacén de la corona
   {
     const cb=crownBook("prev");
@@ -458,17 +460,17 @@ function refreshMetricsLog(){
     const kpi=(lab,v)=>"<div class='kpi'><span>"+lab+"</span><span class='v "+(v<0?"neg":"pos")+"'>"+(v>=0?"+":"−")+fmt(Math.abs(v))+"</span></div>";
     h+=kpi(resImg("dinero")+" Ingresos",cb.inc)+kpi(resImg("dinero")+" Gastos",cb.exp)+kpi("<b>Balance</b>",cb.net);
     const R=S.nations[S.player].res,ks=Object.keys(R).filter(k=>k!=="dinero"&&Math.abs(tsyMonthBal(k))>=0.5);
-    if(ks.length){h+="<div class='kpicat'>📦 Almacén de la corona</div>";for(const k of ks)h+=kpi(resImg(k)+" "+gLabel(k),tsyMonthBal(k))}
+    if(ks.length){h+="<div class='kpicat'>"+ph('almacen')+" Almacén de la corona</div>";for(const k of ks)h+=kpi(resImg(k)+" "+gLabel(k),tsyMonthBal(k))}
   }
   const mine=S.armies.filter(a=>a.nation===S.player);
   h+="<h3>Ejércitos desplegados <span style='color:#7a828b;font-weight:normal'>"+mine.length+"</span></h3>";
-  if(!mine.length)h+="<div class='kpi'><span style='color:#7a828b'>Ninguno. Recluta en ⚔ Ejército.</span></div>";
+  if(!mine.length)h+="<div class='kpi'><span style='color:#7a828b'>Ninguno. Recluta en "+uiIcon('espadas')+" Ejército.</span></div>";
   for(const a of mine){
     const sel=S.selArmy&&S.selArmy.id===a.id;
-    const loc=a.path.length?"→ "+S.provs[a.path[a.path.length-1]].name:S.provs[a.prov].name;
+    const loc=a.path.length?"<i class='arw r'></i> "+S.provs[a.path[a.path.length-1]].name:S.provs[a.prov].name;
     const comp=Object.keys(a.units).filter(k=>a.units[k]>0.5).map(k=>Math.round(a.units[k])+" "+UNITS[k].label).join(", ");
     h+="<div class='armrow"+(sel?" sel":"")+"' onclick='selectArmyId("+a.id+")'>"+
-      "<div><b>"+fmt(armyPops(a))+" "+uiIcon('soldadesca')+"</b> <span class='comp'>· "+loc+"</span><div class='comp'>"+comp+"</div></div>"+
+      "<div><b>"+fmt(armyPops(a))+" "+uiIcon('soldadesca')+"</b> <span class='comp'>"+VSEP+loc+"</span><div class='comp'>"+comp+"</div></div>"+
       "<span class='comp'>"+armySpd(a)+" km/d</span></div>";
   }
   // el DETALLE del ejército seleccionado (composición, licenciar, suministro, mover) vive ahora en
@@ -483,12 +485,12 @@ function refreshArmyPanel(){
   let L="<div class='col'><h2>Tus ejércitos ("+mine.length+")</h2>";
   if(!mine.length)L+="<p class='sm' style='color:#9aa3ad'>No tienes ejércitos. Recluta unidades a la derecha; al completarse aparecerán en su provincia.</p>";
   for(const a of mine){
-    const loc=a.path.length?"en marcha → "+S.provs[a.path[a.path.length-1]].name:"en "+S.provs[a.prov].name;
+    const loc=a.path.length?"en marcha <i class='arw r'></i> "+S.provs[a.path[a.path.length-1]].name:"en "+S.provs[a.prov].name;
     const comp=Object.keys(a.units).filter(k=>a.units[k]>0.5).map(k=>Math.round(a.units[k])+"× "+UNITS[k].label).join(", ")||"—";
     L+="<div class='acard'><div class='top'><b>"+Math.round(armyCount(a))+" unidades</b>"+
       "<button class='bbtn' onclick='selectArmyId("+a.id+");closeArmyPanel()'>Seleccionar</button></div>"+
       "<div class='comp'>"+comp+"</div>"+
-      "<div class='stat'>"+loc+" · Ataque "+armyAtk(a).toFixed(1)+" · Defensa "+armyDef(a).toFixed(1)+" · "+armySpd(a)+" km/día</div></div>";
+      "<div class='stat'>"+loc+VSEP+"Ataque "+armyAtk(a).toFixed(1)+VSEP+"Defensa "+armyDef(a).toFixed(1)+VSEP+armySpd(a)+" km/día</div></div>";
   }
   L+="</div>";
   const provs=S.provs.filter(p=>p.owner===S.player&&!p.wasteland).sort((a,b)=>a.name.localeCompare(b.name));
@@ -497,7 +499,7 @@ function refreshArmyPanel(){
   if(!provs.length)R+="<p class='sm' style='color:#9aa3ad'>Sin provincias donde reclutar.</p>";
   else{
     R+="<select class='recSel' onchange='setRecruitProv(this.value)'>"+
-      provs.map(p=>"<option value='"+p.id+"'"+(p.id===S.recruitProv?" selected":"")+">"+p.name+(p.capital?" ★":"")+"</option>").join("")+"</select>";
+      provs.map(p=>"<option value='"+p.id+"'"+(p.id===S.recruitProv?" selected":"")+">"+p.name+(p.capital?" "+ph('capital'):"")+"</option>").join("")+"</select>";
     const p=S.provs[S.recruitProv];
     R+="<div class='sm' style='margin:4px 0 6px;color:#c9c2ae'>"+uiIcon('soldadesca')+" Soldadesca disponible: <b>"+fmtPop(soldAvail(p))+"</b> / "+fmtPop(soldCap(p))+" <span style='color:#9aa3ad'>(de "+fmtPop(p.pop)+" hab)</span></div>";
     let any=false;
@@ -534,18 +536,18 @@ function refreshArmyWin(){
     return;
   }
   const P=S.provs[a.prov];
-  const loc=a.path.length?"en marcha → "+S.provs[a.path[a.path.length-1]].name:"en "+(P?P.name:"—");
+  const loc=a.path.length?"en marcha <i class='arw r'></i> "+S.provs[a.path[a.path.length-1]].name:"en "+(P?P.name:"—");
   let s="<div class='bsum'>";
   // cabecera: identidad izquierda, POPS soldados a la derecha
   s+="<div class='ph' style='display:flex;justify-content:space-between;align-items:center'>"+
      "<h4 style='font-size:15px;color:#fff;margin:0'>"+uiIcon('espadas')+" Ejército</h4>"+
      "<b style='font-size:14px'>"+fmt(armyPops(a))+" "+uiIcon('soldadesca')+"</b></div>";
-  s+="<div class='tl' style='color:#9aa3ad'>"+loc+" · ⚔ "+armyAtk(a).toFixed(1)+" · 🛡 "+armyDef(a).toFixed(1)+" · "+armySpd(a)+" km/d</div>";
+  s+="<div class='tl' style='color:#9aa3ad'>"+loc+VSEP+uiIcon('espadas')+" "+armyAtk(a).toFixed(1)+VSEP+uiIcon('defensa')+" "+armyDef(a).toFixed(1)+VSEP+armySpd(a)+" km/d</div>";
   if(a.path.length)s+="<div class='uline'><span class='sm' style='color:#c9a86a'>En marcha</span><button class='mini red' onclick='haltArmy()'>Detener</button></div>";
-  else if(a.muster&&S.hour<a.muster.until)s+="<div class='tl' style='color:#c9a86a'>⏳ Reuniendo tropas…</div>";
+  else if(a.muster&&S.hour<a.muster.until)s+="<div class='tl' style='color:#c9a86a'>"+ph('obra')+" Reuniendo tropas…</div>";
   // COMPOSICIÓN (tabla Tipo | Cantidad | Pops) + botón Editar
   s+="<div class='bsec' style='display:flex;justify-content:space-between;align-items:center'>"+
-     "<span>Composición</span><button class='mini"+(S.armyEdit?" on":"")+"' onclick='toggleArmyEdit()'>✎ Editar</button></div>";
+     "<span>Composición</span><button class='mini"+(S.armyEdit?" on":"")+"' onclick='toggleArmyEdit()'>"+ph('editar')+" Editar</button></div>";
   s+="<table class='ctab'><tr><th>Tipo</th><th>Cantidad</th><th>Pops</th></tr>";
   let anyU=false;
   for(const k in a.units){if(a.units[k]<0.5)continue;anyU=true;const n=Math.round(a.units[k]);
@@ -559,7 +561,7 @@ function refreshArmyWin(){
   for(const u of rec){
     const on=S.recruitUnit===u;
     s+="<div class='uline'><button class='rbtn"+(on?" on":"")+"' onclick='setRecruitUnit(\""+u+"\")'>"+
-       (on?"✓ ":"")+UNITS[u].label+" <span style='color:#9aa3ad'>· "+fmt(UNITS[u].mano)+" "+uiIcon('soldadesca')+"</span></button>"+
+       (on?"<i class='ck'></i> ":"")+UNITS[u].label+" <span style='color:#9aa3ad'>"+VSEP+fmt(UNITS[u].mano)+" "+uiIcon('soldadesca')+"</span></button>"+
        (u==="miliciano"?"<span class='qlev'><button class='mini' onclick='raiseLevies("+a.id+",5)'>+5</button> <button class='mini' onclick='raiseLevies("+a.id+",10)'>+10</button></span>":"")+"</div>";
   }
   if(S.recruitUnit)s+="<div class='tl' style='color:#9fb878;font-size:11px'>Clic en el mapa en las provincias con <b>+</b> para reclutar (las tropas marchan a reunirse con este ejército).</div>";
@@ -572,8 +574,8 @@ function refreshArmyWin(){
   // que sostienen las arcas nacionales. Alineado bajo los % de arriba. (Sin la palabra "Consumo".)
   const localM=foodMonth*(sup/100), natM=foodMonth*(1-sup/100), fp=armyForage(a);
   let ltip="De las reservas LOCALES: "+n1(localM)+" grano/mes\nForrajeado de la provincia que pisa y sus vecinas (a prorrata de la reserva de cada una):\n";
-  if(fp.length)for(const it of fp)ltip+="  · "+it.p.name+": "+n1(it.amt*730)+"/mes\n";
-  else ltip+="  · sin reservas locales alrededor";
+  if(fp.length)for(const it of fp)ltip+="  "+it.p.name+": "+n1(it.amt*730)+"/mes\n";
+  else ltip+="  Sin reservas locales alrededor";
   s+="<div class='prow'>"+
      "<b class='statv' id='supLoc' data-tip=\""+ta(ltip)+"\"><span class='n'>"+n1(localM)+"</span> "+resImg('grano')+"/mes</b>"+
      "<b class='statv' data-tip=\""+ta("De las arcas NACIONALES: "+n1(natM)+" grano/mes\nSale del Grano del tesoro del reino.")+"\" id='supNat'><span class='n'>"+n1(natM)+"</span> "+resImg('grano')+"/mes</b></div>";
@@ -585,7 +587,7 @@ function refreshArmyWin(){
 function refreshArmyEdit(a){
   const ed=document.getElementById("armyEdit");if(!ed)return;
   if(!S.armyEdit||!a){ed.className="";ed.style.display="none";return}
-  let s="<div class='winh' style='font-size:13px'>✎ Licenciar</div>"+
+  let s="<div class='winh' style='font-size:13px'>"+ph('editar')+" Licenciar</div>"+
     "<div class='sm' style='color:#9aa3ad;margin-bottom:6px'>Devuelve la soldadesca a sus provincias de origen y baja el consumo.</div>";
   let any=false;
   for(const k in a.units){if(a.units[k]<0.5)continue;any=true;const n=Math.round(a.units[k]);
@@ -623,7 +625,7 @@ const escOf=(n,big,lead)=>"<span class='esc"+(big?" escL":"")+(lead?" lead":"")+
 // Desglose de la relación como tooltip ESTRUCTURADO (data-tiph): una fila por aporte + total.
 function relTipHTML(a,b){
   const br=relBreakdown(a,b), v=getRel(a,b), t=relTier(v);
-  let h="<div class='tipT'>"+NATIONS[a].name+" · "+NATIONS[b].name+"</div>";
+  let h="<div class='tipT'>"+NATIONS[a].name+" y "+NATIONS[b].name+"</div>";
   if(br.length)for(const x of br)h+="<div class='tipR'><span>"+x.label+"</span><span style='color:"+(x.v>=0?"#8fb06a":"#d08080")+"'>"+(x.v>0?"+":"")+Math.round(x.v)+"</span></div>";
   else h+="<div class='tipR'><span style='color:#7a828b'>Sin modificadores</span><span>0</span></div>";
   h+="<div class='tipR tipTot'><span>"+t.label+"</span><span style='color:"+t.color+"'>"+(v>0?"+":"")+Math.round(v)+"</span></div>";
@@ -634,7 +636,7 @@ const relBarTip=(a,b)=>"<span data-tiph=\""+ta(relTipHTML(a,b))+"\" style='curso
 const chipOf=escOf, chipT=escOf;
 const nameChip=n=>"<span class='dChip' onclick='openDiplo("+n+")' title='Diplomacia con "+NATIONS[n].name+"'>"+escOf(n)+" "+NATIONS[n].name+"</span>";
 // igual, marcando al LÍDER de la liga con el borde dorado
-const nameChipL=(n,lead)=>"<span class='dChip' onclick='openDiplo("+n+")' title='"+(lead?"Fundador · ":"")+NATIONS[n].name+"'>"+escOf(n,0,lead)+" "+NATIONS[n].name+"</span>";
+const nameChipL=(n,lead)=>"<span class='dChip' onclick='openDiplo("+n+")' title='"+(lead?"Fundador: ":"")+NATIONS[n].name+"'>"+escOf(n,0,lead)+" "+NATIONS[n].name+"</span>";
 const dDash="<span class='dim'>—</span>";
 // aliados (pacto de alianza) de n
 function alliesOf(n){const o=[];for(let m=0;m<NPLAY;m++)if(m!==n&&S.nations[m]&&S.nations[m].alive&&hasPact(n,m)==="alliance")o.push(m);return o;}
@@ -646,23 +648,23 @@ function diploOwnHTML(){
   const me=S.player;
   const myL=leagueOf(me), myA=alliesOf(me), myR=rivalsOf(me)||[], byR=rivaledBy(me);
   let h="";
-  if(S.hour<WAR_LOCK_HOURS)h+="<div class='sm' style='color:#c9a86a;margin-bottom:8px'>⚔ Paz obligada: no se puede declarar la guerra hasta dentro de "+fmtDur(WAR_LOCK_HOURS-S.hour)+".</div>";
+  if(S.hour<WAR_LOCK_HOURS)h+="<div class='sm' style='color:#c9a86a;margin-bottom:8px'>"+uiIcon('espadas')+" Paz obligada: no se puede declarar la guerra hasta dentro de "+fmtDur(WAR_LOCK_HOURS-S.hour)+".</div>";
   const rivFull=myR.length>=MAX_RIVALS;
   h+="<div class='dipDetail'><div style='margin-bottom:6px'>"+escOf(me,1)+" <b style='font-size:15px'>"+NATIONS[me].name+"</b></div><div class='dGrid'>"+
-     "<div><span class='dLbl'>🛡 Liga</span>"+(myL?("<span class='dChip' onclick='openLeagues("+myL.id+")'>🛡 <b>"+myL.name+"</b></span> <span class='sm' style='color:#7a828b'>("+myL.members.length+")</span>"):("<span class='dim'>—</span> <button class='bbtn sm' onclick='openLeagues()' title='Ligas'>+</button>"))+"</div>"+
-     "<div><span class='dLbl'>🤝 Aliados</span>"+(myA.length?myA.map(nameChip).join(" "):dDash)+"</div>"+
-     "<div><span class='dLbl'>⚔ Rivales</span>"+(myR.length?myR.map(nameChip).join(" "):"")+
+     "<div><span class='dLbl'>"+uiIcon('defensa')+" Liga</span>"+(myL?("<span class='dChip' onclick='openLeagues("+myL.id+")'>"+uiIcon('defensa')+" <b>"+myL.name+"</b></span> <span class='sm' style='color:#7a828b'>("+myL.members.length+")</span>"):("<span class='dim'>—</span> <button class='bbtn sm' onclick='openLeagues()' title='Ligas'>+</button>"))+"</div>"+
+     "<div><span class='dLbl'>"+ph('alianza')+" Aliados</span>"+(myA.length?myA.map(nameChip).join(" "):dDash)+"</div>"+
+     "<div><span class='dLbl'>"+uiIcon('espadas')+" Rivales</span>"+(myR.length?myR.map(nameChip).join(" "):"")+
        "<button class='bbtn sm'"+(rivFull?" disabled title='Ya tienes "+MAX_RIVALS+" rivales'":" onclick='openDipModal(&quot;rival&quot;)' title='Declarar rival'")+">+</button>"+
        "<span class='sm' style='color:#7a828b'>"+myR.length+"/"+MAX_RIVALS+"</span></div>"+
-     "<div><span class='dLbl'>☠ Enemigos</span>"+(byR.length?byR.map(nameChip).join(" "):dDash)+"</div>"+
+     "<div><span class='dLbl'>"+ph('enemigo')+" Enemigos</span>"+(byR.length?byR.map(nameChip).join(" "):dDash)+"</div>"+
      "</div></div>";
   // ENTIDADES: ligas
-  h+="<div class='dSecT'>🛡 Ligas <span class='statv' data-tip='Organización defensiva multi-miembro: atacar a un miembro convoca a los demás a defenderlo. El escudo con borde dorado es el fundador.'>ⓘ</span></div>";
+  h+="<div class='dSecT'>"+uiIcon('defensa')+" Ligas <span class='statv' data-tip='Organización defensiva multi-miembro: atacar a un miembro convoca a los demás a defenderlo. El escudo con borde dorado es el fundador.'>ⓘ</span></div>";
   if(S.leagues.length){
     h+="<div class='dCards'>";
     for(const L of S.leagues){
       const mine=L.members.includes(me);
-      h+="<div class='dCard"+(mine?" mine":"")+"'><div class='dCardT'><span class='dChip' onclick='openLeagues("+L.id+")'>🛡 "+L.name+"</span> <span class='sm' style='color:#7a828b'>("+L.members.length+"/"+MAX_LEAGUE+")</span></div>"+
+      h+="<div class='dCard"+(mine?" mine":"")+"'><div class='dCardT'><span class='dChip' onclick='openLeagues("+L.id+")'>"+uiIcon('defensa')+" "+L.name+"</span> <span class='sm' style='color:#7a828b'>("+L.members.length+"/"+MAX_LEAGUE+")</span></div>"+
          "<div>"+L.members.map(m=>nameChipL(m,m===L.founder)).join(" ")+"</div></div>";
     }
     h+="</div>";
@@ -675,8 +677,8 @@ function diploOwnHTML(){
     if(!S.nations[a]||!S.nations[a].alive||!S.nations[b]||!S.nations[b].alive)continue;
     pairs.push([a,b]);
   }
-  h+="<div class='dSecT'>🤝 Alianzas</div>";
-  h+=pairs.length?("<div class='dPairs'>"+pairs.map(x=>"<span class='dPair"+((x[0]===me||x[1]===me)?" mine":"")+"'>"+nameChip(x[0])+" ↔ "+nameChip(x[1])+"</span>").join("")+"</div>"):"<div class='dim sm'>Ninguna.</div>";
+  h+="<div class='dSecT'>"+ph('alianza')+" Alianzas</div>";
+  h+=pairs.length?("<div class='dPairs'>"+pairs.map(x=>"<span class='dPair"+((x[0]===me||x[1]===me)?" mine":"")+"'>"+nameChip(x[0])+" – "+nameChip(x[1])+"</span>").join("")+"</div>"):"<div class='dim sm'>Ninguna.</div>";
   // TABLA por nación
   h+="<div class='dSecT'>Por nación</div>";
   h+="<table class='dip'><tr><th>Nación</th><th>Liga</th><th>Aliados</th><th>Rivales</th><th>Enemigos</th><th>Relación</th><th>Estado</th></tr>";
@@ -686,7 +688,7 @@ function diploOwnHTML(){
     const L=leagueOf(n), A=alliesOf(n), R=rivalsOf(n)||[], E=rivaledBy(n), v=getRel(me,n), t=relTier(v);
     h+="<tr class='dipRow' onclick='openDiplo("+n+")'>";
     h+="<td class='dipName'>"+escOf(n)+" "+NATIONS[n].name+"</td>";
-    h+="<td class='sm'>"+(L?("🛡 "+L.name):dDash)+"</td>";
+    h+="<td class='sm'>"+(L?(uiIcon('defensa')+" "+L.name):dDash)+"</td>";
     h+="<td class='sm'>"+(A.length?A.map(m=>escOf(m)).join(" "):dDash)+"</td>";
     h+="<td class='sm'>"+(R.length?R.map(m=>escOf(m)).join(" "):dDash)+"</td>";
     h+="<td class='sm'>"+(E.length?E.map(m=>escOf(m)).join(" "):dDash)+"</td>";
@@ -703,36 +705,36 @@ function diploNationHTML(n){
   const me=S.player, v=getRel(me,n), t=relTier(v);
   const L=leagueOf(n), A=alliesOf(n), R=rivalsOf(n)||[], E=rivaledBy(n);
   const locked=S.hour<WAR_LOCK_HOURS;
-  let h="<div style='margin-bottom:8px'><button class='bbtn' onclick='diploBack()'>←</button></div>";
+  let h="<div style='margin-bottom:8px'><button class='bbtn' onclick='diploBack()'><i class='arw l'></i></button></div>";
   h+="<div class='dipDetail'>";
   h+="<div style='margin-bottom:4px'>"+escOf(n,1)+" <b style='font-size:15px'>"+NATIONS[n].name+"</b> "+
-     "<span style='color:"+t.color+";font-weight:600'>"+(v>0?"+":"")+Math.round(v)+" · "+t.label+"</span>"+
-     (isRival(me,n)?" <span class='dPair mine' style='padding:1px 6px'>⚔ Rivalidad</span>":"")+"</div>";
+     "<span style='color:"+t.color+";font-weight:600'>"+(v>0?"+":"")+Math.round(v)+VSEP+t.label+"</span>"+
+     (isRival(me,n)?" <span class='dPair mine' style='padding:1px 6px'>"+uiIcon('espadas')+" Rivalidad</span>":"")+"</div>";
   h+="<div style='margin:5px 0 8px'>"+relBarTip(me,n)+"</div>"; // el desglose vive en el hover de la barra
   h+="<div class='dGrid'>"+
-     "<div><span class='dLbl'>🛡 Liga</span>"+(L?("<span class='dChip' onclick='openLeagues("+L.id+")'>🛡 <b>"+L.name+"</b></span> <span class='sm' style='color:#7a828b'>("+L.members.length+")</span>"):dDash)+"</div>"+
-     "<div><span class='dLbl'>🤝 Aliados</span>"+(A.length?A.map(nameChip).join(" "):dDash)+"</div>"+
-     "<div><span class='dLbl'>⚔ Rivales</span>"+(R.length?R.map(nameChip).join(" "):dDash)+"</div>"+
-     "<div><span class='dLbl'>☠ Enemigos</span>"+(E.length?E.map(nameChip).join(" "):dDash)+"</div>"+
+     "<div><span class='dLbl'>"+uiIcon('defensa')+" Liga</span>"+(L?("<span class='dChip' onclick='openLeagues("+L.id+")'>"+uiIcon('defensa')+" <b>"+L.name+"</b></span> <span class='sm' style='color:#7a828b'>("+L.members.length+")</span>"):dDash)+"</div>"+
+     "<div><span class='dLbl'>"+ph('alianza')+" Aliados</span>"+(A.length?A.map(nameChip).join(" "):dDash)+"</div>"+
+     "<div><span class='dLbl'>"+uiIcon('espadas')+" Rivales</span>"+(R.length?R.map(nameChip).join(" "):dDash)+"</div>"+
+     "<div><span class='dLbl'>"+ph('enemigo')+" Enemigos</span>"+(E.length?E.map(nameChip).join(" "):dDash)+"</div>"+
      "</div></div>";
   // --- gestos / economía ---
   const ci=canInsult(me,n);
   h+="<div class='dipActs'>";
-  h+="<button class='bbtn'"+(ci.ok?" onclick='dipInsult("+n+")'":" disabled title='En cooldown (≈1 mes entre insultos)'")+">⚡ Insultar</button>";
-  h+="<button class='bbtn' onclick='openDipModal(&quot;gift&quot;,"+n+")'>🎁 Regalar</button>";
-  h+="<button class='bbtn' onclick='openDipModal(&quot;claim&quot;,"+n+")'>📜 Reclamaciones</button>";
+  h+="<button class='bbtn'"+(ci.ok?" onclick='dipInsult("+n+")'":" disabled title='En cooldown (≈1 mes entre insultos)'")+">"+ph('insulto')+" Insultar</button>";
+  h+="<button class='bbtn' onclick='openDipModal(&quot;gift&quot;,"+n+")'>"+ph('regalo')+" Regalar</button>";
+  h+="<button class='bbtn' onclick='openDipModal(&quot;claim&quot;,"+n+")'>"+uiIcon('pergamino')+" Reclamaciones</button>";
   const emb=isEmbargoed(me,n), canEmb=v<=THRESH.embargo;
-  if(emb) h+="<button class='bbtn' onclick='dipEmbargo("+n+")' title='Corta el comercio con este reino: vuestros mercaderes dejan de arbitrar entre los dos mercados'>🚫 Levantar embargo</button>";
-  else h+="<button class='bbtn'"+(canEmb?" onclick='dipEmbargo("+n+")' title='Corta el comercio con este reino: vuestros mercaderes dejan de arbitrar entre los dos mercados'":" disabled title='Necesitas ≤ "+THRESH.embargo+" de tensión'")+">🚫 Embargo</button>";
+  if(emb) h+="<button class='bbtn' onclick='dipEmbargo("+n+")' title='Corta el comercio con este reino: vuestros mercaderes dejan de arbitrar entre los dos mercados'>"+ph('embargo')+" Levantar embargo</button>";
+  else h+="<button class='bbtn'"+(canEmb?" onclick='dipEmbargo("+n+")' title='Corta el comercio con este reino: vuestros mercaderes dejan de arbitrar entre los dos mercados'":" disabled title='Necesitas ≤ "+THRESH.embargo+" de tensión'")+">"+ph('embargo')+" Embargo</button>";
   h+="</div>";
   // --- rivalidad (pública) ---
   const myR=rivalsOf(me)||[], isR=myR.includes(n);
   h+="<div class='dipActs' style='margin-top:6px'>";
-  if(isR) h+="<button class='bbtn' onclick='dipRival("+n+")' title='Dejar de considerarlo rival'>⚔ Quitar rivalidad</button>";
+  if(isR) h+="<button class='bbtn' onclick='dipRival("+n+")' title='Dejar de considerarlo rival'>"+uiIcon('espadas')+" Quitar rivalidad</button>";
   else{
     const full=myR.length>=MAX_RIVALS, ok=canRival(me,n);
     const tip=full?("Ya tienes "+MAX_RIVALS+" rivales: quita uno primero"):(!ok?"No puedes rivalizar a un aliado ni a un co-miembro de tu liga":"Declaración pública: tensión con él, y concordia con quien comparta este rival");
-    h+="<button class='bbtn'"+((ok&&!full)?" onclick='dipRival("+n+")' title=\""+tip+"\"":" disabled title=\""+tip+"\"")+">⚔ Declarar rival</button>";
+    h+="<button class='bbtn'"+((ok&&!full)?" onclick='dipRival("+n+")' title=\""+tip+"\"":" disabled title=\""+tip+"\"")+">"+uiIcon('espadas')+" Declarar rival</button>";
   }
   h+="<span class='sm' style='color:#7a828b'>Tus rivales: "+myR.length+"/"+MAX_RIVALS+"</span></div>";
   // --- pactos ---
@@ -740,14 +742,14 @@ function diploNationHTML(n){
   const pTip=c=>c.reason==="guerra"?"Haz la paz primero":("Necesitas "+Math.ceil(c.need||0)+" de concordia más (o un rival común)");
   h+="<div class='dipActs' style='margin-top:6px'>";
   if(pact==="alliance"){
-    h+="<span class='dipPactTag ally'>🤝 Aliados</span><button class='bbtn' onclick='dipBreakPact("+n+")' title='Romper = traición: gran tensión'>💔 Romper alianza</button>";
+    h+="<span class='dipPactTag ally'>"+ph('alianza')+" Aliados</span><button class='bbtn' onclick='dipBreakPact("+n+")' title='Romper = traición: gran tensión'>"+ph('ruptura')+" Romper alianza</button>";
   }else if(pact==="nap"){
-    h+="<span class='dipPactTag'>🕊 No agresión</span><button class='bbtn' onclick='dipBreakPact("+n+")' title='Romper = traición: gran tensión'>💔 Romper</button>";
-    const ca=canPact(me,n,"alliance"); if(ca.ok)h+="<button class='bbtn' onclick='openDipModal(&quot;pact&quot;,"+n+",&quot;alliance&quot;)'>🤝 Alianza</button>";
+    h+="<span class='dipPactTag'>"+ph('paz')+" No agresión</span><button class='bbtn' onclick='dipBreakPact("+n+")' title='Romper = traición: gran tensión'>"+ph('ruptura')+" Romper</button>";
+    const ca=canPact(me,n,"alliance"); if(ca.ok)h+="<button class='bbtn' onclick='openDipModal(&quot;pact&quot;,"+n+",&quot;alliance&quot;)'>"+ph('alianza')+" Alianza</button>";
   }else{
     const cn=canPact(me,n,"nap"), ca=canPact(me,n,"alliance");
-    h+="<button class='bbtn'"+(cn.ok?" onclick='openDipModal(&quot;pact&quot;,"+n+",&quot;nap&quot;)'":" disabled title=\""+pTip(cn)+"\"")+">🕊 No agresión</button>";
-    h+="<button class='bbtn'"+(ca.ok?" onclick='openDipModal(&quot;pact&quot;,"+n+",&quot;alliance&quot;)'":" disabled title=\""+pTip(ca)+"\"")+">🤝 Alianza</button>";
+    h+="<button class='bbtn'"+(cn.ok?" onclick='openDipModal(&quot;pact&quot;,"+n+",&quot;nap&quot;)'":" disabled title=\""+pTip(cn)+"\"")+">"+ph('paz')+" No agresión</button>";
+    h+="<button class='bbtn'"+(ca.ok?" onclick='openDipModal(&quot;pact&quot;,"+n+",&quot;alliance&quot;)'":" disabled title=\""+pTip(ca)+"\"")+">"+ph('alianza')+" Alianza</button>";
   }
   h+="</div>";
   // --- guerra / paz ---
@@ -756,7 +758,7 @@ function diploNationHTML(n){
     const cl=coalitionOf(me,n);
     if(cl){
       const lead=cl.leadA===me;
-      h+="<span style='color:#d08080;font-weight:600'>EN GUERRA</span> <button class='bbtn'"+(lead?" onclick='openCoalPeace("+n+")'":" disabled title='Espera a que el líder de la coalición proponga la paz'")+">⚔ Coalición</button>";
+      h+="<span style='color:#d08080;font-weight:600'>EN GUERRA</span> <button class='bbtn'"+(lead?" onclick='openCoalPeace("+n+")'":" disabled title='Espera a que el líder de la coalición proponga la paz'")+">"+uiIcon('espadas')+" Coalición</button>";
     }else h+="<span style='color:#d08080;font-weight:600'>EN GUERRA</span> <button class='bbtn' onclick='openPeace("+n+")'>Gestionar paz</button>";
   }else{
     const cw=canDeclareWar(me,n), dis=locked||!cw.ok;
@@ -774,7 +776,7 @@ function refreshDipModal(){
   const me=S.player;
   let h="";
   if(M.kind==="rival"){
-    tl.textContent="⚔ Declarar rival";
+    tl.textContent="Declarar rival";
     const cand=[];
     for(let m=0;m<NPLAY;m++)if(m!==me&&S.nations[m]&&S.nations[m].alive&&canRival(me,m))cand.push(m);
     cand.sort((a,b)=>getRel(me,a)-getRel(me,b)); // los más tensos primero
@@ -788,7 +790,7 @@ function refreshDipModal(){
     if(!cand.length)h="<p style='text-align:center;color:#9aa3ad'>No hay países a los que puedas rivalizar.</p>";
   }else if(M.kind==="gift"){
     const n=M.target, have=Math.floor(S.nations[me].res.dinero||0), amt=Math.min(M.gold||0,have);
-    tl.textContent="🎁 Regalar";
+    tl.textContent="Regalar";
     h+="<div style='text-align:center;margin-bottom:10px'>"+escOf(n,1)+" <b>"+NATIONS[n].name+"</b></div>";
     h+="<div style='display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:8px'>"+
        "<button class='uiBtn' onclick='giftStep(-5000)'"+(amt<=0?" disabled":"")+">−</button>"+
@@ -800,7 +802,7 @@ function refreshDipModal(){
        "<button class='uiBtn' onclick='closeDipModal()'>Cancelar</button></div>";
   }else if(M.kind==="pact"){
     const n=M.target, ally=M.ptype==="alliance";
-    tl.textContent=ally?"🤝 Alianza":"🕊 No agresión";
+    tl.textContent=ally?"Alianza":"No agresión";
     h+="<div style='text-align:center;margin-bottom:12px'>"+escOf(n,1)+" <b>"+NATIONS[n].name+"</b></div>";
     h+="<div class='dEff'>";
     h+="<div class='tipR'><span>Concordia</span><span style='color:#8fb06a'>+"+(ally?ALLY_BONUS:NAP_BONUS)+"</span></div>";
@@ -813,7 +815,7 @@ function refreshDipModal(){
        "<button class='uiBtn' onclick='closeDipModal()'>Cancelar</button></div>";
   }else if(M.kind==="claim"){
     const n=M.target;
-    tl.textContent="📜 Reclamaciones";
+    tl.textContent="Reclamaciones";
     h+="<div style='text-align:center;margin-bottom:10px'>"+escOf(n,1)+" <b>"+NATIONS[n].name+"</b> "+
        "<span class='statv' data-tip='Fabrica un derecho sobre el ducado: sube la tensión con el dueño y servirá de casus belli (anulará la reacción de los vecinos al conquistarlo).'>ⓘ</span></div>";
     const duchies=S.duchies.filter(d=>S.provs[d.cap]&&S.provs[d.cap].owner===n);
@@ -823,7 +825,7 @@ function refreshDipModal(){
         const done=hasClaim(me,d.id);
         h+="<div class='dRow'"+(done?" style='cursor:default;opacity:.65'":" onclick='dipClaim("+d.id+")'")+">"+
            "<span class='dRowN'>"+d.name+" <span class='sm' style='color:#7a828b'>("+d.provs.length+")</span></span>"+
-           (done?"<span style='color:#c9a86a'>📜</span>":"<span class='sm' style='color:#8fb06a'>Reclamar</span>")+"</div>";
+           (done?"<span style='color:#c9a86a'>"+uiIcon('pergamino')+"</span>":"<span class='sm' style='color:#8fb06a'>Reclamar</span>")+"</div>";
       }
       h+="</div>";
     }else h+="<p style='text-align:center;color:#9aa3ad'>No tiene ducados.</p>";
@@ -850,7 +852,7 @@ function refreshCouncil(){
       h+="<div class='sm' style='color:#9aa3ad;margin-bottom:6px'>¿A qué aliados llamas?</div><div style='display:flex;flex-wrap:wrap;gap:6px'>";
       for(const n of c.candidates){
         const inv=c.invited.has(n);
-        h+="<span class='cChip"+(inv?" on":"")+"' onclick='councilInvite("+n+")'>"+(inv?"✓ ":"")+NATIONS[n].name+"</span>";
+        h+="<span class='cChip"+(inv?" on":"")+"' onclick='councilInvite("+n+")'>"+(inv?"<i class='ck'></i> ":"")+NATIONS[n].name+"</span>";
       }
       h+="</div>";
     } else h+="<div class='sm' style='color:#c9a86a'>No tienes aliados a quien llamar; declararás la guerra en solitario.</div>";
@@ -863,10 +865,10 @@ function refreshCouncil(){
     h+="<div class='sm' style='color:#9aa3ad;margin-bottom:4px'>Deliberación:</div><table class='dip'>";
     for(const [n,v] of c.invited){ const join=v==="join"; if(join)support++;
       h+="<tr><td><span class='chip' style='background:"+NATIONS[n].color+"'></span> "+NATIONS[n].name+"</td>"+
-         "<td style='color:"+(join?"#8fb06a":"#d08080")+";font-weight:600'>"+(join?"Se une ✓":"Declina ✗")+"</td></tr>";
+         "<td style='color:"+(join?"#8fb06a":"#d08080")+";font-weight:600'>"+(join?"Se une <i class='ck'></i>":"Declina <i class='xk'></i>")+"</td></tr>";
     }
     h+="</table><div style='margin:12px 0'>Apoyos: <b>"+support+"</b> de "+c.invited.size+"</div>";
-    h+="<div style='display:flex;gap:8px'><button class='uiBtn' style='border-color:#a85a5a' onclick='councilLaunch()'>⚔ Lanzar la guerra ("+(support+1)+" reinos)</button>"+
+    h+="<div style='display:flex;gap:8px'><button class='uiBtn' style='border-color:#a85a5a' onclick='councilLaunch()'>"+uiIcon('espadas')+" Lanzar la guerra ("+(support+1)+" reinos)</button>"+
        "<button class='uiBtn' onclick='councilCancel()'>Cancelar</button></div>";
   }
   el.innerHTML=h;
@@ -884,12 +886,12 @@ function refreshCoalPeace(){
   if(ceded.length){
     h+="<div style='display:flex;flex-wrap:wrap;gap:6px'>";
     for(const did of ceded){ const d=S.duchies[did], sel=cp.sel.has(did);
-      h+="<span class='cChip"+(sel?" on":"")+"' onclick='coalPeaceToggle("+did+")'>"+(sel?"✓ ":"")+d.name+" → "+NATIONS[d.occBy].name+"</span>";
+      h+="<span class='cChip"+(sel?" on":"")+"' onclick='coalPeaceToggle("+did+")'>"+(sel?"<i class='ck'></i> ":"")+d.name+" <i class='arw r'></i> "+NATIONS[d.occBy].name+"</span>";
     }
     h+="</div>";
   }else h+="<div class='sm' style='color:#c9a86a'>Aún no ocupas ningún ducado enemigo.</div>";
-  h+="<div style='margin-top:12px'>💰 Oro exigido: <input id='coalGold' type='number' min='0' step='100' value='"+Math.round(cp.gold||0)+"' style='width:96px'> <span class='sm' style='color:#7a828b'>(sugerido ≤ "+goldCap+")</span></div>";
-  h+="<div style='display:flex;gap:8px;margin-top:16px'><button class='uiBtn' style='border-color:#8fb06a' onclick='coalPeaceSign()'>🕊 Firmar paz conjunta</button><button class='uiBtn' onclick='coalPeaceCancel()'>Cancelar</button></div>";
+  h+="<div style='margin-top:12px'>"+COIN()+" Oro exigido: <input id='coalGold' type='number' min='0' step='100' value='"+Math.round(cp.gold||0)+"' style='width:96px'> <span class='sm' style='color:#7a828b'>(sugerido ≤ "+goldCap+")</span></div>";
+  h+="<div style='display:flex;gap:8px;margin-top:16px'><button class='uiBtn' style='border-color:#8fb06a' onclick='coalPeaceSign()'>"+ph('paz')+" Firmar paz conjunta</button><button class='uiBtn' onclick='coalPeaceCancel()'>Cancelar</button></div>";
   el.innerHTML=h;
 }
 // Ligas defensivas: ventana con dos modos. Si S.leagueView apunta a una liga → su FICHA (miembros,
@@ -897,8 +899,8 @@ function refreshCoalPeace(){
 // Se llega aquí desde la vista de diplomacia (clic en el nombre de una liga) o el botón de Ligas.
 function leagueDetailHTML(L){
   const me=S.player, mine=L.members.includes(me);
-  let h="<div style='margin-bottom:8px'><button class='bbtn' onclick='leagueBack()'>←</button></div>";
-  h+="<div style='margin-bottom:10px'><b style='font-size:16px'>🛡 "+L.name+"</b> <span class='sm' style='color:#7a828b'>("+L.members.length+"/"+MAX_LEAGUE+")</span></div>";
+  let h="<div style='margin-bottom:8px'><button class='bbtn' onclick='leagueBack()'><i class='arw l'></i></button></div>";
+  h+="<div style='margin-bottom:10px'><b style='font-size:16px'>"+uiIcon('defensa')+" "+L.name+"</b> <span class='sm' style='color:#7a828b'>("+L.members.length+"/"+MAX_LEAGUE+")</span></div>";
   h+="<table class='dip'>";
   for(const m of L.members){
     h+="<tr><td>"+escOf(m,0,m===L.founder)+" "+NATIONS[m].name+
@@ -939,7 +941,7 @@ function leagueGeneralHTML(){
     h+="<div class='dCards'>";
     for(const L of S.leagues){
       const mine=L.members.includes(me);
-      h+="<div class='dCard"+(mine?" mine":"")+"'><div class='dCardT'><span class='dChip' onclick='openLeagues("+L.id+")'>🛡 "+L.name+"</span> <span class='sm' style='color:#7a828b'>("+L.members.length+"/"+MAX_LEAGUE+")</span></div>"+
+      h+="<div class='dCard"+(mine?" mine":"")+"'><div class='dCardT'><span class='dChip' onclick='openLeagues("+L.id+")'>"+uiIcon('defensa')+" "+L.name+"</span> <span class='sm' style='color:#7a828b'>("+L.members.length+"/"+MAX_LEAGUE+")</span></div>"+
          "<div>"+L.members.map(m=>escOf(m,0,m===L.founder)).join(" ")+"</div></div>";
     }
     h+="</div>";
@@ -963,7 +965,7 @@ function refreshCallToArms(){
     ((ally&&inLg)?"tu aliado y co-miembro de liga.":(ally?"tu aliado.":"co-miembro de tu liga."))+"</div>";
   h+="<div class='sm' style='color:#9aa3ad;margin-bottom:4px'>Atacantes: "+c.attackers.map(a=>NATIONS[a].name).join(", ")+"</div>";
   h+="<div class='sm' style='color:#c9a86a;margin-bottom:14px'>Si rehúsas, romperás el vínculo y tu reputación sufrirá (traición).</div>";
-  h+="<div style='display:flex;gap:8px'><button class='uiBtn' style='border-color:#8fb06a' onclick='acceptCallToArms()'>⚔ Acudir a defender</button>"+
+  h+="<div style='display:flex;gap:8px'><button class='uiBtn' style='border-color:#8fb06a' onclick='acceptCallToArms()'>"+uiIcon('espadas')+" Acudir a defender</button>"+
      "<button class='uiBtn' style='border-color:#a85a5a' onclick='rejectCallToArms()'>Rehusar</button></div>";
   el.innerHTML=h;
 }
@@ -990,7 +992,7 @@ function refreshLedger(){
   const rows=ledgerRows();
   rows.sort((a,b)=>ledgerSort==="name"?a.name.localeCompare(b.name):(b[ledgerSort]-a[ledgerSort]));
   const th=(key,lab)=>"<th onclick=\"sortLedger('"+key+"')\" style='cursor:pointer'"+
-    (ledgerSort===key?" class='on'":"")+">"+lab+(ledgerSort===key?" ▾":"")+"</th>";
+    (ledgerSort===key?" class='on'":"")+">"+lab+(ledgerSort===key?" <i class='arw dn s'></i>":"")+"</th>";
   let h="<table class='dip led'><tr><th>#</th>"+th("name","Nación")+th("provs","Prov.")+
     th("pop","Población")+th("troops","Tropas")+th("str","Fuerza")+th("income","Ducados/mes")+
     th("pc","Duc/100k hab")+"<th>Mando</th></tr>";
@@ -1013,6 +1015,8 @@ window.sortLedger=function(k){ledgerSort=k;refreshLedger()};
 // Informes Reales: crónica mundial (guerras, batallas, plazas, paces, reinos caídos), lo más
 // reciente arriba, con fecha; se resalta lo que implica al reino del jugador.
 function reportDate(hour){const d=new Date(START_DATE+hour*3600e3);return d.getUTCDate()+" "+MESES[d.getUTCMonth()]+" "+d.getUTCFullYear();}
+const REP_UI={guerra:"espadas",tratado:"pergamino",liga:"defensa",castillo:"defensa"}; // los que ya tienen sprite en assets/ui
+function repIcon(k){return REP_UI[k]?uiIcon(REP_UI[k]):ph(k)}
 function refreshReports(){
   const el=document.getElementById("reportsBody");if(!el)return;
   if(!S.reports.length){el.innerHTML="<p style='text-align:center;color:#9aa3ad;font-style:italic'>Aún no hay sucesos que reportar. La paz reina… por ahora.</p>";return}
@@ -1023,7 +1027,7 @@ function refreshReports(){
     h+="<div style='display:flex;gap:10px;align-items:baseline;padding:7px 8px;border-bottom:1px solid #3a3628"+
       (hi?";background:rgba(159,184,120,.12);border-left:3px solid #9fb878;padding-left:5px":"")+"'>"+
       "<span style='color:#9c8f6f;font-size:11px;min-width:98px;white-space:nowrap'>"+reportDate(r.hour)+"</span>"+
-      "<span style='font-size:15px'>"+r.icon+"</span>"+
+      "<span style='min-width:18px'>"+repIcon(r.icon)+"</span>"+
       "<span style='font-size:13px;color:#d8cfb8'>"+r.text+"</span></div>";
   }
   el.innerHTML=h;
@@ -1038,7 +1042,7 @@ function peaceBar(ws){
 }
 function duchyRow(d,on,cost,sign){
   return "<div class='recrow' style='cursor:pointer' onclick='togglePeaceDuchy("+d.id+")'>"+
-    "<span class='u'>"+(on?"☑":"☐")+" "+d.name+" <span class='sm'>("+d.provs.length+" prov)</span></span>"+
+    "<span class='u'>"+(on?"<i class='cbx on'></i>":"<i class='cbx'></i>")+" "+d.name+" <span class='sm'>("+d.provs.length+" prov)</span></span>"+
     "<span class='cst'>"+sign+cost+" pts</span></div>";
 }
 function refreshPeace(){
@@ -1092,10 +1096,10 @@ function showNationPicker(){
   if(sv){
     const d=new Date(START_DATE+sv.hour*3600e3);
     h+="<div class='ncard' id='continueCard' style='grid-column:1/-1;border-color:#9fb878'>"+
-      "<b>▶ Continuar partida</b><span>"+NATIONS[sv.player].name+" · "+d.getUTCDate()+" "+MESES[d.getUTCMonth()]+" "+d.getUTCFullYear()+"</span></div>";
+      "<b>"+ph('reactivar')+" Continuar partida</b><span>"+NATIONS[sv.player].name+VSEP+d.getUTCDate()+" "+MESES[d.getUTCMonth()]+" "+d.getUTCFullYear()+"</span></div>";
   }
   h+="<div class='ncard' id='observerCard' style='grid-column:1/-1;border-color:#7f9bbf'>"+
-    "<b>👁 Modo observador</b><span>Mira evolucionar la partida sin atarte a ningún país: los "+NPLAY+" reinos actúan por IA. Toma el mando de cualquiera desde el Registro cuando quieras revisar sus estadísticas, y suéltalo al terminar.</span></div>";
+    "<b>"+ph('observador')+" Modo observador</b><span>Mira evolucionar la partida sin atarte a ningún país: los "+NPLAY+" reinos actúan por IA. Toma el mando de cualquiera desde el Registro cuando quieras revisar sus estadísticas, y suéltalo al terminar.</span></div>";
   for(let n=0;n<NPLAY;n++){
     h+="<div class='ncard' data-n='"+n+"'><span class='chip' style='background:"+NATIONS[n].color+"'></span>"+
       "<b>"+NATIONS[n].name+"</b><span>"+nationProvCount(n)+" provincias</span></div>";
@@ -1167,11 +1171,11 @@ window.refreshGoodLegend=function(){
   if(!S.goodView){el.style.display="none";return;}
   const g=S.mapGood||"lana", m=S.mapMetric||"deficit";
   const mchip=(k,lab)=>"<span onclick=\"setGoodMetric('"+k+"')\" style='cursor:pointer;padding:1px 7px;border-radius:4px;font-size:11px;"+(m===k?"background:#3a4550;color:#fff":"color:#9aa3ad")+"'>"+lab+"</span>";
-  const picker=GOODS2.map(x=>"<span onclick=\"setMapGood('"+x+"')\" data-tip=\""+ta(gLabel(x))+"\" style='cursor:pointer;font-size:16px;opacity:"+(x===g?"1":".4")+"'>"+(RES_ICON[x]||"·")+"</span>").join(" ");
+  const picker=GOODS2.map(x=>"<span onclick=\"setMapGood('"+x+"')\" data-tip=\""+ta(gLabel(x))+"\" style='cursor:pointer;opacity:"+(x===g?"1":".4")+"'>"+resImg(x)+"</span>").join(" ");
   const scale=m==="prod"
     ?"<span style='color:#7a828b'>poco</span> <span style='background:linear-gradient(90deg,#3a483a,#6cb05c);width:64px;height:8px;display:inline-block;border-radius:2px;vertical-align:middle'></span> <span style='color:#6cb05c'>mucho</span>"
     :"<span style='color:var(--neg)'>"+(m==="price"?"caro":"déficit")+"</span> <span style='background:linear-gradient(90deg,#c4563e,#82888e,#6cb05c);width:74px;height:8px;display:inline-block;border-radius:2px;vertical-align:middle'></span> <span style='color:var(--pos)'>"+(m==="price"?"barato":"excedente")+"</span>";
-  el.innerHTML="<b style='font-size:12px'>"+(RES_ICON[g]||"")+" "+gLabel(g)+iInfo("Colorea el mundo por un bien. Producción = cuánto produce cada reino (verde=mucho). Precio/Déficit = por reino (rojo escasea/caro, verde sobra/barato). Cambia el bien con los iconos, la métrica con las pestañas.")+"</b>"+
+  el.innerHTML="<b style='font-size:12px'>"+resImg(g)+" "+gLabel(g)+iInfo("Colorea el mundo por un bien. Producción = cuánto produce cada reino (verde=mucho). Precio/Déficit = por reino (rojo escasea/caro, verde sobra/barato). Cambia el bien con los iconos, la métrica con las pestañas.")+"</b>"+
     "<div style='margin:4px 0'>"+mchip("prod","Producción")+" "+mchip("price","Precio")+" "+mchip("deficit","Déficit")+"</div>"+
     "<div style='font-size:10px;margin-bottom:5px'>"+scale+"</div>"+
     "<div style='display:flex;flex-wrap:wrap;gap:4px;max-width:220px;line-height:1.7'>"+picker+"</div>";
@@ -1235,7 +1239,7 @@ window.refreshGranLegend=function(){
       (q&&q.falta>0?"<button class='bbtn' "+(q.ok?"":"disabled")+" onclick='granRelief("+r.pid+")' data-tip=\""+ta(q.ok?"Socorro hasta la siega (desglose en la ficha)":q.why)+"\">"+nfE(q.total)+" "+COIN()+"</button>":"")+"</b></div>";}
   if(rows.length>GRAN_ROWS)list+="<div class='prow'><span class='dim'>+"+(rows.length-GRAN_ROWS)+" más</span></div>";
   if(!rows.length)list="<div class='prow'><span class='dim'>Todos llegan a la siega</span></div>";
-  el.innerHTML="<b style='font-size:12px'>"+ph("granero")+" Graneros</b>"+iInfo("Cada ducado de tu reino según si su grano llega a la próxima siega. La lista: los que no llegan, del que antes se vacía; pulsa el nombre para ir, 🛒 para socorrerlo hasta la siega (grano del almacén de la corona y lo que falte comprado en la plaza, más el flete).")+
+  el.innerHTML="<b style='font-size:12px'>"+ph("granero")+" Graneros</b>"+iInfo("Cada ducado de tu reino según si su grano llega a la próxima siega. La lista: los que no llegan, del que antes se vacía; pulsa el nombre para ir y el importe para socorrerlo hasta la siega (grano del almacén de la corona y lo que falte comprado en la plaza, más el flete).")+
     chips+"<div style='font-size:10px;margin:4px 0 6px'>"+scale+"</div>"+list;
   el.style.display="block";
 };
@@ -1260,7 +1264,7 @@ function refreshFiscal(){
       "<div style='display:flex;justify-content:space-between;align-items:baseline'>"+
         "<span style='font-weight:bold'>"+label+iInfo(info)+"</span>"+
         "<span style='font-family:monospace;font-size:15px;color:var(--title)'>"+pct(val)+"%</span></div>"+
-      (inc!=null?"<div style='font-size:11px;color:#8aa478'>≈ +"+nf(inc)+"🪙/mes a la corona (variable)</div>":"")+
+      (inc!=null?"<div style='font-size:11px;color:#8aa478'>≈ +"+nf(inc)+COIN()+"/mes a la corona (variable)</div>":"")+
       "<input type='range' min='"+min+"' max='"+max+"' value='"+pct(val)+"' step='1' style='width:100%;margin-top:6px' oninput='setTax(\""+kind+"\",this.value)'></div>";
   // lo que rindió cada impuesto el mes pasado (libro de la corona)
   const cb=crownBook("prev"),got=c=>cb.cats[c]||0,lab=cb.cur?"este mes":"el mes pasado";
@@ -1268,7 +1272,7 @@ function refreshFiscal(){
   const taxTip=(label,kind,val,inc)=>{const base=val>0?inc/val:0;
     return tipBox(label.replace(/^\S+\s/,""),[{cols:["Concepto","Valor"],trows:[["Tipo",pct(val)+"%"],["Paga",TAX_WHO[kind]],["Rindió","+"+nf(inc)],...(base>0?[["Base",nf(base)],["Por punto","+"+nf(base/100)+" /mes"]]:[])]}],lab)};
   const slider2=(label,val,min,max,kind,info,inc)=>slider(label,val,min,max,kind,info,null,taxTip(label,kind,val,inc)).replace("</span></div>","</span></div><div style='font-size:11px;color:#8aa478'>+"+nf(inc)+" "+COIN()+" "+lab+"</div>");
-  let h="<div style='text-align:center;font-size:12px;color:#9aa3ad;margin-bottom:11px'>Ingresos de la corona "+lab+": <b style='color:var(--title)'>"+nf(cb.inc)+" 🪙</b></div>";
+  let h="<div style='text-align:center;font-size:12px;color:#9aa3ad;margin-bottom:11px'>Ingresos de la corona "+lab+": <b style='color:var(--title)'>"+nf(cb.inc)+" "+COIN()+"</b></div>";
   h+=slider2(ph("pecho")+" Pecho",feud,2,20,"feudal","Lo paga el campesino sobre lo que vende de su cosecha en la plaza. Más pecho, menos le queda para sus comodidades.",got("Pecho"));
   h+=slider2(ph("alcabala")+" Alcabala",alc,0,30,"alcabala","Sobre cada venta en la plaza del reino: el comprador paga el precio y la corona se queda su parte, así que el que vende cobra menos.",got("Alcabala"));
   h+=slider2(ph("almojarifazgo")+" Almojarifazgo",alm,0,60,"almoj","Aduana sobre el comercio con otros reinos: resta margen al mercader.",got("Almojarifazgo"));
@@ -1310,28 +1314,28 @@ const headE=(extra)=>"<div class='e2head'>"+escOf(S.player,true)+" <b>"+NATIONS[
 // ---------- el libro de la corona ----------
 // Categorías: icono, qué es (tooltip) y, si es un impuesto, su palanca en Hacienda.
 const CROWN_CAT={
-  "Pecho":["🌾","Lo que paga el campesino sobre lo que vende de su cosecha en la plaza.","feudal"],
-  "Alcabala":["🏪","Impuesto sobre cada compra en la plaza del reino.","alcabala"],
-  "Almojarifazgo":["⚓","Aduana sobre el comercio con otros reinos.","almoj"],
-  "Renta del realengo":["👑","Tu parte de la cosecha en las tierras de realengo, vendida en la plaza."],
-  "Ventas de sus talleres":["🏭","Lo que venden los talleres de la corona."],
-  "Portazgo":["🛤","Peaje del transporte hasta la plaza en tierras de realengo."],
-  "Minas de plata y oro":["🪙","Acuñación: el único dinero que nace sin venta."],
-  "Paces y tributos":["📜","Oro pactado en los tratados de paz."],
-  "Diplomacia":["🕊","Regalos entre reinos."],
-  "Ejército":["⚔","Soldada de las tropas."],
-  "Mantenimiento de edificios":["🏛","Mantenimiento de los edificios de la corona."],
-  "Obras":["🔨","Edificios que has mandado construir."],
-  "Reclutamiento":["🛡","Tropas reclutadas."],
-  "Caminos":["🛣","Caminos que has mandado construir."],
-  "Reparaciones":["🔧","Edificios reabiertos y reparados."],
-  "Socorro":["🌾","Grano enviado a ducados que no llegaban a la siega: comprado en la plaza y su flete."],
-  "Gastos varios":["·","Otros pagos de la corona."],
-  "Otros":["❔","Movimientos del tesoro sin apunte en el libro."]
+  "Pecho":["","Lo que paga el campesino sobre lo que vende de su cosecha en la plaza.","feudal"],
+  "Alcabala":["","Impuesto sobre cada compra en la plaza del reino.","alcabala"],
+  "Almojarifazgo":["","Aduana sobre el comercio con otros reinos.","almoj"],
+  "Renta del realengo":["","Tu parte de la cosecha en las tierras de realengo, vendida en la plaza."],
+  "Ventas de sus talleres":["","Lo que venden los talleres de la corona."],
+  "Portazgo":["","Peaje del transporte hasta la plaza en tierras de realengo."],
+  "Minas de plata y oro":["","Acuñación: el único dinero que nace sin venta."],
+  "Paces y tributos":["","Oro pactado en los tratados de paz."],
+  "Diplomacia":["","Regalos entre reinos."],
+  "Ejército":["","Soldada de las tropas."],
+  "Mantenimiento de edificios":["","Mantenimiento de los edificios de la corona."],
+  "Obras":["","Edificios que has mandado construir."],
+  "Reclutamiento":["","Tropas reclutadas."],
+  "Caminos":["","Caminos que has mandado construir."],
+  "Reparaciones":["","Edificios reabiertos y reparados."],
+  "Socorro":["","Grano enviado a ducados que no llegaban a la siega: comprado en la plaza y su flete."],
+  "Gastos varios":["","Otros pagos de la corona."],
+  "Otros":["","Movimientos del tesoro sin apunte en el libro."]
 };
 // Conceptos de las cuentas de los ESTAMENTOS que necesitan explicación (icono + tooltip; el resto se lee solo).
 const TIP_TRANSPORTE="Llevar la mercancía hasta el centro de comercio. La primera jornada de carro (30 km) la cobran los campesinos de la aldea; más allá, los arrieros burgueses. Entre reinos, el flete lo cobran los burgueses del reino que exporta.";
-const FLOW_CAT={"Transporte":["🛤",TIP_TRANSPORTE]};
+const FLOW_CAT={"Transporte":["",TIP_TRANSPORTE]};
 const flowLabel=c=>{const x=FLOW_CAT[c];return x?"<span data-tip=\""+ta(x[1])+"\" style='cursor:help'>"+x[0]+" "+c+"</span>":c};
 function crownRate(kind){const n=S.player;return kind==="feudal"?taxRateOf(n):kind==="alcabala"?alcabalaOf(n):almojOf(n)}
 // El libro que se enseña: el mes CERRADO (estable); en el primer mes de partida, el que va en curso.
@@ -1348,7 +1352,7 @@ function crownBook(which){ // which: "prev"|"cur" (por defecto, lo elegido en la
   return {book,cats,cur,inc,exp,net:delta};
 }
 function crownRow(cat,amt,drill){
-  const m=CROWN_CAT[cat]||["·",""], lever=m[2];
+  const m=CROWN_CAT[cat]||["",""], lever=m[2];
   const chip=lever?"<span class='e2chip' data-tip='Ajustar en Hacienda' onclick='event.stopPropagation();openFiscal()'>"+pctE(crownRate(lever))+"%</span>":"";
   return "<div class='trow"+(drill?" click":"")+"'"+(drill?" onclick=\"treasuryDrill('"+cat+"')\"":"")+(m[1]?" data-tip=\""+ta(m[1])+"\"":"")+">"+
     "<span>"+ph(cat)+" "+cat+chip+(drill?" <span class='tarrow'>›</span>":"")+"</span>"+
@@ -1373,14 +1377,14 @@ function treasuryTesoro2(){
     h+=tsyCrumb([cat]);
     for(const k of ks.slice(0,TOP))h+="<div class='trow'><span>"+k+"</span><b class='"+(subs[k]<0?"neg":"pos")+"'>"+sgnE(subs[k])+"</b></div>";
     if(ks.length>TOP)h+="<div class='trow'><span class='e2sub'>Resto ("+(ks.length-TOP)+")</span><b class='"+(rest<0?"neg":"pos")+"'>"+sgnE(rest)+"</b></div>";
-    h+="<div class='ttotal'><span>Total · "+cat+"</span><b class='"+(cb.cats[cat]<0?"neg":"pos")+"'>"+sgnE(cb.cats[cat]||0)+" "+resImg("dinero")+"</b></div>";
+    h+="<div class='ttotal'><span>Total "+cat+"</span><b class='"+(cb.cats[cat]<0?"neg":"pos")+"'>"+sgnE(cb.cats[cat]||0)+" "+resImg("dinero")+"</b></div>";
   }
   return h+"</div>";
 }
 function treasuryAlmacen2(){ // el almacén de la corona: lo que producen sus edificios para obras y ejército (no va a la plaza)
   const N=S.nations[S.player];
   const ks=Object.keys(N.res).filter(k=>k!=="dinero"&&((N.res[k]||0)>=0.5||Math.abs(tsyMonthBal(k))>=0.5)).sort((a,b)=>(N.res[b]||0)-(N.res[a]||0));
-  let h="<div class='tbook'><div class='trow thead'><span>Bien</span><span>Existencias · balance/mes</span></div>";
+  let h="<div class='tbook'><div class='trow thead'><span>Bien</span><span><span class='tstock'>Existencias</span> Balance/mes</span></div>";
   if(!ks.length)h+="<div class='trow tdim'>—</div>";
   for(const k of ks){const d=tsyMonthBal(k);
     h+="<div class='trow'><span>"+resImg(k)+" "+gLabel(k)+"</span><b><span class='tstock'>"+nfE(N.res[k])+"</span> <span class='"+(d<0?"neg":"pos")+"'>"+(Math.abs(d)<0.5?"<span class='e2sub'>0</span>":sgnE(d))+"</span></b></div>"}
@@ -1389,7 +1393,7 @@ function treasuryAlmacen2(){ // el almacén de la corona: lo que producen sus ed
 function refreshTreasury2(body){
   const tab=(k,lab)=>"<span class='ttab"+(S.treasuryTab===k?" on":"")+"' onclick=\"setTreasuryTab('"+k+"')\">"+lab+"</span>";
   body.innerHTML=headE(iInfo("Lo que entra y sale del tesoro de la corona. Pulsa una partida para ver su detalle. Los impuestos se ajustan en Hacienda (el % junto a cada uno)."))+
-    "<div class='ttabs'>"+tab("tesoro","🪙 Tesoro")+tab("inv","📦 Almacén")+"</div>"+
+    "<div class='ttabs'>"+tab("tesoro",COIN()+" Tesoro")+tab("inv",ph('almacen')+" Almacén")+"</div>"+
     (S.treasuryTab==="inv"?treasuryAlmacen2():treasuryTesoro2());
 }
 window.setTsyMonth=function(k){S.tsyMonth=k;S.treasuryPath=[];refreshTreasury()};
@@ -1426,8 +1430,8 @@ function refreshMercado2(body){
   for(const g of GOODS2){const mi=info[g]||{},p=NA.mktPrice[g]!=null?NA.mktPrice[g]:gRef(g);expV+=(mi.exp||0)*p;impV+=(mi.imp||0)*p}
   const bal=expV-impV;
   let h=headE(iInfo("Lo que se compra y se vende en la plaza del reino. El precio sube cuando la demanda supera a la oferta (entre ×0,5 y ×3 del normal). El mercader lleva lo que sobra a quien le falta. Pulsa un bien para su ficha."));
-  h+="<div class='e2stats'><span data-tip='Valor de lo que el mercader saca a otros reinos'>↗ Exporta <b class='pos'>"+nfE(expV)+"</b></span>"+
-    "<span data-tip='Valor de lo que el mercader trae de otros reinos'>↙ Importa <b style='color:#d6a15a'>"+nfE(impV)+"</b></span>"+
+  h+="<div class='e2stats'><span data-tip='Valor de lo que el mercader saca a otros reinos'>Exporta <b class='pos'>"+nfE(expV)+"</b></span>"+
+    "<span data-tip='Valor de lo que el mercader trae de otros reinos'>Importa <b style='color:#d6a15a'>"+nfE(impV)+"</b></span>"+
     "<span>Balance <b class='"+(bal<0?"neg":"pos")+"'>"+sgnE(bal)+"</b> "+resImg("dinero")+"<span class='e2sub'>/mes</span></span></div>";
   h+="<table class='e2t'><tr><th>Bien</th><th>Precio</th><th data-tip='Precio frente al normal'>vs normal</th><th data-tip='Parte de la demanda que se llega a comprar'>Demanda cubierta</th><th>Exterior</th></tr>";
   for(const t of ["subs","vida","lujo","mat"]){
@@ -1516,7 +1520,7 @@ function sparkPrice(N,g){
 }
 function renderMktGood2(body,N,g){
   const mi=(N.mktInfo&&N.mktInfo[g])||{},p=N.mktPrice[g]!=null?N.mktPrice[g]:gRef(g),r=p/gRef(g),t=TIER2[g]||"mat";
-  let h="<div class='tcrumb' style='margin-bottom:10px'><span class='tcrumbi' onclick='closeMktGood()'>🏪 Mercado</span> › <b class='tcrumbc'>"+resImg(g)+" "+gLabel(g)+"</b></div>";
+  let h="<div class='tcrumb' style='margin-bottom:10px'><span class='tcrumbi' onclick='closeMktGood()'>"+ph('mercado')+" Mercado</span> › <b class='tcrumbc'>"+resImg(g)+" "+gLabel(g)+"</b></div>";
   const who=t==="mat"?"":STRATA.filter(e=>WANT2[e][t]>0).map(e=>"<span data-tip=\""+ta(STRATA_INFO[e].label)+"\">"+STRATA_INFO[e].icon+"</span>").join(" ");
   const ch=chain2(g), lab=ks=>ks.map(k=>resImg(k)+" "+gLabel(k)).join(" ");
   const kv=(k,v,tip)=>"<div"+(tip?" style='cursor:help' data-tiph=\""+ta(tip)+"\"":"")+"><div class='k'>"+k+"</div><div class='v'>"+v+"</div></div>";
@@ -1541,9 +1545,9 @@ function renderMktGood2(body,N,g){
   h+=ctrBlockHTML(N,g);
   h+="<div style='display:flex;gap:14px;margin-top:6px'>"+col("Más lo producen",top,x=>x.prod,"pos")+col("Más les falta",fal,x=>x.gap,"neg")+"</div></div>";
   h+="<div style='display:flex;gap:8px;justify-content:center;margin-top:10px'>"+
-    "<button class='bbtn sm' onclick='showGoodMap(\""+g+"\",\"prod\")'>🗺 Producción</button>"+
-    "<button class='bbtn sm' onclick='showGoodMap(\""+g+"\",\"price\")'>🗺 Precio</button>"+
-    "<button class='bbtn sm' onclick='showGoodMap(\""+g+"\",\"deficit\")'>🗺 Déficit</button></div>";
+    "<button class='bbtn sm' onclick='showGoodMap(\""+g+"\",\"prod\")'>"+ph('mapa')+" Producción</button>"+
+    "<button class='bbtn sm' onclick='showGoodMap(\""+g+"\",\"price\")'>"+ph('mapa')+" Precio</button>"+
+    "<button class='bbtn sm' onclick='showGoodMap(\""+g+"\",\"deficit\")'>"+ph('mapa')+" Déficit</button></div>";
   body.innerHTML=h;
 }
 
@@ -1587,7 +1591,7 @@ function refreshEstates2(body){
   const N=S.nations[S.player];
   if(S.estSel&&STRATA.indexOf(S.estSel)>=0){renderEstate2(body,N,S.estSel);return}
   const {cnt,pop}=estateCounts();
-  let h=headE(" · "+nfE(pop)+" hab."+iInfo("Cada estamento compra en la plaza sus tres necesidades: "+TIER_META.subs[1].toLowerCase()+", "+TIER_META.vida[1].toLowerCase()+" y lujo (solo las élites). La barra es la parte que consigue. Pulsa un estamento para ver sus cuentas."));
+  let h=headE(VSEP+nfE(pop)+" hab."+iInfo("Cada estamento compra en la plaza sus tres necesidades: "+TIER_META.subs[1].toLowerCase()+", "+TIER_META.vida[1].toLowerCase()+" y lujo (solo las élites). La barra es la parte que consigue. Pulsa un estamento para ver sus cuentas."));
   h+="<table class='e2t'><tr><th>Estamento</th><th>Habitantes</th>"+tierTh()+
     "<th data-tip='Ingreso medio del último mes'>Ingreso/mes</th><th data-tip='Ahorro medido en meses de su cesta'>Ahorro</th></tr>";
   for(const e of STRATA){const I=STRATA_INFO[e];
@@ -1644,8 +1648,8 @@ const ESTATE_COL={campesino:"#a8904e",burgues:"#4f86b0",clero:"#9a82c4",nobleza:
 function manorIcon(p){ // quién es el señor de la tierra: la corona (su escudo), el clero ⛪ o la nobleza 👑
   const m=manorOf(p), who=m==="solariego"?"nobleza":m==="abadengo"?"clero":null;
   const lab={realengo:"Realengo",abadengo:"Abadengo",solariego:"Señorío solariego"}[m]||m;
-  const tip=tipRows(lab,[["Renta en especie",Math.round((MANOR_RENT[m]||0)*100)+"% → "+(who?STRATA_INFO[who].label:"la corona")],
-    ["Diezmo",pctE(DIEZMO)+"% → Clero"],["Portazgo","→ "+(who?STRATA_INFO[who].label:"la corona")]]);
+  const tip=tipRows(lab,[["Renta en especie",Math.round((MANOR_RENT[m]||0)*100)+"% <i class='arw r'></i> "+(who?STRATA_INFO[who].label:"la corona")],
+    ["Diezmo",pctE(DIEZMO)+"% <i class='arw r'></i> Clero"],["Portazgo","<i class='arw r'></i> "+(who?STRATA_INFO[who].label:"la corona")]]);
   return "<span data-tiph=\""+ta(tip)+"\" style='cursor:help;font-size:15px'>"+(who?STRATA_INFO[who].icon:escOf(p.owner))+"</span>";
 }
 function estateBar(p,w){ // los cuatro estamentos apilados (ancho = su parte de la población)
@@ -1653,8 +1657,8 @@ function estateBar(p,w){ // los cuatro estamentos apilados (ancho = su parte de 
   let seg="";const rows=[];
   for(const e of STRATA){const v=pops[e]||0;if(!(v>0))continue;
     seg+="<i style='display:block;height:100%;width:"+(100*v/tot).toFixed(2)+"%;background:"+ESTATE_COL[e]+"'></i>";
-    rows.push(["<span style='color:"+ESTATE_COL[e]+"'>■</span> "+STRATA_INFO[e].label,nfE(v)+" · "+popPct(v,tot)])}
-  return "<span data-tiph=\""+ta(tipRows("Población · "+nfE(p.pop),rows))+"\" style='display:inline-flex;width:"+(w||110)+"px;height:8px;border-radius:3px;overflow:hidden;background:#241a14;vertical-align:middle;cursor:help'>"+seg+"</span>";
+    rows.push(["<i class='sw' style='background:"+ESTATE_COL[e]+"'></i>"+STRATA_INFO[e].label,nfE(v),popPct(v,tot)])}
+  return "<span data-tiph=\""+ta(tipBox("Población",[{cols:["Estamento","Habitantes","Parte"],trows:rows,ttot:["Total",nfE(p.pop),"100%"]}]))+"\" style='display:inline-flex;width:"+(w||110)+"px;height:8px;border-radius:3px;overflow:hidden;background:#241a14;vertical-align:middle;cursor:help'>"+seg+"</span>";
 }
 // ---------- Tarjetas de Construir (v2): lo que da un edificio a SU dueño ----------
 function siteBlock2(p,b){return BLD2[b]&&!siteOK2(p,b)?"Sin materia prima aquí":null}
@@ -1671,11 +1675,11 @@ function bldEcon2(p,b,lvl){ // {o, stock:[{k,q}] | out:{g,q}, ins, noSite, profi
 function benefitHTML2(p,b,lvl){
   const B=BUILDINGS[b],fx=B.fx||{},e=bldEcon2(p,b,Math.max(1,lvl)),N=S.nations[p.owner],lines=[];
   if(b==="granja")lines.push("<div class='bl'>+40% "+resImg("grano")+" del campo</div>");
-  if(e.stock)for(const x of e.stock)lines.push("<div class='bl' data-tip='Al almacén de la corona (obras y ejército): no se vende'>→ "+resImg(x.k)+" "+nfE(x.q)+"/mes 📦</div>");
-  if(e.noSite)lines.push("<div class='bl' style='color:#d0913a'>✖ sin materia prima aquí</div>");
-  if(e.out&&e.out.g)lines.push("<div class='bl' data-tip=\""+ta("Lo que vende a la plaza"+(lvl>0?"":" (un nivel)")+", al mes")+"\">→ "+resImg(e.out.g)+" "+nfE(e.out.q)+"/mes</div>");
+  if(e.stock)for(const x of e.stock)lines.push("<div class='bl' data-tip='Al almacén de la corona (obras y ejército): no se vende'><i class='arw r'></i> "+resImg(x.k)+" "+nfE(x.q)+"/mes "+ph('almacen')+"</div>");
+  if(e.noSite)lines.push("<div class='bl' style='color:#d0913a'><i class='xk'></i> sin materia prima aquí</div>");
+  if(e.out&&e.out.g)lines.push("<div class='bl' data-tip=\""+ta("Lo que vende a la plaza"+(lvl>0?"":" (un nivel)")+", al mes")+"\"><i class='arw r'></i> "+resImg(e.out.g)+" "+nfE(e.out.q)+"/mes</div>");
   if(e.ins&&e.out)for(const k in e.ins){const cv=N&&N.e2&&N.e2.cover?N.e2.cover[k]:null;
-    lines.push("<div class='bl' style='color:#c9c2ae' data-tip=\""+ta("Materia que compra en la plaza"+(cv!=null?" · se consigue el "+pctE(cv)+"%":""))+"\">← "+resImg(k)+" "+nfE(e.out.q*e.ins[k])+"/mes"+(cv!=null&&cv<0.98?" <span style='color:"+(cv<0.6?"#c0563e":"#d0913a")+"'>"+pctE(cv)+"%</span>":"")+"</div>")}
+    lines.push("<div class='bl' style='color:#c9c2ae' data-tip=\""+ta("Materia que compra en la plaza"+(cv!=null?"\nConsigue el "+pctE(cv)+"%":""))+"\"><i class='arw l'></i> "+resImg(k)+" "+nfE(e.out.q*e.ins[k])+"/mes"+(cv!=null&&cv<0.98?" <span style='color:"+(cv<0.6?"#c0563e":"#d0913a")+"'>"+pctE(cv)+"%</span>":"")+"</div>")}
   if(fx.prodAdd&&fx.prodAdd.dinero)lines.push("<div class='bl'>+ "+resImg("dinero")+" acuñación</div>");
   if(fx.prodMul)lines.push("<div class='bl'>+"+Math.round(fx.prodMul*100)+"% a la producción</div>");
   if(fx.mano)lines.push("<div class='bl'>+"+Math.round(fx.mano*100)+"% soldadesca</div>");
@@ -1692,8 +1696,8 @@ function nextHint2(p,b,lvl){ // lo que AÑADE el siguiente nivel (marginal), no 
   const a=bldEcon2(p,b,lvl+1),z=lvl>0?bldEcon2(p,b,lvl):{profit:0};
   if(a.noSite)return "";
   const d=a.profit-(z.profit||0),col=d>=0?"#8aa478":"#c9776a";
-  const st=a.stock?" · +"+a.stock.map(x=>nfE(x.q-((z.stock||[]).find(y=>y.k===x.k)||{q:0}).q)+resImg(x.k)).join(" ")+"📦":"";
-  return "<div style='font-size:10px;color:"+col+"'>≈ "+(d>=0?"+":"−")+fmt(Math.abs(d))+"🪙/mes"+st+" "+(lvl>0?"el sig. nivel":"si la construyes")+"</div>";
+  const st=a.stock?VSEP+"+"+a.stock.map(x=>nfE(x.q-((z.stock||[]).find(y=>y.k===x.k)||{q:0}).q)+resImg(x.k)).join(" ")+ph('almacen'):"";
+  return "<div style='font-size:10px;color:"+col+"'>≈ "+(d>=0?"+":"−")+fmt(Math.abs(d))+COIN()+"/mes"+st+" "+(lvl>0?"el sig. nivel":"si la construyes")+"</div>";
 }
 // CRECIMIENTO de la provincia, sumado como en EU4 (economy2 popGrowthWhy: la misma fórmula que el tick)
 function popTip(p){
@@ -1719,7 +1723,7 @@ function landOcc2(p){const K=landCap(p);return K>0&&p.pops?(p.pops.campesino||0)
 function provStats2(p,own){ // población + moral/soldadesca/dotación/huecos en UNA fila (sus desgloses, al hover)
   let h="<div class='prow'><span data-tiph=\""+ta(popTip(p))+"\" style='cursor:help'>"+uiIcon('poblacion')+" "+nfE(p.pop)+"</span><b>"+estateBar(p)+"</b></div>";
   const it=(ico,val,tip)=>"<span style='display:inline-flex;align-items:center;gap:3px'>"+ico+statv(val,tip)+"</span>";
-  const cells=[it("🙂",Math.round(p.morale)+"%",moraleBreak(p))];
+  const cells=[it(ph('moral'),Math.round(p.morale)+"%",moraleBreak(p))];
   if(own){cells.push(it(uiIcon('soldadesca'),fmtPop(soldAvail(p))+"/"+fmtPop(soldCap(p)),"Soldadesca disponible: "+fmtPop(soldAvail(p))+"\nTecho: "+fmtPop(soldCap(p))));
     if(buildJobs(p)>0)cells.push(it(uiIcon('trabajo'),Math.round(staffing(p)*100)+"%",dotBreak(p)));
     cells.push(it(uiIcon('edificios'),usedSlots(p)+"/"+buildSlots(p),slotBreak(p)));
@@ -1771,11 +1775,11 @@ function reliefRow2(p,g,hm){
 }
 function tradeRow2(p){ // su centro de comercio y lo que cuesta llevar allí cada bien (flete)
   const hub=(p.hubOf!=null&&p.hubOf>=0)?S.provs[p.hubOf]:null, km=Math.round(p.hubKm||0);
-  const rows=[["Centro de comercio",hub?hub.name+(km?" · "+km+" km":""):"—"]];
+  const rows=[["Centro de comercio",hub?hub.name:"—"],...(hub&&km?[["Distancia",km+" km"]]:[])];
   for(const g of ["grano","lana","pano","seda"])rows.push(["Flete "+gLabel(g).toLowerCase(),pctE(transport(p,g))+"% del valor"]);
   rows.push(["Lo cobran",km<=30?"los campesinos (acarreo)":"campesinos y arrieros burgueses"]);
-  const val=!hub?"—":hub.id===p.id?"Centro de comercio":"→ "+hub.name+" <span class='e2sub'>"+km+" km</span>";
-  return "<div class='prow' data-tiph=\""+ta(tipRows("Comercio",rows))+"\" style='cursor:help'><span>🛤 Comercio</span><b>"+val+"</b></div>";
+  const val=!hub?"—":hub.id===p.id?"Centro de comercio":"<i class='arw r'></i> "+hub.name+" <span class='e2sub'>"+km+" km</span>";
+  return "<div class='prow' data-tiph=\""+ta(tipRows("Comercio",rows))+"\" style='cursor:help'><span>"+uiIcon('caminos')+" Comercio</span><b>"+val+"</b></div>";
 }
 // ---------- Ficha de provincia (v2): Produce, Rinde y la ventana Economía (libro de la provincia: p.m / p._m) ----------
 const WHO_ORDER=["campesino","burgues","clero","nobleza","corona"];
@@ -1840,11 +1844,11 @@ function provEcoWinHTML(p){ // ventana Economía: el mismo libro que la Tesorer�
     const cs=b.m.pay[path],ks=Object.keys(cs).sort((x,y)=>cs[y]-cs[x]);
     h+="<div class='tcrumb'><span class='tcrumbi' onclick=\"provEcoDrill(null)\">Economía</span> › <b class='tcrumbc'>"+whoIcon(path,p.owner)+" "+whoLabel(path)+"</b></div>";
     for(const c of ks)h+="<div class='trow'><span>"+flowLabel(c)+"</span><b class='pos'>"+sgnE(cs[c])+" "+resImg("dinero")+"</b></div>";
-    return h+"<div class='ttotal'><span>Total · "+whoLabel(path)+"</span><b class='pos'>"+sgnE(b.who[path])+" "+resImg("dinero")+"</b></div></div>";
+    return h+"<div class='ttotal'><span>Total "+whoLabel(path)+"</span><b class='pos'>"+sgnE(b.who[path])+" "+resImg("dinero")+"</b></div></div>";
   }
-  h+="<div class='trow thead'><span>Producción</span><span>u/mes · 🪙 plaza</span></div>";
+  h+="<div class='trow thead'><span>Producción</span><span><span class='tstock'>Unidades</span> Plaza</span></div>";
   for(const g of goodsByValue(b.m))h+="<div class='trow'><span>"+resImg(g)+" "+gLabel(g)+"</span><b><span class='tstock'>"+nfE(b.m.prod[g])+"</span> "+(b.m.val[g]>=0.5?nfE(b.m.val[g]):"<span class='e2sub'>—</span>")+"</b></div>";
-  for(const k in b.m.stock)if(b.m.stock[k]>=0.5)h+="<div class='trow' data-tip='Al almacén de la corona: no se vende'><span>"+resImg(k)+" "+gLabel(k)+" 📦</span><b><span class='tstock'>"+nfE(b.m.stock[k])+"</span> <span class='e2sub'>—</span></b></div>";
+  for(const k in b.m.stock)if(b.m.stock[k]>=0.5)h+="<div class='trow' data-tip='Al almacén de la corona: no se vende'><span>"+resImg(k)+" "+gLabel(k)+" "+ph('almacen')+"</span><b><span class='tstock'>"+nfE(b.m.stock[k])+"</span> <span class='e2sub'>—</span></b></div>";
   h+="<div class='tsec'>Quién cobra</div>";
   for(const w of WHO_ORDER){const v=b.who[w]||0;if(v<0.5)continue;
     h+="<div class='trow click' onclick=\"provEcoDrill('"+w+"')\"><span>"+whoIcon(w,p.owner)+" "+whoLabel(w)+" <span class='tarrow'>›</span></span><b>"+barE(pctE(v/(b.val||1)),50)+" <span class='pos'>"+sgnE(v)+"</span> "+resImg("dinero")+"</b></div>"}
@@ -1854,7 +1858,7 @@ function provEcoWinHTML(p){ // ventana Economía: el mismo libro que la Tesorer�
   if(bs.length){h+="<div class='tbook' style='margin-top:8px'><div class='tsec'>Talleres</div>";
     for(const x of bs){const o=bOwnerOf(p,x),off=p.bOff&&p.bOff[x],q=b.m.bld[x]||0,D=BLD2[x];
       h+="<div class='trow'"+(off?" style='opacity:.6'":"")+"><span>"+BUILDINGS[x].label+" ×"+p.buildings[x]+" <span data-tip=\""+ta(whoLabel(o))+"\">"+whoIcon(o,p.owner)+"</span></span><b>"+
-        (off?"<span class='neg'>cerrado</span>":q>=0.5&&D?"→ "+resImg(D.out)+" "+nfE(q):"<span class='e2sub'>—</span>")+"</b></div>"}
+        (off?"<span class='neg'>cerrado</span>":q>=0.5&&D?"<i class='arw r'></i> "+resImg(D.out)+" "+nfE(q):"<span class='e2sub'>—</span>")+"</b></div>"}
     h+="</div>"}
   return h;
 }

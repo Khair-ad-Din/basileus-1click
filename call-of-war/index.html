@@ -124,7 +124,19 @@
   .kvg .k{font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#8a949e}
   .kvg .v{font-size:14px;font-weight:600;color:var(--title)}
   .e2t th.r,.e2t td.r{text-align:right}
+  .vsep{display:inline-block;width:1px;height:.9em;background:#4a525b;margin:0 8px;vertical-align:-1px}
   .icoPh{display:inline-block;font:600 10px/1 monospace;color:#7d8790;letter-spacing:-1px;vertical-align:1px}
+  /* marcas dibujadas (guia-estilo §1b: nada de iconos Unicode) */
+  .arw.r,.arw.l{border-left:0;border-right:0;border-top:4px solid transparent;border-bottom:4px solid transparent;vertical-align:0;margin:0 4px}
+  .arw.r{border-left:6px solid currentColor}.arw.l{border-right:6px solid currentColor}
+  .arw.s{border-top:5px solid currentColor;opacity:.7}
+  .ck{display:inline-block;width:4px;height:8px;border:solid currentColor;border-width:0 2px 2px 0;transform:rotate(45deg);margin:0 6px 2px 2px}
+  .xk{display:inline-block;position:relative;width:10px;height:10px;vertical-align:-1px}
+  .xk::before,.xk::after{content:"";position:absolute;left:4px;top:-1px;width:2px;height:12px;background:currentColor;border-radius:1px}
+  .xk::before{transform:rotate(45deg)}.xk::after{transform:rotate(-45deg)}
+  .panelX .xk,.apClose .xk{width:12px;height:12px}.panelX .xk::before,.panelX .xk::after,.apClose .xk::before,.apClose .xk::after{height:15px;left:5px;top:-2px}
+  .cbx{display:inline-block;width:10px;height:10px;border:1.5px solid currentColor;border-radius:2px;vertical-align:-1px;margin-right:4px}
+  .cbx.on{background:currentColor;box-shadow:inset 0 0 0 2px #1c2026}
   .arw{display:inline-block;width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;vertical-align:1px;margin-left:3px}
   .arw.up{border-bottom:6px solid #d08080}.arw.dn{border-top:6px solid #8fb04a}.arw.upg{border-bottom:6px solid #8fb04a}.arw.dnr{border-top:6px solid #d08080}
   /* filas de selección (lista con escudo + nombre) en los popups de acción */
@@ -338,7 +350,7 @@
   .btile{width:192px;height:246px;flex:0 0 auto;background:#31373e;border:1px solid #454d56;border-radius:7px;padding:9px 10px;
     display:flex;flex-direction:column;cursor:pointer;position:relative;transition:border-color .1s;overflow:hidden}
   .btile .bic{width:100%;height:72px;object-fit:contain;margin:0 0 3px;image-rendering:auto;flex:0 0 auto}
-  .btile .bic.bemoji{display:flex;align-items:center;justify-content:center;font-size:46px;line-height:1}  /* icono de respaldo si falta el sprite */
+  .btile .bic.icoPh{display:flex;align-items:center;justify-content:center;font-size:22px;line-height:1}  /* hueco [ ] si falta el sprite del edificio */
   .btile .ben{flex:0 0 auto;margin-top:2px}                                    /* beneficios: NO se encoge (no corta el texto) */
   .btile .bl{font-size:var(--fs);line-height:1.5;color:var(--pos);font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .btile .bl[data-tip]{cursor:help}
@@ -430,17 +442,17 @@
   <button class="spdBtn" data-s="720" title="1 año de juego por minuto">720x</button>
   <span class="bbSpacer"></span>
   <button class="uiBtn" id="dipBtn">Diplomacia</button>
-  <button class="uiBtn" id="reportsBtn" title="Crónica de guerras, batallas y paces">📜 Informes Reales</button>
+  <button class="uiBtn" id="reportsBtn" title="Crónica de guerras, batallas y paces"><img class='uic' src='assets/ui/pergamino.png' alt=''> Informes</button>
   <button class="uiBtn" id="ledgerBtn">Registro</button>
   <span class="mapdd" id="mapMenu">
-    <button class="uiBtn" id="mapBtn" title="Vista del mapa: clic para elegir o volver a Político">🗺 Político</button>
+    <button class="uiBtn" id="mapBtn" title="Vista del mapa: clic para elegir o volver a Político"><span class='icoPh' data-ico='mapa'>[ ]</span> Político</button>
     <div class="mapdd-list" id="mapList" style="display:none">
       <div data-m="terrain">Terreno</div>
       <div data-m="pop">Población</div>
       <div data-m="res">Recursos</div>
       <div data-m="mkt">Mercados</div>
       <div data-m="hub">Centros</div>
-      <div data-m="good">Comercio de un bien</div>
+      <div data-m="good">Bienes</div>
       <div data-m="gran">Graneros</div>
     </div>
   </span>
@@ -486,11 +498,11 @@
   <div class="panel">
     <h1>Manual del soberano</h1>
     <h2>Recursos</h2>
-    <p>Cada provincia produce un recurso según su terreno. Los <b>estratégicos</b> —🌾 Grano, 🪵 Madera,
-       🪨 Piedra, ⛓ Hierro, 🐎 Caballos— son la base de la construcción y el ejército. Los <b>bienes de
-       comercio</b> —🌶 Especias, 🧵 Paño, 🍷 Vino, 🧂 Sal, 🎗 Seda— son escasos y regionales: solo ciertas
-       zonas los producen y harán falta para las grandes obras. Las <b>ciudades</b> producen 🪙 Ducados. Todas
-       generan Mano de obra (👥 MO). La <b>moral</b> multiplica la producción y los edificios la elevan.
+    <p>Cada provincia produce un recurso según su terreno. Los <b>estratégicos</b> —<img class='ric' src='assets/res/grano.png' alt=''> Grano, <img class='ric' src='assets/res/madera.png' alt=''> Madera,
+       <img class='ric' src='assets/res/piedra.png' alt=''> Piedra, <img class='ric' src='assets/res/hierro.png' alt=''> Hierro, <img class='ric' src='assets/res/caballos.png' alt=''> Caballos— son la base de la construcción y el ejército. Los <b>bienes de
+       comercio</b> —<img class='ric' src='assets/res/especias.png' alt=''> Especias, <img class='ric' src='assets/res/pano.png' alt=''> Paño, <img class='ric' src='assets/res/bebida.png' alt=''> Vino, <img class='ric' src='assets/res/sal.png' alt=''> Sal, <img class='ric' src='assets/res/seda.png' alt=''> Seda— son escasos y regionales: solo ciertas
+       zonas los producen y harán falta para las grandes obras. Las <b>ciudades</b> producen <img class='ric' src='assets/res/dinero.png' alt=''> Ducados. Todas
+       generan Mano de obra (MO). La <b>moral</b> multiplica la producción y los edificios la elevan.
        En la barra superior, cada recurso muestra al pasar el ratón su <b>balance mensual</b> (verde ingresa,
        rojo se agota). Aún no hay comercio entre reinos: llegará y hará fluir los bienes entre países.</p>
     <h2>El paso del tiempo</h2>
@@ -503,18 +515,18 @@
     <p>Al seleccionar una provincia propia se abre la <b>barra de edificios</b> abajo. A la izquierda tienes el
        <b>desglose de la provincia</b>: de dónde sale cada ingreso (producción base, gremios, mercados…), el
        <b>mantenimiento anual</b> de cada edificio y el balance neto. Arriba, un <b>índice de categorías</b> (haz
-       clic para filtrar). Cada tarjeta indica su <b>efecto</b>, su <b>mantenimiento</b> (🔧 /año) y qué
+       clic para filtrar). Cada tarjeta indica su <b>efecto</b>, su <b>mantenimiento</b> (/año) y qué
        <b>recursos</b> cuesta construirla (en rojo lo que no puedes pagar aún).</p>
     <p>Ojo: los edificios no solo cuestan al construirlos, también tienen un <b>mantenimiento anual</b> en dinero
        y/o recursos. Cuanto más grande el imperio, más caro sostenerlo: vigila el balance de cada provincia y la
        tesorería del reino.</p>
-    <p><b>Economía:</b> 🌾 Granja (+Grano), 🪵 Aserradero (+Madera), 🪨 Cantera (+Piedra), ⛏ Mina (+Hierro),
-       🏪 Mercado (+Ducados), 🧵 Gremio (+% producción), ⛪ Templo (+Ducados y moral).
-       <b>Militar:</b> 🛡 Cuartel (recluta antes, +MO), 🔨 Fundición (+producción, desbloquea tropa pesada),
-       🏹 Campo de entrenamiento (+MO), 🏰 Castillo (+30% defensa/nivel).
-       <b>Infraestructura:</b> ⚓ Puerto (costero: comercio y marcha marítima).
-       <b>Obras únicas</b> (muy caras, requieren bienes de lujo; no todos podrán costearlas): ⛪ Catedral
-       (moral a todo el reino), 🎓 Universidad (obras y producción), 🏛 Lonja (renta comercial), 🏯 Ciudadela
+    <p><b>Economía:</b> <img class='ric' src='assets/res/grano.png' alt=''> Granja (+Grano), <img class='ric' src='assets/res/madera.png' alt=''> Aserradero (+Madera), <img class='ric' src='assets/res/piedra.png' alt=''> Cantera (+Piedra), Mina (+Hierro),
+       Mercado (+Ducados), <img class='ric' src='assets/res/pano.png' alt=''> Gremio (+% producción), Templo (+Ducados y moral).
+       <b>Militar:</b> Cuartel (recluta antes, +MO), Fundición (+producción, desbloquea tropa pesada),
+       Campo de entrenamiento (+MO), Castillo (+30% defensa/nivel).
+       <b>Infraestructura:</b> Puerto (costero: comercio y marcha marítima).
+       <b>Obras únicas</b> (muy caras, requieren bienes de lujo; no todos podrán costearlas): Catedral
+       (moral a todo el reino), Universidad (obras y producción), Lonja (renta comercial), Ciudadela
        (defensa inexpugnable). La mayoría se mejoran por niveles; el coste sube con cada nivel.</p>
     <p>Los <b>caminos</b> no son un edificio: se construyen <b>entre dos provincias propias adyacentes</b>
        (6 meses) desde el panel de provincia, se ven sobre el mapa y aceleran la marcha un 50%. Cada reino
@@ -542,17 +554,17 @@
 
 <div class="overlay" id="dipOverlay" style="display:none">
   <div class="panel" style="min-width:820px;max-width:960px;max-height:88vh;overflow:auto">
-    <button class="panelX" title="Cerrar" onclick="document.getElementById('dipOverlay').style.display='none'">✕</button>
-    <h1 style="text-align:center;margin-bottom:12px">🕊 Diplomacia</h1>
+    <button class="panelX" title="Cerrar" onclick="document.getElementById('dipOverlay').style.display='none'"><i class='xk'></i></button>
+    <h1 style="text-align:center;margin-bottom:12px"><span class='icoPh' data-ico='diplomacia'>[ ]</span> Diplomacia</h1>
     <div id="dipBody"></div>
   </div>
 </div>
 
-<button id="councilBtn" class="councilFab" style="display:none" title="Consejo de guerra en curso">⚔ Consejo de guerra</button>
+<button id="councilBtn" class="councilFab" style="display:none" title="Consejo de guerra en curso">Consejo de guerra</button>
 <div class="overlay" id="councilOverlay" style="display:none">
   <div class="panel" style="min-width:480px;max-width:600px;max-height:86vh;overflow:auto">
-    <button class="panelX" title="Cerrar (el consejo sigue abierto)" onclick="document.getElementById('councilOverlay').style.display='none'">✕</button>
-    <h1 style="text-align:center;margin-bottom:2px">⚔ Consejo de deliberación</h1>
+    <button class="panelX" title="Cerrar (el consejo sigue abierto)" onclick="document.getElementById('councilOverlay').style.display='none'"><i class='xk'></i></button>
+    <h1 style="text-align:center;margin-bottom:2px">Consejo</h1>
     <p style="text-align:center;color:#9aa3ad;font-size:12px;margin:0 0 12px">Llama a tus aliados a la guerra; cuando voten, lanza la campaña o cancélala.</p>
     <div id="councilBody"></div>
   </div>
@@ -560,8 +572,8 @@
 
 <div class="overlay" id="coalPeaceOverlay" style="display:none">
   <div class="panel" style="min-width:480px;max-width:600px;max-height:86vh;overflow:auto">
-    <button class="panelX" title="Cerrar" onclick="document.getElementById('coalPeaceOverlay').style.display='none'">✕</button>
-    <h1 style="text-align:center;margin-bottom:2px">🕊 Paz de coalición</h1>
+    <button class="panelX" title="Cerrar" onclick="document.getElementById('coalPeaceOverlay').style.display='none'"><i class='xk'></i></button>
+    <h1 style="text-align:center;margin-bottom:2px">Paz de coalición</h1>
     <p style="text-align:center;color:#9aa3ad;font-size:12px;margin:0 0 12px">Firmas por todo tu bando. El oro se reparte entre los aliados por su warscore.</p>
     <div id="coalPeaceBody"></div>
   </div>
@@ -569,7 +581,7 @@
 
 <div class="overlay" id="dipModalOverlay" style="display:none">
   <div class="panel" style="min-width:380px;max-width:520px;max-height:82vh;overflow:auto">
-    <button class="panelX" title="Cerrar" onclick="closeDipModal()">✕</button>
+    <button class="panelX" title="Cerrar" onclick="closeDipModal()"><i class='xk'></i></button>
     <h1 id="dipModalTitle" style="text-align:center;margin-bottom:12px"></h1>
     <div id="dipModalBody"></div>
   </div>
@@ -577,8 +589,8 @@
 
 <div class="overlay" id="leagueOverlay" style="display:none">
   <div class="panel" style="min-width:480px;max-width:600px;max-height:86vh;overflow:auto">
-    <button class="panelX" title="Cerrar" onclick="document.getElementById('leagueOverlay').style.display='none'">✕</button>
-    <h1 style="text-align:center;margin-bottom:2px">🛡 Ligas defensivas</h1>
+    <button class="panelX" title="Cerrar" onclick="document.getElementById('leagueOverlay').style.display='none'"><i class='xk'></i></button>
+    <h1 style="text-align:center;margin-bottom:2px">Ligas</h1>
     <p style="text-align:center;color:#9aa3ad;font-size:12px;margin:0 0 12px">Organización multi-miembro: los países aplican y los miembros votan. Al atacar a un miembro, los demás acuden a defenderlo.</p>
     <div id="leagueBody"></div>
   </div>
@@ -586,7 +598,7 @@
 
 <div class="overlay" id="callToArmsOverlay" style="display:none">
   <div class="panel" style="min-width:440px;max-width:560px">
-    <h1 style="text-align:center;margin-bottom:2px">⚔ Llamada a las armas</h1>
+    <h1 style="text-align:center;margin-bottom:2px">Llamada a las armas</h1>
     <p style="text-align:center;color:#9aa3ad;font-size:12px;margin:0 0 12px">Un aliado o co-miembro de tu liga es atacado. Decide si acudes a defenderlo.</p>
     <div id="callToArmsBody"></div>
   </div>
@@ -594,7 +606,7 @@
 
 <div class="overlay" id="ledgerOverlay" style="display:none">
   <div class="panel" style="min-width:660px;max-height:86vh;overflow:auto">
-    <button class="panelX" title="Cerrar" onclick="document.getElementById('ledgerOverlay').style.display='none'">✕</button>
+    <button class="panelX" title="Cerrar" onclick="document.getElementById('ledgerOverlay').style.display='none'"><i class='xk'></i></button>
     <h1>Registro de naciones</h1>
     <p style="text-align:center;color:#9aa3ad;font-size:12px;margin:-6px 0 12px">Clic en una columna para ordenar.</p>
     <div id="ledgerBody"></div>
@@ -603,7 +615,7 @@
 
 <div class="overlay" id="treasuryOverlay" style="display:none">
   <div class="panel" style="min-width:460px;max-width:560px;max-height:86vh;overflow:auto">
-    <button class="panelX" title="Cerrar" onclick="document.getElementById('treasuryOverlay').style.display='none'">✕</button>
+    <button class="panelX" title="Cerrar" onclick="document.getElementById('treasuryOverlay').style.display='none'"><i class='xk'></i></button>
     <h1 style="text-align:center;margin-bottom:10px">Tesorería del reino</h1>
     <div id="treasuryBody"></div>
   </div>
@@ -611,7 +623,7 @@
 
 <div class="overlay" id="estatesOverlay" style="display:none">
   <div class="panel" style="min-width:420px;max-width:720px;max-height:86vh;overflow:auto">
-    <button class="panelX" title="Cerrar" onclick="document.getElementById('estatesOverlay').style.display='none'">✕</button>
+    <button class="panelX" title="Cerrar" onclick="document.getElementById('estatesOverlay').style.display='none'"><i class='xk'></i></button>
     <h1 style="text-align:center;margin-bottom:10px">Estamentos del reino</h1>
     <div id="estatesBody"></div>
   </div>
@@ -619,24 +631,23 @@
 
 <div class="overlay" id="mercadoOverlay" style="display:none">
   <div class="panel" style="min-width:560px;max-width:720px;max-height:88vh;overflow:auto">
-    <button class="panelX" title="Cerrar" onclick="document.getElementById('mercadoOverlay').style.display='none'">✕</button>
-    <h1 style="text-align:center;margin-bottom:10px">🏪 Mercado del reino</h1>
+    <button class="panelX" title="Cerrar" onclick="document.getElementById('mercadoOverlay').style.display='none'"><i class='xk'></i></button>
+    <h1 style="text-align:center;margin-bottom:10px">Mercado</h1>
     <div id="mercadoBody"></div>
   </div>
 </div>
 
 <div class="overlay" id="fiscalOverlay" style="display:none">
   <div class="panel" style="min-width:460px;max-width:560px;max-height:88vh;overflow:auto">
-    <button class="panelX" title="Cerrar" onclick="document.getElementById('fiscalOverlay').style.display='none'">✕</button>
-    <h1 style="text-align:center;margin-bottom:2px">⚖️ Cortes · Hacienda Real</h1>
+    <button class="panelX" title="Cerrar" onclick="document.getElementById('fiscalOverlay').style.display='none'"><i class='xk'></i></button>
+    <h1 style="text-align:center;margin-bottom:2px">Hacienda</h1>
     <div id="fiscalBody"></div>
   </div>
 </div>
 
 <div class="overlay" id="reportsOverlay" style="display:none">
   <div class="panel" id="reportsPanel" style="min-width:600px;max-width:720px;max-height:88vh;overflow:auto">
-    <h1 style="text-align:center;letter-spacing:2px;border-bottom:3px double #6b5a3a;padding-bottom:8px;margin-bottom:4px">📜 INFORMES REALES</h1>
-    <p style="text-align:center;color:#9c8f6f;font-size:12px;font-style:italic;margin:0 0 12px">Crónica de la corte · guerras, batallas y tratados de Europa</p>
+    <h1 style="text-align:center;letter-spacing:2px;border-bottom:3px double #6b5a3a;padding-bottom:8px;margin-bottom:4px">INFORMES REALES</h1>
     <div id="reportsBody"></div>
     <p style="text-align:center;margin-top:16px"><button class="uiBtn" onclick="document.getElementById('reportsOverlay').style.display='none'">Cerrar</button></p>
   </div>
@@ -651,7 +662,7 @@
 </div>
 
 <div id="armyPanel" style="display:none">
-  <div class="apHead"><span>⚔ Ejército</span><button class="apClose" onclick="closeArmyPanel()">✕</button></div>
+  <div class="apHead"><span>Ejército</span><button class="apClose" onclick="closeArmyPanel()"><i class='xk'></i></button></div>
   <div id="armyBody"></div>
 </div>
 

@@ -193,7 +193,7 @@ function declareWar(a,b,opts){
   S.wars.set(warKey(a,b),{a:lo,b:hi,start:S.hour,tA:0,tB:0,coal:(opts&&opts.coal)||null}); // coal = id de coalición (paz conjunta)
   if(!(opts&&opts.quiet)){ // quiet: la coalición emite UN solo parte por su cuenta (no uno por par)
     log(NATIONS[a].name+" declara la guerra a "+NATIONS[b].name+".");
-    report("⚔","<b>"+NATIONS[a].name+"</b> declara la guerra a <b>"+NATIONS[b].name+"</b>.",[a,b]);
+    report("guerra","<b>"+NATIONS[a].name+"</b> declara la guerra a <b>"+NATIONS[b].name+"</b>.",[a,b]);
   }
   return true;
 }
@@ -264,7 +264,7 @@ function makePeace(a,b,terms){
       parts.push(NATIONS[from].name+" cede el "+d.name+" a "+NATIONS[to].name);
       const fan=conquestFanout(to,from,did); // infamia: reparte tensión a los vecinos (salvo casus belli)
       if(!fan.claim&&fan.hits.length&&(to===S.player||fan.hits.some(x=>x.n===S.player)))
-        report("📜","La conquista del <b>"+d.name+"</b> por <b>"+NATIONS[to].name+"</b> inquieta a la región.",[to,...fan.hits.map(x=>x.n)]);
+        report("tratado","La conquista del <b>"+d.name+"</b> por <b>"+NATIONS[to].name+"</b> inquieta a la región.",[to,...fan.hits.map(x=>x.n)]);
       transferDuchy(d,d.occBy);transferred=true;
     }
     if(terms.gold>0&&terms.goldFrom!=null&&terms.goldTo!=null){
@@ -284,12 +284,12 @@ function makePeace(a,b,terms){
     if(ar.path.some(p=>S.provs[p].owner===other)){ar.path=[];ar.legDone=0;ar.legTotal=0}
   }
   log("Paz firmada entre "+NATIONS[a].name+" y "+NATIONS[b].name+".");
-  report("🕊","Paz entre <b>"+NATIONS[a].name+"</b> y <b>"+NATIONS[b].name+"</b>."+(parts.length?" "+parts.join("; ")+".":" Paz blanca."),[a,b]);
+  report("paz","Paz entre <b>"+NATIONS[a].name+"</b> y <b>"+NATIONS[b].name+"</b>."+(parts.length?" "+parts.join("; ")+".":" Paz blanca."),[a,b]);
   // eliminación diferida: solo al perder el último ducado en la mesa de paz
   for(const nn of [a,b])if(nn<NPLAY&&S.nations[nn].alive&&nationProvCount(nn)===0){
     S.nations[nn].alive=false;
     log(NATIONS[nn].name+" ha sido borrada del mapa.");
-    report("☠","El reino de <b>"+NATIONS[nn].name+"</b> desaparece del mapa.",[nn]);
+    report("caida","El reino de <b>"+NATIONS[nn].name+"</b> desaparece del mapa.",[nn]);
   }
   checkVictory();
 }
@@ -339,9 +339,9 @@ function coalitionPeace(coalId,terms){
   S.coalitions.delete(coalId);
   if(transferred)paintBorders();
   log("Paz de coalición entre "+NATIONS[coal.leadA].name+" y "+NATIONS[coal.leadD].name+".");
-  report("🕊","Paz de coalición: <b>"+NATIONS[coal.leadA].name+"</b> y <b>"+NATIONS[coal.leadD].name+"</b> firman."+(parts.length?" "+parts.join("; ")+".":" Paz blanca."),[...coal.atk,...coal.def]);
+  report("paz","Paz de coalición: <b>"+NATIONS[coal.leadA].name+"</b> y <b>"+NATIONS[coal.leadD].name+"</b> firman."+(parts.length?" "+parts.join("; ")+".":" Paz blanca."),[...coal.atk,...coal.def]);
   for(const nn of [...coal.atk,...coal.def])if(nn<NPLAY&&S.nations[nn].alive&&nationProvCount(nn)===0){
-    S.nations[nn].alive=false;log(NATIONS[nn].name+" ha sido borrada del mapa.");report("☠","El reino de <b>"+NATIONS[nn].name+"</b> desaparece del mapa.",[nn]);
+    S.nations[nn].alive=false;log(NATIONS[nn].name+" ha sido borrada del mapa.");report("caida","El reino de <b>"+NATIONS[nn].name+"</b> desaparece del mapa.",[nn]);
   }
   checkVictory();
   return true;
@@ -474,7 +474,7 @@ function updateDuchy(dId){
     // el ducado pasa a poder del ocupante: se ocupan también los tiles no clave (marcador visual)
     for(const pid of d.provs){const P=S.provs[pid];if(P.occupier!==occ){P.occupier=occ;repaintProvince(pid)}}
     if(occ===S.player||owner===S.player)log(NATIONS[occ].name+" ocupa el "+d.name+" ("+NATIONS[owner].name+").");
-    report("🏰","<b>"+NATIONS[occ].name+"</b> ocupa el <b>"+d.name+"</b> ("+NATIONS[owner].name+").",[occ,owner]);
+    report("castillo","<b>"+NATIONS[occ].name+"</b> ocupa el <b>"+d.name+"</b> ("+NATIONS[owner].name+").",[occ,owner]);
   }else{
     // control roto: los tiles no clave (ocupados solo por el efecto ducado) vuelven a su dueño
     for(const pid of d.provs){
@@ -657,7 +657,7 @@ function resolveBattles(){
     const atkU=atk.reduce((s,a)=>s+armyCount(a),0),defU=def.reduce((s,a)=>s+armyCount(a),0);
     if(atkU>=4&&defU>=4){
       nowBattling.add(pid);
-      if(!S._battling.has(pid))report("⚔","Choque de ejércitos en <b>"+p.name+"</b>: <b>"+NATIONS[atk[0].nation].name+"</b> contra <b>"+NATIONS[controller].name+"</b>.",[atk[0].nation,controller]);
+      if(!S._battling.has(pid))report("guerra","Choque de ejércitos en <b>"+p.name+"</b>: <b>"+NATIONS[atk[0].nation].name+"</b> contra <b>"+NATIONS[controller].name+"</b>.",[atk[0].nation,controller]);
     }
     const terr=TERRAINS[p.terrain].def;
     const fort=provDefMul(p);
@@ -912,10 +912,10 @@ function aiTurn(n){
         const dus=[];for(const d of S.duchies)if(d&&d.provs&&duchyOwner(d.id)===foe&&!hasClaim(n,d.id))dus.push(d);
         if(dus.length&&S.rand()<0.5){
           const d=dus[(S.rand()*dus.length)|0], r=fabricateClaim(n,d.id);
-          if(r.ok&&foe===S.player)report("📜","<b>"+NATIONS[n].name+"</b> fabrica una reclamación sobre el <b>"+r.duchy+"</b>.",[n,foe]);
+          if(r.ok&&foe===S.player)report("tratado","<b>"+NATIONS[n].name+"</b> fabrica una reclamación sobre el <b>"+r.duchy+"</b>.",[n,foe]);
         }else{
           const r=insult(n,foe);
-          if(r.ok&&foe===S.player)report("⚡","<b>"+NATIONS[n].name+"</b> lanza un insulto a <b>"+NATIONS[foe].name+"</b>.",[n,foe]);
+          if(r.ok&&foe===S.player)report("insulto","<b>"+NATIONS[n].name+"</b> lanza un insulto a <b>"+NATIONS[foe].name+"</b>.",[n,foe]);
         }
       }
     }

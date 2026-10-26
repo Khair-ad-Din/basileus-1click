@@ -40,7 +40,8 @@ Reglas ya derivadas y aplicadas en la vista de diplomacia:
 ## 1b. Las reglas de estructura (Sergio, 2026-10-26) — PERMANENTES
 
 Dictadas por Sergio al revisar la UI económica, con capturas. Valen para **toda** pantalla, tooltip y ventana, nueva o
-vieja. Las vigila un hook (`.claude/hooks/lint-ui-texto.mjs`: avisa del "·" y de los iconos Unicode en lo recién escrito).
+vieja. Las vigila un hook (`.claude/hooks/lint-ui-texto.mjs`: avisa del "·" y de los iconos Unicode en lo recién escrito)
+y las comprueba en TODO el código `node tools/verify/ui-reglas.mjs` (pásalo antes de dar por cerrada una tarea de UI).
 
 1. **Un tema por bloque, y separados.** Si un desglose cuenta varias cosas, cada una va en su bloque con un **separador
    visible** entre ellos. Ejemplo que lo motivó: el tooltip del precio mezclaba "cómo se forma el precio" con "lo que se

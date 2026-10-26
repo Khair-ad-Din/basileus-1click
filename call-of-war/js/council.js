@@ -61,7 +61,7 @@ function launchCouncil(){
   S.coalitions.set(id,coal);
   const alliesJoined=attackers.length-1;
   const defJoined=resolveDefenders(coal); // el defensor reúne a sus aliados (Etapa 3c)
-  report("⚔","<b>"+NATIONS[c.leader].name+"</b> forma una coalición"+(alliesJoined>0?(" con "+alliesJoined+" aliado(s)"):"")+" y declara la guerra a <b>"+NATIONS[c.target].name+"</b>."+(defJoined.length?(" "+NATIONS[c.target].name+" reúne "+defJoined.length+" defensor(es)."):""),[...coal.atk,...coal.def]);
+  report("guerra","<b>"+NATIONS[c.leader].name+"</b> forma una coalición"+(alliesJoined>0?(" con "+alliesJoined+" aliado(s)"):"")+" y declara la guerra a <b>"+NATIONS[c.target].name+"</b>."+(defJoined.length?(" "+NATIONS[c.target].name+" reúne "+defJoined.length+" defensor(es)."):""),[...coal.atk,...coal.def]);
   S.council=null;
   return{ok:true,coal,defJoined};
 }
@@ -126,7 +126,7 @@ function aiOpenWar(leader,target){
   S.coalitions.set(id,coal);
   const alliesJoined=attackers.length-1;
   const defJoined=resolveDefenders(coal);
-  report("⚔","<b>"+NATIONS[leader].name+"</b> forma una coalición"+(alliesJoined>0?(" con "+alliesJoined+" aliado(s)"):"")+" y declara la guerra a <b>"+NATIONS[target].name+"</b>."+(defJoined.length?(" "+NATIONS[target].name+" reúne "+defJoined.length+" defensor(es)."):""),[...coal.atk,...coal.def]);
+  report("guerra","<b>"+NATIONS[leader].name+"</b> forma una coalición"+(alliesJoined>0?(" con "+alliesJoined+" aliado(s)"):"")+" y declara la guerra a <b>"+NATIONS[target].name+"</b>."+(defJoined.length?(" "+NATIONS[target].name+" reúne "+defJoined.length+" defensor(es)."):""),[...coal.atk,...coal.def]);
   return{ok:true,coal};
 }
 
