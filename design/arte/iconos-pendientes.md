@@ -50,18 +50,18 @@ El de los existentes en `assets/res/` y `assets/ui/` (para ver los once bienes j
 | ~~Especiería~~ | `buildings/especiar.png` | HECHO (2026-10-26) |
 | ~~Yeguada~~ | `buildings/yeguada.png` | HECHO (2026-10-26) |
 
-## Prioridad 3: provincia y Hacienda
+## Prioridad 3: provincia y Hacienda — HECHA (2026-10-26)
 
 | Icono | Archivo | Motivo sugerido |
 |---|---|---|
-| Granero | `ui/granero.png` | Hórreo o granero de madera sobre pilares |
-| Tierra | `ui/tierra.png` | Parcela arada con surcos y un mojón de piedra |
-| Socorro | `ui/socorro.png` | Carro con sacos de grano |
-| Moral | `ui/moral.png` | Estandarte del reino ondeando |
-| Capital | `ui/capital.png` | Corona real sobre una torre |
-| Almacén | `ui/almacen.png` | Pila de cajas y barriles bajo un tejadillo |
-| Pecho | `ui/pecho.png` | Saca de monedas con el sello de la corona |
-| Alcabala | `ui/alcabala.png` | Puesto de mercado con un recaudador y su libro |
+| ~~Granero~~ | `ui/granero.png` | HECHO (2026-10-26) |
+| ~~Tierra~~ | `ui/tierra.png` | HECHO (2026-10-26) |
+| ~~Socorro~~ | `ui/socorro.png` | HECHO (2026-10-26) |
+| ~~Moral~~ | `ui/moral.png` | HECHO (2026-10-26) |
+| ~~Capital~~ | `ui/capital.png` | HECHO (2026-10-26) |
+| ~~Almacén~~ | `ui/almacen.png` | HECHO (2026-10-26) |
+| ~~Pecho~~ | `ui/pecho.png` | HECHO (2026-10-26) |
+| ~~Alcabala~~ | `ui/alcabala.png` | HECHO (2026-10-26) |
 | ~~Almojarifazgo~~ | `ui/almojarifazgo.png` | HECHO (2026-10-26) |
 | ~~Diezmo~~ | `ui/diezmo.png` | HECHO (2026-10-26) |
 | ~~Realengo~~ | `ui/realengo.png` | HECHO (2026-10-26) |
