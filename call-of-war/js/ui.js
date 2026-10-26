@@ -3,7 +3,7 @@ import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, 
 import { S } from "./state.js";
 import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildJobs, buildMax, buildSlots, canAfford, costFor, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationProvCount, nationStrength, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, resetTsyLedger, tsyAvail, tsyMonthBal, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, provProdMul, YR_TICKS, manorOf, MANOR_RENT, bOwnerOf } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
-import { GOODS2, LABEL2, REF2, NEED2, WANT2, BLD2, PRICE_SCALE, CROWN_STOCK, specialty2, obsolete2, siteOK2, transport, buildingProfit2, buildingOutput2, upkeepScale, granaryOf, foodGrowth, reliefQuote, landYield, landCap, landBirth, LAND_FULL } from "./economy2.js";
+import { GOODS2, LABEL2, REF2, NEED2, WANT2, BLD2, PRICE_SCALE, CROWN_STOCK, specialty2, obsolete2, siteOK2, transport, buildingProfit2, buildingOutput2, upkeepScale, granaryOf, foodGrowth, reliefQuote, landYield, landCap, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX } from "./economy2.js";
 import { calOf, MONTHS_ES, monthsToHarvest, harvestMonth } from "./economy.js";
 import { canvas, clampPan, repaintProvince } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
@@ -91,7 +91,7 @@ function refreshTop(){
   buildResBar();
   // Resumen de tesorería: el libro de la corona del mes cerrado (economy.js recCrown)
   const cb=crownBook("prev"),inc=cb.inc,exp=cb.exp,net=cb.net;
-  {const hd=document.getElementById("t_hdr");if(hd)hd.innerHTML="<span class='reshdr'>"+(cb.cur?"Este mes":"Mes pasado")+"</span>"}
+  {const hd=document.getElementById("t_hdr");if(hd)hd.innerHTML="<span class='reshdr'>"+(cb.forecast?"Previsión":cb.cur?"Este mes":"Mes pasado")+"</span>"}
   const setV=(id,txt,cls)=>{const el=document.getElementById(id);if(!el)return;el.textContent=txt;if(cls!=null)el.className=cls};
   setV("t_duc",fmt(tsyAvail(S.player,"dinero")));
   setV("t_inc","+"+fmt(inc),"pos");
@@ -1156,8 +1156,12 @@ window.refreshGoodLegend=function(){
 // Cada provincia PROPIA pintada por "¿llega su granero a la siega?". S.gmGran[pid]: -1 ajena · 0 de sobra (≥12 m) ·
 // 1 llega · 2 no llega a su siega · 3 hambre. Lo pinta render.js (granColor) sin importar la economía.
 const GRAN_LBL=["de sobra","llega","no llega","hambre"],GRAN_CSS=["#6cb05c","#c9a44e","#c4563e","#8a2a3a"];
+const LAND_LBL=["holgada","aprieta","al límite","no los alimenta"];
+const GRAN_ROWS=5;   // filas de la lista de la leyenda: más y se mete bajo el panel lateral (la leyenda crece hacia arriba)
+function landState(p){const x=landOcc2(p);return x<LAND_FULL?0:x<0.9?1:x<=1?2:3}   // 80% · 90% · 100%: los tramos de la tierra
 function granState(p){
   if(p.owner!==S.player||p.wasteland||!p.pops||!p.store)return -1;
+  if(S.granMode==="tierra")return landCap(p)>0?landState(p):-1;
   if(p.famine)return 3; const gm=p._gm!=null?p._gm:12;
   const short=p._gshort!=null?p._gshort:gm<monthsToHarvest(p,S.hour);   // ¿llega el GRANERO entero a la siega? (economy2)
   return short?2:gm>=12?0:1;
@@ -1174,11 +1178,23 @@ window.granFocus=function(pid){const p=S.provs[pid];if(!p)return;
   S.panX=canvas.width/2-p.x*S.zoom;S.panY=canvas.height/2-p.y*S.zoom;clampPan();S.selProv=pid;S.selArmy=null;
   if(window.setProvTab)window.setProvTab("build");refreshSide()};
 window.granRelief=function(pid){window.reliefSendProv(pid);window.refreshGranView()};
+window.setGranMode=function(m){S.granMode=m;window.refreshGranView()};
 // Leyenda: la escala de 4 estados y la LISTA de los ducados propios que no llegan a la siega (o con hambre), del que
 // antes se vacía al que después, cada uno con su botón de socorro y el total (reliefQuote, la misma cifra que la ficha).
 window.refreshGranLegend=function(){
   const el=document.getElementById("granLegend"); if(!el)return;
   if(!S.granView||S.player<0){el.style.display="none";return}
+  const mchip=(k,lab)=>"<span onclick=\"setGranMode('"+k+"')\" style='cursor:pointer;padding:1px 7px;border-radius:4px;font-size:11px;"+((S.granMode||"grano")===k?"background:#3a4550;color:#fff":"color:#9aa3ad")+"'>"+lab+"</span>";
+  const chips="<div style='margin:4px 0'>"+mchip("grano","Grano")+" "+mchip("tierra","Tierra")+"</div>";
+  if(S.granMode==="tierra"){ // la presión sobre la tierra: de la más apretada a la más holgada
+    const ps=S.provs.filter(p=>p.owner===S.player&&p.pops&&landCap(p)>0).sort((a,b)=>landOcc2(b)-landOcc2(a));
+    const sc=LAND_LBL.map((l,i)=>"<span style='white-space:nowrap'><i style='display:inline-block;width:9px;height:9px;border-radius:2px;background:"+GRAN_CSS[i]+";vertical-align:middle'></i> "+l+"</span>").join(" &nbsp;");
+    let li="";for(const p of ps.slice(0,GRAN_ROWS)){const x=landOcc2(p),st=landState(p);
+      li+="<div class='prow' style='gap:6px'><span style='cursor:pointer;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' onclick='granFocus("+p.id+")'><span style='color:"+GRAN_CSS[st]+"'>■</span> "+p.name+"</span><b>"+barE(Math.min(100,Math.round(100*x)),34,GRAN_CSS[st])+" "+Math.round(100*x)+"%</b></div>"}
+    if(ps.length>GRAN_ROWS)li+="<div class='prow'><span class='dim'>+"+(ps.length-GRAN_ROWS)+" más</span></div>";
+    el.innerHTML="<b style='font-size:12px'>🌱 Tierra</b>"+iInfo("Cuánto de su capacidad agraria ocupan los campesinos de cada provincia. Por encima del 80% cada campesino nuevo cosecha menos y nacen menos; al 100%, en un año normal, cosechan justo lo que comen. La lista: las más apretadas.")+
+      chips+"<div style='font-size:10px;margin:4px 0 6px'>"+sc+"</div>"+li;
+    el.style.display="block";return}
   const G=new Map();
   for(const p of S.provs){if(p.owner!==S.player||!p.pops||!p.store)continue;const st=granState(p);if(st<2)continue;
     const k=(p.duchy>=0?"d"+p.duchy:"p"+p.id), g=G.get(k), rec={pid:p.id,gm:p._gm||0,mth:monthsToHarvest(p,S.hour),hm:harvestMonth(p)};
@@ -1186,16 +1202,16 @@ window.refreshGranLegend=function(){
   const rows=[...G.values()].sort((a,b)=>(b.st-a.st)||((a.gm-a.mth)-(b.gm-b.mth)));
   const scale=GRAN_LBL.map((l,i)=>"<span style='white-space:nowrap'><i style='display:inline-block;width:9px;height:9px;border-radius:2px;background:"+GRAN_CSS[i]+";vertical-align:middle'></i> "+l+"</span>").join(" &nbsp;");
   let list="";
-  for(const r of rows.slice(0,8)){const p=S.provs[r.pid],q=reliefQuote(S.player,p);
+  for(const r of rows.slice(0,GRAN_ROWS)){const p=S.provs[r.pid],q=reliefQuote(S.player,p);
     const dn=p.duchy>=0&&S.duchies[p.duchy]?S.duchies[p.duchy].name.replace(/^Ducado de /,""):p.name;
     const ic=r.st===3?"☠":"⚠",m=r.gm<1?"&lt;1":Math.floor(r.gm);
     list+="<div class='prow' style='gap:6px'><span style='cursor:pointer' onclick='granFocus("+r.pid+")' data-tip=\""+ta("Siega en "+MONTHS_ES[r.hm])+"\">"+
       "<span style='color:"+GRAN_CSS[r.st]+"'>"+ic+"</span> "+dn+"</span><b>"+barE(Math.min(100,Math.round(100*r.gm/12)),34)+" "+m+" m "+
       (q&&q.falta>0?"<button class='bbtn' "+(q.ok?"":"disabled")+" onclick='granRelief("+r.pid+")' data-tip=\""+ta(q.ok?"Socorro hasta la siega (desglose en la ficha)":q.why)+"\">🛒 "+nfE(q.total)+"</button>":"")+"</b></div>";}
-  if(rows.length>8)list+="<div class='prow'><span class='dim'>+"+(rows.length-8)+" más</span></div>";
+  if(rows.length>GRAN_ROWS)list+="<div class='prow'><span class='dim'>+"+(rows.length-GRAN_ROWS)+" más</span></div>";
   if(!rows.length)list="<div class='prow'><span class='dim'>Todos llegan a la siega</span></div>";
   el.innerHTML="<b style='font-size:12px'>🌾 Graneros</b>"+iInfo("Cada ducado de tu reino según si su grano llega a la próxima siega. La lista: los que no llegan, del que antes se vacía; pulsa el nombre para ir, 🛒 para socorrerlo hasta la siega (grano del almacén de la corona y lo que falte comprado en la plaza, más el flete).")+
-    "<div style='font-size:10px;margin:4px 0 6px'>"+scale+"</div>"+list;
+    chips+"<div style='font-size:10px;margin:4px 0 6px'>"+scale+"</div>"+list;
   el.style.display="block";
 };
 function refreshMercado(){
@@ -1214,8 +1230,8 @@ function refreshFiscal(){
   const n=S.player, N=S.nations[n];
   const nf=v=>Math.round(v).toLocaleString("es-ES"), pct=v=>Math.round(v*100);
   const feud=taxRateOf(n), alc=alcabalaOf(n), alm=almojOf(n);
-  const slider=(label,val,min,max,kind,info,inc)=>
-    "<div style='background:#20252b;border:1px solid #2f363d;border-radius:8px;padding:11px 13px;margin-bottom:9px'>"+
+  const slider=(label,val,min,max,kind,info,inc,tip)=>
+    "<div style='background:#20252b;border:1px solid #2f363d;border-radius:8px;padding:11px 13px;margin-bottom:9px'"+(tip?" data-tiph=\""+ta(tip)+"\"":"")+">"+
       "<div style='display:flex;justify-content:space-between;align-items:baseline'>"+
         "<span style='font-weight:bold'>"+label+iInfo(info)+"</span>"+
         "<span style='font-family:monospace;font-size:15px;color:var(--title)'>"+pct(val)+"%</span></div>"+
@@ -1223,10 +1239,13 @@ function refreshFiscal(){
       "<input type='range' min='"+min+"' max='"+max+"' value='"+pct(val)+"' step='1' style='width:100%;margin-top:6px' oninput='setTax(\""+kind+"\",this.value)'></div>";
   // lo que rindió cada impuesto el mes pasado (libro de la corona)
   const cb=crownBook("prev"),got=c=>cb.cats[c]||0,lab=cb.cur?"este mes":"el mes pasado";
-  const slider2=(label,val,min,max,kind,info,inc)=>slider(label,val,min,max,kind,info,null).replace("</span></div>","</span></div><div style='font-size:11px;color:#8aa478'>+"+nf(inc)+" 🪙 "+lab+"</div>");
+  const TAX_WHO={feudal:"El campesino, sobre lo que vende de su parte",alcabala:"Quien vende a la plaza: cobra un punto menos del precio por cada punto",almoj:"El mercader, sobre su margen en el comercio exterior"};
+  const taxTip=(label,kind,val,inc)=>{const base=val>0?inc/val:0;
+    return tipRows(label+" · "+pct(val)+"%",[["Lo paga",TAX_WHO[kind]],["Rindió "+lab,"+"+nf(inc)+" 🪙"],...(base>0?[["Base gravada",nf(base)+" 🪙"],["Cada punto más","≈ +"+nf(base/100)+" 🪙/mes"]]:[])])};
+  const slider2=(label,val,min,max,kind,info,inc)=>slider(label,val,min,max,kind,info,null,taxTip(label,kind,val,inc)).replace("</span></div>","</span></div><div style='font-size:11px;color:#8aa478'>+"+nf(inc)+" 🪙 "+lab+"</div>");
   let h="<div style='text-align:center;font-size:12px;color:#9aa3ad;margin-bottom:11px'>Ingresos de la corona "+lab+": <b style='color:var(--title)'>"+nf(cb.inc)+" 🪙</b></div>";
   h+=slider2("🌾 Pecho",feud,2,20,"feudal","Lo paga el campesino sobre lo que vende de su cosecha en la plaza. Más pecho, menos le queda para sus comodidades.",got("Pecho"));
-  h+=slider2("🏪 Alcabala",alc,0,30,"alcabala","Sobre cada compra en la plaza del reino: encarece lo que compran todos los estamentos.",got("Alcabala"));
+  h+=slider2("🏪 Alcabala",alc,0,30,"alcabala","Sobre cada venta en la plaza del reino: el comprador paga el precio y la corona se queda su parte, así que el que vende cobra menos.",got("Alcabala"));
   h+=slider2("⚓ Almojarifazgo",alm,0,60,"almoj","Aduana sobre el comercio con otros reinos: resta margen al mercader.",got("Almojarifazgo"));
   h+="<div style='background:#1c2026;border:1px solid #2a2f36;border-radius:8px;padding:9px 13px;margin-bottom:4px;opacity:.75'>"+
     "<div style='display:flex;justify-content:space-between;align-items:baseline'><span>⛪ Diezmo"+iInfo("La décima de la cosecha va al clero: del grano, de lo que el granero vende en la plaza; del resto, de todo lo que se produce. Es derecho de la Iglesia: no se toca.")+"</span><span style='font-family:monospace'>"+pct(DIEZMO)+"%</span></div></div>";
@@ -1298,6 +1317,9 @@ function crownBook(which){ // which: "prev"|"cur" (por defecto, lo elegido en la
   for(const c in book){let v=0;for(const s in book[c])v+=book[c][s];cats[c]=v;sum+=v}
   const other=delta-sum; if(Math.abs(other)>Math.max(1,Math.abs(delta)*0.002))cats["Otros"]=other; // el total VERIFICA la suma
   let inc=0,exp=0;for(const c in cats){if(cats[c]>=0)inc+=cats[c];else exp+=cats[c]}
+  // PRIMER MES (aún no hay mes cerrado): previsión del mes = lo que lleva × 30 días / días transcurridos
+  const days=(S.hour-(S.cStartH||0))/24;
+  if(!S.cPrev&&days>=1){const k=30/days;for(const c in cats)cats[c]*=k;return {book,cats,cur:true,forecast:true,inc:inc*k,exp:exp*k,net:delta*k}}
   return {book,cats,cur,inc,exp,net:delta};
 }
 function crownRow(cat,amt,drill){
@@ -1310,7 +1332,8 @@ function crownRow(cat,amt,drill){
 function treasuryTesoro2(){
   const cb=crownBook(),path=S.treasuryPath;
   const mt=(k,lab)=>"<span class='e2seg"+((S.tsyMonth==="cur"?"cur":"prev")===k?" on":"")+"' onclick=\"setTsyMonth('"+k+"')\">"+lab+"</span>";
-  let h=S.cPrev?"<div style='text-align:center;margin-bottom:8px'>"+mt("prev","Mes pasado")+mt("cur","Este mes")+"</div>":"";
+  let h=S.cPrev?"<div style='text-align:center;margin-bottom:8px'>"+mt("prev","Mes pasado")+mt("cur","Este mes")+"</div>"
+    :cb.forecast?"<div style='text-align:center;margin-bottom:8px'><span class='e2seg on' data-tip='Primer mes: lo que lleva el mes, llevado a 30 días'>Previsión</span></div>":"";
   h+="<div class='tbook'>";
   if(!path.length){
     const inc=Object.keys(cb.cats).filter(c=>cb.cats[c]>=0.5).sort((a,b)=>cb.cats[b]-cb.cats[a]);
@@ -1318,7 +1341,7 @@ function treasuryTesoro2(){
     const drillable=c=>c!=="Otros"&&cb.book[c]&&Object.keys(cb.book[c]).length>1;
     h+="<div class='tsec'>Ingresos</div>"+(inc.length?inc.map(c=>crownRow(c,cb.cats[c],drillable(c))).join(""):"<div class='trow tdim'>—</div>");
     h+="<div class='tsec'>Gastos</div>"+(exp.length?exp.map(c=>crownRow(c,cb.cats[c],drillable(c))).join(""):"<div class='trow tdim'>—</div>");
-    h+="<div class='ttotal'><span>"+(cb.cur?"Balance en lo que va de mes":"Balance del mes")+"</span><b class='"+(cb.net<0?"neg":"pos")+"'>"+sgnE(cb.net)+" "+resImg("dinero")+"</b></div>";
+    h+="<div class='ttotal'><span>"+(cb.forecast?"Balance previsto del mes":cb.cur?"Balance en lo que va de mes":"Balance del mes")+"</span><b class='"+(cb.net<0?"neg":"pos")+"'>"+sgnE(cb.net)+" "+resImg("dinero")+"</b></div>";
   }else{
     const cat=path[0],subs=cb.book[cat]||{},ks=Object.keys(subs).sort((a,b)=>Math.abs(subs[b])-Math.abs(subs[a]));
     const TOP=14;let rest=0;for(const k of ks.slice(TOP))rest+=subs[k];
@@ -1347,9 +1370,18 @@ function refreshTreasury2(body){
 window.setTsyMonth=function(k){S.tsyMonth=k;S.treasuryPath=[];refreshTreasury()};
 
 // ---------- Mercado ----------
+function priceRows(N,g){ // economy2 priceWhy: la misma fórmula que el día de mercado
+  const w=priceWhy(N,g); if(!w)return [];
+  const x=v=>"×"+(Math.round(v*100)/100).toLocaleString("es-ES"), up=w.next>w.now*1.005, dn=w.next<w.now*0.995;
+  return [["<b>Cómo se forma el precio</b>",""],["Demanda prevista",nfE(w.D)+" /mes"],["Oferta prevista",nfE(w.P)+" /mes"],
+    ...(w.ratio!=null?[["Demanda ÷ oferta",x(w.ratio)]]:[]),...(w.stockF<0.999?[["Sobra en la plaza",x(w.stockF)]]:[]),
+    ...(w.r!==w.clamped?[["Topado (entre ×0,5 y ×3)",x(w.clamped)]]:[]),
+    ["Objetivo",prE(w.target)+" 🪙"],
+    ["Mercado en "+w.inDays+(w.inDays===1?" día":" días"),prE(w.next)+" 🪙"+(up?" ▲":dn?" ▼":""),up?"#d08080":dn?"#8fb04a":null]];
+}
 function mktRowTip(g,mi,N){
   const p=N.mktPrice[g]!=null?N.mktPrice[g]:gRef(g);
-  return tipRows(gLabel(g)+" · "+prE(p)+" 🪙 (normal "+prE(gRef(g))+")",[
+  return tipRows(gLabel(g)+" · "+prE(p)+" 🪙 (normal "+prE(gRef(g))+")",[...priceRows(N,g),["<b>Este mes</b>",""],
     ["Producido",nfE(mi.prod)+" /mes"],["Importado",nfE(mi.imp)+" /mes"],["Exportado",nfE(mi.exp)+" /mes"],
     ["Demanda",nfE(mi.dem)+" /mes"],["Comprado",nfE(mi.sold)+" /mes"],
     ...(mi.unsold>0.5?[[g==="comida"?"Sin comprador ← granero":"Sin comprador ✗ perdido",nfE(mi.unsold)+" /mes","#d6a15a"]]:[]),
@@ -1380,7 +1412,8 @@ function refreshMercado2(body){
     const goods=GOODS2.filter(g=>(TIER2[g]||"mat")===t); if(!goods.length)continue;
     h+="<tr class='grp'><td colspan='5' data-tip=\""+ta(TIER_TIP[t])+"\">"+TIER_META[t][0]+" "+TIER_META[t][1]+"</td></tr>";
     for(const g of goods){const mi=info[g]||{},p=NA.mktPrice[g]!=null?NA.mktPrice[g]:gRef(g);
-      const ext=[(mi.exp>0.5?"<span class='pos'>↗"+nfE(mi.exp)+"</span>":""),(mi.imp>0.5?"<span style='color:#d6a15a'>↙"+nfE(mi.imp)+"</span>":"")].filter(Boolean).join(" ")||"<span class='e2sub'>—</span>";
+      const ext0=[(mi.exp>0.5?"<span class='pos'>↗"+nfE(mi.exp)+"</span>":""),(mi.imp>0.5?"<span style='color:#d6a15a'>↙"+nfE(mi.imp)+"</span>":"")].filter(Boolean).join(" ");
+      const ct=ctrRows(NA,S.player,g), ext=ext0?(ct.length?"<span style='cursor:help' data-tiph=\""+ta(tipRows("Contratos · "+gLabel(g),ct))+"\">"+ext0+"</span>":ext0):"<span class='e2sub'>—</span>";
       h+="<tr class='click' onclick=\"openMktGood('"+g+"')\" data-tiph=\""+ta(mktRowTip(g,mi,NA))+"\">"+
         "<td>"+resImg(g)+" "+gLabel(g)+"</td><td>"+prE(p)+" "+resImg("dinero")+"</td><td>"+ratioTxt(p/gRef(g))+"</td>"+
         "<td>"+plazaCell(mi)+"</td><td>"+ext+"</td></tr>"}
@@ -1396,12 +1429,74 @@ function chain2(g){
   for(const o in ARTISAN_IN2)add(o,ARTISAN_IN2[o]);
   return {from:[...from],to:[...to]};
 }
+// CONTRATOS de un bien (economy2: N.e2.ctr del exportador, unidades/día): a quién vende y de quién compra este reino, y
+// los que el mes en curso no salieron (guerra, embargo, no sale a cuenta; N.gl). Filas para tipRows.
+function ctrList(N,n,g){
+  const out=[], cutA=(G,b)=>{const x=G&&G.cur.g[g];return x&&x.cut[b]&&!(x.ok&&x.ok[b])?x.cut[b]:null}; // cortado = este mes no ha salido NADA por esa ruta
+  for(const c of (N.e2&&N.e2.ctr&&N.e2.ctr[g])||[])out.push({dir:"exp",b:c.b,q:c.q*30,cut:cutA(N.gl,c.b)});
+  for(let a=0;a<NPLAY;a++){const A=S.nations[a];const l=A&&A.e2&&A.e2.ctr&&A.e2.ctr[g];if(!l)continue;
+    for(const c of l)if(c.b===n)out.push({dir:"imp",b:a,q:c.q*30,cut:cutA(A.gl,n)})}
+  return out.sort((x,y)=>y.q-x.q);
+}
+function ctrRows(N,n,g){return ctrList(N,n,g).slice(0,8).map(c=>[(c.dir==="exp"?"↗ a ":"↙ de ")+NATIONS[c.b].name,nfE(c.q)+" /mes"+(c.cut?" · "+c.cut:""),c.cut?"#d08080":null])}
+// LIBRO DEL BIEN (economy2 N.gl): el mes cerrado o, si aún no hay, el que va (escalado a 30 días)
+function glMonth(N,g){const G=N.gl;if(!G)return null;const M=G.prev&&G.prev.days>=20?G.prev:G.cur;if(!M||!(M.days>0))return null;
+  const x=M.g[g];return x?{x,k:30/M.days}:null}
+// barra apilada con tooltip (el patrón de estateBar): parts = [{lab,v,col,tip?}]
+function stackBar(parts,w,title,total){
+  const tot=parts.reduce((t,x)=>t+Math.max(0,x.v),0)||1;let seg="";
+  for(const x of parts)if(x.v>0)seg+="<i style='display:block;height:100%;width:"+(100*x.v/tot).toFixed(2)+"%;background:"+x.col+"'></i>";
+  const rows=parts.filter(x=>x.v>=0.5).map(x=>["<span style='color:"+x.col+"'>■</span> "+x.lab,x.tip||nfE(x.v)]);
+  return "<span data-tiph=\""+ta(tipRows(title,rows,total))+"\" style='display:inline-flex;width:"+(w||170)+"px;height:9px;border-radius:3px;overflow:hidden;background:#241a14;vertical-align:middle;cursor:help'>"+seg+"</span>";
+}
+const DEM_ORDER=[["socorro","🌾 Graneros vacíos","#c0563e"],["talleres","⚒ Talleres","#8d7a4a"],["nobleza"],["clero"],["burgues"],["campesino"]];
+function goodFlowHTML(N,g){
+  const gm=glMonth(N,g); if(!gm)return "";
+  const {x,k}=gm, sup=x.sup, h=[];
+  const sp=[{lab:"El campo",v:(sup.campo||0)*k,col:WHO_COL.campesino},{lab:"Artesanos",v:(sup.artesanos||0)*k,col:WHO_COL.burgues},
+    {lab:"Talleres",v:(sup.talleres||0)*k,col:"#8d7a4a"},{lab:"Importado",v:(x.imp||0)*k,col:"#d6a15a"}];
+  const supT=sp.reduce((t,y)=>t+y.v,0);
+  const dp=[];let wantT=0,gotT=0;
+  for(const [key,lab0,col0] of DEM_ORDER){const d=x.dem[key];if(!d)continue;const w=d[0]*k,gq=d[1]*k;wantT+=w;gotT+=gq;
+    const lab=lab0||STRATA_INFO[key].icon+" "+STRATA_INFO[key].label, col=col0||WHO_COL[key];
+    dp.push({lab,v:gq,col,tip:"pide "+nfE(w)+" · consigue "+(w>0?Math.round(100*gq/w):100)+"%"})}
+  if((x.exp||0)*k>=0.5)dp.push({lab:"↗ Exportado",v:x.exp*k,col:"#6fae5a"});
+  const miss=Math.max(0,wantT-gotT); if(miss>=0.5)dp.push({lab:"Se queda sin",v:miss,col:"#4a2a26"});
+  const row=(lab,bar,val)=>"<div class='prow'><span style='display:inline-flex;gap:8px;align-items:center'><span style='width:62px'>"+lab+"</span>"+bar+"</span><b>"+val+"</b></div>";
+  h.push(row("Oferta",stackBar(sp,170,"De dónde sale · /mes",["Total",nfE(supT)]),nfE(supT)));
+  h.push(row("Demanda",stackBar(dp,170,"Quién compra, en orden · /mes",["Pide · consigue",nfE(wantT)+" · "+(wantT>0?Math.round(100*gotT/wantT):100)+"%"]),nfE(wantT)));
+  const left=[];
+  if(x.unsold*k>=0.5)left.push(g==="comida"?"<span style='color:#d6a15a' data-tip='Grano que la plaza no acepta: vuelve al granero de su ducado'>← granero "+nfE(x.unsold*k)+"</span>"
+    :"<span class='neg' data-tip='Llega por encima de lo que se compra y se puede guardar: no se paga y se pierde'>✗ perdido "+nfE(x.unsold*k)+"</span>");
+  if(x.merma*k>=0.5)left.push("<span class='neg' data-tip='La plaza guarda como mucho 2 meses de demanda: lo que pasa se estropea'>🗑 se estropea "+nfE(x.merma*k)+"</span>");
+  left.push("<span data-tip='Lo que guarda la plaza ahora'>📦 en la plaza "+nfE(N.mkt[g]||0)+"</span>");
+  h.push("<div class='prow'><span>Sobrante</span><b style='display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end'>"+left.join("")+"</b></div>");
+  return h.join("");
+}
+function ctrBlockHTML(N,g){
+  const L=ctrList(N,S.player,g); if(!L.length)return "";
+  const col=(title,list)=>"<div style='flex:1;min-width:0'><div class='bsec'>"+title+" <span class='u'>/mes</span></div>"+(list.length?list.slice(0,6).map(c=>
+    "<div class='prow'"+(c.cut?" style='opacity:.5' data-tip=\""+ta("Este mes no sale: "+c.cut)+"\"":"")+"><span>"+nameChip(c.b)+"</span><b>"+nfE(c.q)+(c.cut?" ✖":"")+"</b></div>").join(""):"<div class='prow'><span class='dim'>—</span></div>")+"</div>";
+  return "<div style='display:flex;gap:14px;margin-top:6px'>"+col("↗ Exporta (contratos)",L.filter(c=>c.dir==="exp"))+col("↙ Importa (contratos)",L.filter(c=>c.dir==="imp"))+"</div>";
+}
+// Gráfica de las últimas semanas de precio (economy2 N.ph; la línea punteada es el precio normal)
+function sparkPrice(N,g){
+  const H=N.ph&&N.ph[g]; if(!H||H.length<2)return "";
+  const ref=gRef(g), all=H.concat([ref]), lo=Math.min(...all), hi=Math.max(...all), W=84, Hh=22, sp=hi-lo||1;
+  const X=i=>(i*(W-4)/(H.length-1)+2).toFixed(1), Y=v=>(Hh-2-(v-lo)/sp*(Hh-4)).toFixed(1);
+  const pts=H.map((v,i)=>X(i)+","+Y(v)).join(" "), last=H[H.length-1], up=last>=H[0];
+  const tip=tipRows("Precio · últimas "+H.length+" semanas",[["Hace "+(H.length-1)+" semanas",prE(H[0])+" 🪙"],["Mínimo",prE(Math.min(...H))+" 🪙"],["Máximo",prE(Math.max(...H))+" 🪙"],["Ahora",prE(last)+" 🪙"],["Normal",prE(ref)+" 🪙"]]);
+  return "<span data-tiph=\""+ta(tip)+"\" style='cursor:help'><svg width='"+W+"' height='"+Hh+"' style='vertical-align:middle'>"+
+    "<line x1='2' x2='"+(W-2)+"' y1='"+Y(ref)+"' y2='"+Y(ref)+"' stroke='#6a7077' stroke-dasharray='2 3'/>"+
+    "<polyline points='"+pts+"' fill='none' stroke='"+(up?"#d08080":"#8fb04a")+"' stroke-width='1.6'/>"+
+    "<circle cx='"+X(H.length-1)+"' cy='"+Y(last)+"' r='2.2' fill='"+(up?"#d08080":"#8fb04a")+"'/></svg></span>";
+}
 function renderMktGood2(body,N,g){
   const mi=(N.mktInfo&&N.mktInfo[g])||{},p=N.mktPrice[g]!=null?N.mktPrice[g]:gRef(g),r=p/gRef(g),t=TIER2[g]||"mat";
   let h="<div class='tcrumb' style='margin-bottom:10px'><span class='tcrumbi' onclick='closeMktGood()'>🏪 Mercado</span> › <b class='tcrumbc'>"+resImg(g)+" "+gLabel(g)+"</b></div>";
-  h+="<div style='display:flex;align-items:baseline;gap:12px;justify-content:center'><span class='e2big'>"+prE(p)+" "+resImg("dinero")+"</span>"+ratioTxt(r)+
-    "<span class='e2sub'>normal "+prE(gRef(g))+"</span></div>";
-  const who=t==="mat"?"":STRATA.filter(e=>WANT2[e][t]>0).map(e=>STRATA_INFO[e].label).join(", ");
+  h+="<div style='display:flex;align-items:baseline;gap:12px;justify-content:center'><span class='e2big' style='cursor:help' data-tiph=\""+ta(tipRows(gLabel(g)+" · "+prE(p)+" 🪙",priceRows(N,g)))+"\">"+prE(p)+" "+resImg("dinero")+"</span>"+ratioTxt(r)+
+    "<span class='e2sub'>normal "+prE(gRef(g))+"</span>"+sparkPrice(N,g)+"</div>";
+  const who=t==="mat"?"":STRATA.filter(e=>WANT2[e][t]>0).map(e=>"<span data-tip=\""+ta(STRATA_INFO[e].label)+"\">"+STRATA_INFO[e].icon+"</span>").join(" ");
   h+="<div style='text-align:center;margin:4px 0 10px' class='e2sub'><span data-tip=\""+ta(TIER_TIP[t])+"\">"+TIER_META[t][0]+" "+TIER_META[t][1]+"</span>"+(who?" · "+who:"")+"</div>";
   const ch=chain2(g);
   if(ch.from.length||ch.to.length){
@@ -1410,15 +1505,12 @@ function renderMktGood2(body,N,g){
   }
   h+="<div class='bsum'><div class='bsec'>En "+NATIONS[S.player].name+" <span class='u'>/mes</span></div>";
   const line=(lab,val,col,tip)=>"<div class='prow'"+(tip?" data-tip=\""+ta(tip)+"\"":"")+"><span>"+lab+"</span><b"+(col?" style='color:"+col+"'":"")+">"+val+"</b></div>";
-  h+=line("Producido",nfE(mi.prod));
-  if(mi.imp>0.5)h+=line("↙ Importado",nfE(mi.imp),"#d6a15a");
-  if(mi.exp>0.5)h+=line("↗ Exportado",nfE(mi.exp),"var(--pos)");
-  h+=line("Demanda",nfE(mi.dem));
-  const pc=mi.dem>0.5?Math.min(100,Math.round(100*(mi.sold||0)/mi.dem)):100;
-  h+="<div class='prow'><span>Comprado</span><b>"+nfE(mi.sold)+" &nbsp;"+barE(pc)+" "+pc+"%</b></div>";
-  if(mi.unsold>0.5)h+=g==="comida"?line("Sin comprador ← granero",nfE(mi.unsold),"#d6a15a","Grano que la plaza no acepta: vuelve al granero de su ducado y no se paga.")
-    :line("Sin comprador ✗ perdido",nfE(mi.unsold),"var(--neg)","Llega a la plaza por encima de lo que se compra y se puede guardar: no se paga y se pierde.");
-  h+=line("En la plaza",nfE(N.mkt[g]));
+  const flow=goodFlowHTML(N,g);
+  if(flow)h+=flow;
+  else{ // primer mes: aún no hay libro del bien
+    h+=line("Producido",nfE(mi.prod));h+=line("Demanda",nfE(mi.dem));
+    const pc=mi.dem>0.5?Math.min(100,Math.round(100*(mi.sold||0)/mi.dem)):100;
+    h+="<div class='prow'><span>Comprado</span><b>"+nfE(mi.sold)+" &nbsp;"+barE(pc)+" "+pc+"%</b></div>";h+=line("En la plaza",nfE(N.mkt[g]))}
   const cov=N.e2&&N.e2.cover&&N.e2.cover[g];
   if(cov!=null)h+="<div class='prow' data-tip='Parte de la materia que piden talleres y artesanos que llega a comprarse. Si baja, producen menos.'><span>Talleres abastecidos</span><b>"+barE(pctE(cov))+" "+pctE(cov)+"%</b></div>";
   // en el mundo: quién lo produce y a quién le falta
@@ -1426,6 +1518,7 @@ function renderMktGood2(body,N,g){
     rows.push({n,prod:m.prod||0,gap:Math.max(0,(m.dem||0)-(m.sold||0)),p:O.mktPrice[g]})}
   const top=rows.filter(x=>x.prod>0.5).sort((a,b)=>b.prod-a.prod).slice(0,6), fal=rows.filter(x=>x.gap>0.5).sort((a,b)=>b.gap-a.gap).slice(0,6);
   const col=(title,list,f,cls)=>"<div style='flex:1;min-width:0'><div class='bsec'>"+title+"</div>"+(list.length?list.map(x=>"<div class='prow'><span>"+nameChip(x.n)+"</span><b class='"+cls+"'>"+nfE(f(x))+"</b></div>").join(""):"<div class='prow'><span class='dim'>—</span></div>")+"</div>";
+  h+=ctrBlockHTML(N,g);
   h+="<div style='display:flex;gap:14px;margin-top:6px'>"+col("Más lo producen",top,x=>x.prod,"pos")+col("Más les falta",fal,x=>x.gap,"neg")+"</div></div>";
   h+="<div style='display:flex;gap:8px;justify-content:center;margin-top:10px'>"+
     "<button class='bbtn sm' onclick='showGoodMap(\""+g+"\",\"prod\")'>🗺 Producción</button>"+
@@ -1442,10 +1535,15 @@ function estateOwned(e){ // edificios del estamento en el reino: {b:{lv,off}}
       const x=o[b]||(o[b]={lv:0,off:0});x.lv+=lv;if(p.bOff&&p.bOff[b])x.off+=lv}}
   return o;
 }
-function covCell(N,e,t){
+function covCell(N,e,t,cnt){
   if(!WANT2[e][t])return "<td></td>";
-  const v=N.e2.cov[e][t],pc=pctE(v);
-  return "<td data-tip=\""+ta(TIER_META[t][1]+": "+TIER_TIP[t])+"\">"+barE(pc,52)+" <span style='display:inline-block;width:32px'>"+pc+"%</span></td>";
+  const v=N.e2.cov[e][t],pc=pctE(v), cons=S.sConsumePrev?S.sConsumePrev[e]||{}:(S.sConsume&&S.sConsume[e])||{}, rows=[];
+  if(cnt)for(const g in NEED2[t]){if(e==="campesino"&&g==="comida")continue;
+    const want=NEED2[t][g]*WANT2[e][t]*(cnt[e]||0)/12, got=(cons[g]&&cons[g][0])||0; if(want<0.5)continue;
+    const r=got/want;rows.push([resImg(g)+" "+gLabel(g),nfE(got)+" / "+nfE(want)+" · "+Math.min(999,Math.round(100*r))+"%",r<0.9?"#d08080":null])}
+  if(e==="campesino"&&t==="subs")rows.unshift([resImg("comida")+" Grano","de su granero"]);
+  const tip=tipRows(TIER_META[t][0]+" "+TIER_META[t][1]+" · "+STRATA_INFO[e].label,rows.length?[["<span class='e2sub'>consigue / pide al mes</span>",""],...rows]:[[TIER_TIP[t],""]]);
+  return "<td style='cursor:help' data-tiph=\""+ta(tip)+"\">"+barE(pc,52)+" <span style='display:inline-block;width:32px'>"+pc+"%</span></td>";
 }
 function estateNet(e){ // balance del mes de un estamento (lo que entra − lo que gasta): sus cuentas, el mismo libro que su ficha
   const fl=S.sFlowPrev?S.sFlowPrev[e]:(S.sFlow&&S.sFlow[e]);if(!fl)return null;let t=0;for(const k in fl)t+=fl[k];return t}
@@ -1474,7 +1572,7 @@ function refreshEstates2(body){
     "<th data-tip='Ingreso medio del último mes'>Ingreso/mes</th><th data-tip='Ahorro medido en meses de su cesta'>Ahorro</th></tr>";
   for(const e of STRATA){const I=STRATA_INFO[e];
     h+="<tr class='click' onclick=\"openEstate('"+e+"')\"><td>"+I.icon+" <b>"+I.label+"</b></td><td data-tip=\""+ta(popPct(cnt[e],pop)+" de la población")+"\">"+nfE(cnt[e])+"</td>"+
-      covCell(N,e,"subs")+covCell(N,e,"vida")+covCell(N,e,"lujo")+
+      covCell(N,e,"subs",cnt)+covCell(N,e,"vida",cnt)+covCell(N,e,"lujo",cnt)+
       "<td>"+nfE((N.e2.inc&&N.e2.inc[e])||0)+" "+resImg("dinero")+"</td><td>"+savingsTxt(N,e)+" <span class='tarrow'>›</span></td></tr>"}
   h+="</table>";
   // cierres y reaperturas recientes de edificios (la gestión por presupuesto de cada dueño)
@@ -1490,8 +1588,13 @@ function renderEstate2(body,N,e){
   const fl=S.sFlowPrev?S.sFlowPrev[e]||{}:(S.sFlow&&S.sFlow[e])||{}, cons=S.sConsumePrev?S.sConsumePrev[e]||{}:(S.sConsume&&S.sConsume[e])||{};
   let h="<div class='tcrumb' style='margin-bottom:10px'><span class='tcrumbi' onclick='openEstate(null)'>Estamentos</span> › <b class='tcrumbc'>"+I.icon+" "+I.label+"</b></div>";
   const {cnt,pop}=estateCounts();
+  if(e==="burgues"||e==="campesino"){let up=0,dn=0,cur=false;for(const p of S.provs){if(p.owner!==S.player)continue;const b=provBook(p);if(!b)continue;cur=cur||b.cur;up+=b.m.up||0;dn+=b.m.down||0}
+    const pr=N.prosp!=null?N.prosp:1, poor=pr<0.5;
+    h+="<div class='prow' data-tiph=\""+ta(tipRows("Movilidad · "+(cur?"este mes":"mes pasado"),[["Prosperidad del burgués (su vida diaria)",pctE(pr)+"%",poor?"#d08080":null],
+      ["Por debajo del 50%","vuelven al campo"],["Del campo al oficio","+"+nfE(up)],["Del oficio al campo","−"+nfE(dn),dn>0?"#d08080":null]]))+"\" style='cursor:help'>"+
+      "<span>Del campo al oficio</span><b><span class='pos'>+"+nfE(up)+"</span> · <span class='"+(dn>0?"neg":"e2sub")+"'>−"+nfE(dn)+"</span></b></div>"}
   h+="<table class='e2t'><tr><th>Habitantes</th>"+tierTh()+"<th>Ingreso/mes</th><th>Ahorro</th></tr>"+
-    "<tr><td>"+nfE(cnt[e])+" <span class='e2sub'>"+popPct(cnt[e],pop)+"</span></td>"+covCell(N,e,"subs")+covCell(N,e,"vida")+covCell(N,e,"lujo")+"<td>"+nfE((N.e2.inc&&N.e2.inc[e])||0)+" "+resImg("dinero")+"</td><td>"+savingsTxt(N,e)+"</td></tr></table>";
+    "<tr><td>"+nfE(cnt[e])+" <span class='e2sub'>"+popPct(cnt[e],pop)+"</span></td>"+covCell(N,e,"subs",cnt)+covCell(N,e,"vida",cnt)+covCell(N,e,"lujo",cnt)+"<td>"+nfE((N.e2.inc&&N.e2.inc[e])||0)+" "+resImg("dinero")+"</td><td>"+savingsTxt(N,e)+"</td></tr></table>";
   // sus cuentas del mes (mismo libro que la Tesorería)
   const ks=Object.keys(fl).filter(c=>Math.abs(fl[c])>=0.5);
   const inc=ks.filter(c=>fl[c]>0).sort((a,b)=>fl[b]-fl[a]),exp=ks.filter(c=>fl[c]<0).sort((a,b)=>fl[a]-fl[b]);
@@ -1572,8 +1675,30 @@ function nextHint2(p,b,lvl){ // lo que AÑADE el siguiente nivel (marginal), no 
   const st=a.stock?" · +"+a.stock.map(x=>nfE(x.q-((z.stock||[]).find(y=>y.k===x.k)||{q:0}).q)+resImg(x.k)).join(" ")+"📦":"";
   return "<div style='font-size:10px;color:"+col+"'>≈ "+(d>=0?"+":"−")+fmt(Math.abs(d))+"🪙/mes"+st+" "+(lvl>0?"el sig. nivel":"si la construyes")+"</div>";
 }
+// CRECIMIENTO de la provincia, sumado como en EU4 (economy2 popGrowthWhy: la misma fórmula que el tick)
+function popTip(p){
+  const w=popGrowthWhy(p), x=v=>"×"+v.toFixed(2), pc=v=>(v>=0?"+":"")+(v*100).toFixed(2).replace(".",",")+"%";
+  const rows=w.famine?[["⚠ Hambre","el granero no llega: muere gente","#d08080"]]:[
+    ["Natalidad base",pc(w.base)+"/año"],
+    ["Grano en el granero ("+(w.months>=24?"24+":w.months.toFixed(0))+" m)",x(w.food),w.food<1?"#d08080":null],
+    ["Tierra ("+Math.round(100*landOcc2(p))+"% ocupada)",x(w.land),w.land<1?"#d08080":null],
+    ["Comodidades del campesino ("+pctE(w.vida)+"%)",x(w.life),w.life<1?"#d08080":null]];
+  const bt=w.burgTarget+w.push, up=w.burgNow<bt-0.002, poor=w.prosp!=null&&w.prosp<w.poor;
+  rows.push(["Burgueses",pctE(w.burgNow)+"% · tienden a "+pctE(bt)+"%"]);
+  if(w.push>0.0005)rows.push(["&nbsp;&nbsp;la tierra llena empuja al oficio","+"+pctE(w.push)+" puntos"]);
+  if(poor)rows.push(["&nbsp;&nbsp;el oficio no da para vivir","vuelven al campo","#d08080"]);
+  else if(up&&w.prosp!=null&&w.prosp<1)rows.push(["&nbsp;&nbsp;ascienden según la prosperidad",pctE(w.prosp)+"%"]);
+  const b=provBook(p);
+  if(b&&(b.m.born||b.m.dead||b.m.up||b.m.down)){rows.push(["<b>"+(b.cur?"Este mes":"Mes pasado")+"</b>",""]);
+    if(b.m.born>=0.5)rows.push(["Nacen (neto)","+"+nfE(b.m.born)]);
+    if(b.m.dead>=0.5)rows.push(["Mueren de hambre","−"+nfE(b.m.dead),"#d08080"]);
+    if((b.m.up||0)>=0.5)rows.push(["Pasan a burgueses","+"+nfE(b.m.up)]);
+    if((b.m.down||0)>=0.5)rows.push(["Vuelven al campo","−"+nfE(b.m.down),"#d08080"])}
+  return tipRows("Población · "+p.name,rows,w.famine?null:["Crecimiento",pc(w.rate)+"/año ≈ "+sgnE((p.pop||0)*w.rate)+" hab."]);
+}
+function landOcc2(p){const K=landCap(p);return K>0&&p.pops?(p.pops.campesino||0)/K:0}
 function provStats2(p,own){ // población + moral/soldadesca/dotación/huecos en UNA fila (sus desgloses, al hover)
-  let h="<div class='prow'><span>"+uiIcon('poblacion')+" "+nfE(p.pop)+"</span><b>"+estateBar(p)+"</b></div>";
+  let h="<div class='prow'><span data-tiph=\""+ta(popTip(p))+"\" style='cursor:help'>"+uiIcon('poblacion')+" "+nfE(p.pop)+"</span><b>"+estateBar(p)+"</b></div>";
   const it=(ico,val,tip)=>"<span style='display:inline-flex;align-items:center;gap:3px'>"+ico+statv(val,tip)+"</span>";
   const cells=[it("🙂",Math.round(p.morale)+"%",moraleBreak(p))];
   if(own){cells.push(it(uiIcon('soldadesca'),fmtPop(soldAvail(p))+"/"+fmtPop(soldCap(p)),"Soldadesca disponible: "+fmtPop(soldAvail(p))+"\nTecho: "+fmtPop(soldCap(p))));
@@ -1598,7 +1723,6 @@ function pantryRow2(p){ // el GRANERO del ducado: cuántos meses de grano quedan
     ["Diezmo + renta",pctE(DIEZMO)+"% + "+Math.round((MANOR_RENT[m]||0)*100)+"% de lo que se vende"],
     ["Traer grano cuesta",nfE(g.price)+" + flete "+pctE(g.flete)+"% = "+nfE(g.priceIn)+" 🪙/u"],["El grano viene de",g.from+" · "+Math.round(g.km)+" km"],
     ...(need>0?[["Granero vacío: compra",Math.round(100*got/need)+"% conseguido","#d08080"]]:[]),
-    ["Natalidad por el grano","×"+foodGrowth(g.months).toFixed(1)],
     ["Lo que sobra hasta la siega","se vende en la plaza"]]);
   const pc=Math.min(100,Math.round(100*g.months/12));
   return "<div class='prow' data-tiph=\""+ta(tip)+"\" style='cursor:help'><span>🌾 Granero</span><b>"+barE(pc,64)+" "+(g.months>=24?"24+":g.months<1?"&lt;1":mo)+" m &nbsp;"+state+"</b></div>"+
@@ -1614,7 +1738,6 @@ function landRow2(p){
   const tip=tipRows("Tierra · "+p.name,[
     ["Capacidad agraria",nfE(K)+" campesinos"],["Campesinos",nfE(c)],["Ocupación",pc+"%"],
     ["Cosecha por campesino","×"+y.toFixed(2),y<1?"#d08080":null],
-    ["Natalidad por la tierra","×"+landBirth(p).toFixed(2),landBirth(p)<1?"#d08080":null],
     ["Rinde pleno","hasta el "+Math.round(LAND_FULL*100)+"%"],
     ["Al 100%","cosechan justo lo que comen"]]);
   return "<div class='prow' data-tiph=\""+ta(tip)+"\" style='cursor:help'><span>🌱 Tierra</span><b>"+
@@ -1657,11 +1780,26 @@ function provBook(p){ // el mes cerrado (estable) o, si aún no hay, el que va e
   return {m,cur,val,who};
 }
 function goodsByValue(m){return Object.keys(m.prod).filter(g=>m.prod[g]>=0.5).sort((x,y)=>((m.val[y]||0)-(m.val[x]||0))||(m.prod[y]-m.prod[x]))}
+// De cada 100 ducados que paga el comprador por este bien, quién se lleva qué (economy2 saleSplit). Un bien sale "de
+// taller" si en la provincia hay un taller que lo hace o es oficio de los artesanos; si no, es cosecha del campo.
+function saleKind(p,g){
+  for(const b in p.buildings)if((p.buildings[b]||0)>0&&BLD2[b]&&BLD2[b].out===g)return ["taller",bOwnerOf(p,b)];
+  if(ARTISAN_MIX[g]!=null||g==="armas")return ["taller","burgues"];
+  return ["campo",null];
+}
+function splitRows(p,g){
+  const [kind,owner]=saleKind(p,g), sp=saleSplit(p,g,kind,owner), by={};
+  for(const r of sp.rows){const x=by[r.who]||(by[r.who]={f:0,parts:[]});x.f+=r.f;x.parts.push(r.concept+" "+Math.round(100*r.f))}
+  const rows=[["<b>De cada 100 🪙 del comprador</b>",kind==="taller"?"taller":"cosecha"]];
+  for(const w of WHO_ORDER){const x=by[w];if(!x||x.f<0.005)continue;
+    rows.push(["<span style='color:"+WHO_COL[w]+"'>■</span> "+whoLabel(w)+" <span class='e2sub'>"+x.parts.join(" · ")+"</span>",Math.round(100*x.f)+""])}
+  return rows;
+}
 function produceRow2(p){ // lo que sale de la provincia, los bienes de más valor (u/mes; tooltip con su valor)
   const b=provBook(p); if(!b)return "";
   const gs=goodsByValue(b.m), st=Object.keys(b.m.stock).filter(k=>b.m.stock[k]>=0.5);
   if(!gs.length&&!st.length)return "";
-  const cell=(g,q,v,extra)=>"<span data-tiph=\""+ta(tipRows(gLabel(g),[["Producido",nfE(q)+" /mes"],...(v!=null?[["Pagado en la plaza",nfE(v)+" 🪙"]]:[]),...(extra||[])]))+"\" style='cursor:help;white-space:nowrap'>"+resImg(g)+nfE(q)+"</span>";
+  const cell=(g,q,v,extra)=>"<span data-tiph=\""+ta(tipRows(gLabel(g),[["Producido",nfE(q)+" /mes"],...(v!=null?[["Pagado en la plaza",nfE(v)+" 🪙"]]:[]),...(extra||[]),...(v!=null?splitRows(p,g):[])]))+"\" style='cursor:help;white-space:nowrap'>"+resImg(g)+nfE(q)+"</span>";
   return "<div class='bsec'>Produce <span class='u'>/mes</span></div><div style='display:flex;flex-wrap:wrap;gap:3px 10px;font-size:var(--fs)'>"+
     gs.slice(0,6).map(g=>cell(g,b.m.prod[g],b.m.val[g]||0)).join("")+
     st.map(k=>cell(k,b.m.stock[k],null,[["Destino","almacén de la corona 📦"]])).join("")+"</div>";

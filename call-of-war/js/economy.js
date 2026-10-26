@@ -289,7 +289,7 @@ function monthKeyOf(hour){const d=new Date(START_DATE+hour*3600e3);return d.getU
 function resetTsyLedger(){ // (re)inicia el ledger al empezar/retomar partida o al tomar el mando
   S.tsyAccrual={};S.monthKey=monthKeyOf(S.hour);S.tsyAlc=0;S.sFlow={};S.sConsume={};S.mktVol={};S.sNG={};
   S.tsyMonthBal={};S.sFlowPrev=null;S.sConsumePrev=null;
-  S.cBook={};S.cPrev=null;S.cStart=S.player>=0?(S.nations[S.player].res.dinero||0):0; // libro de la corona (v2)
+  S.cBook={};S.cPrev=null;S.cStart=S.player>=0?(S.nations[S.player].res.dinero||0):0;S.cStartH=S.hour; // libro de la corona (v2)
 }
 // LOG ECONÓMICO MENSUAL (diagnóstico de series temporales para dejar el juego corriendo y analizar el log).
 // Cada mes cerrado guarda una foto del JUGADOR: riqueza y flujos COMPLETOS por estamento + mercado por bien
@@ -362,7 +362,7 @@ function tsyTick(before){
     if(S.econLogOn)logEconMonth(S.monthKey);   // foto del mes que CIERRA (usa sFlow/mktVol/tsyAlc antes de limpiarlos)
     S.sFlowPrev=S.sFlow;S.sConsumePrev=S.sConsume;   // el mes CERRADO se guarda: la UI enseña un mes completo, no uno a medias
     const cd=S.nations[S.player].res.dinero||0;
-    S.cPrev={book:S.cBook||{},delta:cd-(S.cStart||0)};S.cBook={};S.cStart=cd; // libro de la corona: su Δ real verifica la suma
+    S.cPrev={book:S.cBook||{},delta:cd-(S.cStart||0)};S.cBook={};S.cStart=cd;S.cStartH=S.hour; // libro de la corona: su Δ real verifica la suma
     S.tsyMonthBal=S.tsyAccrual;S.tsyAccrual={};S.tsyAlc=0;S.sFlow={};S.sConsume={};S.mktVol={};S.sNG={};S.monthKey=mk // cierra el mes: se "cobra" la alcábala y se reinician los desgloses de estamentos
   }
   const R=S.nations[S.player].res;

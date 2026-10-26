@@ -293,6 +293,7 @@ function isMarketDay(){return dayOf(S.hour)%MARKET_DAYS===0}
 // La demanda es la que PUEDE PAGAR (comprado + lo que faltó con dinero en la mano) más lo que se EXPORTA; la oferta,
 // lo entregado a la plaza más lo que se IMPORTA (el comercio es parte del mercado).
 // La primera vez (partida nueva o guardada antes de esto) se fija directamente al objetivo.
+const PRICE_HIST=12;     // semanas de precio que recuerda cada reino (la gráfica de la ficha del bien)
 function weeklyPrice(N){
   const wk=N.e2.wk, first=!N.e2.fc, fc=N.e2.fc||(N.e2.fc={d:{},s:{}}), days=wk.days;
   if(!(days>0))return;
@@ -307,6 +308,7 @@ function weeklyPrice(N){
     else{const cover=stock/D; r=(D/P)*Math.max(COVER_MIN,Math.min(1,Math.pow(COVER_TARGET/Math.max(cover,1),COVER_EXP)))}
     const target=ref(g)*Math.max(0.5,Math.min(3,r)), old=N.mktPrice[g];
     N.mktPrice[g]=(first||!(old>0))?target:old*Math.max(1/(1+PRICE_STEP),Math.min(1+PRICE_STEP,target/old));
+    const H=(N.ph||(N.ph={}))[g]||(N.ph[g]=[]);H.push(N.mktPrice[g]);if(H.length>PRICE_HIST)H.shift();   // historial (UI; no se guarda)
   }
   wk.d={};wk.s={};wk.days=0;
 }
@@ -427,6 +429,14 @@ function buildingOutput2(p,b,lvlArg){ // unidades/MES del bien del edificio (la 
 }
 
 // ============================== EL TICK ==============================
+// LIBRO DE CADA BIEN POR REINO (design/ux/economia-visible.md, fase 2): de dónde sale la oferta, quién pide y quién
+// consigue (en orden de compra), lo que se exporta, lo que se estropea y los contratos cortados. Solo telemetría: lo lee
+// la ficha del bien (ui.js renderMktGood2). Vive en N.gl, FUERA de N.e2, para no inflar la partida guardada (se rehace
+// en un mes). Unidades acumuladas en el mes; cur.days dice cuántos días lleva.
+function glOf(N){const mk=monthKeyOf(S.hour),G=N.gl||(N.gl={k:mk,cur:{days:0,g:{}},prev:null});
+  if(G.k!==mk){G.prev=G.cur;G.cur={days:0,g:{}};G.k=mk}return G}
+function glG(G,g){return G.cur.g[g]||(G.cur.g[g]={sup:{},dem:{},exp:0,imp:0,merma:0,unsold:0,cut:{}})}
+function glDem(G,g,who,want,got){const d=glG(G,g).dem,x=d[who]||(d[who]=[0,0]);x[0]+=want;x[1]+=got}
 function economyTick2(dt=24,doArb=true){
   const f=dt/YR_TICKS, L=ledger();
   pmClose(dt);            // libro de cada provincia: cierra el mes si ha cambiado
@@ -490,7 +500,7 @@ function economyTick2(dt=24,doArb=true){
       for(const g in mix0){const r=(N.mktPrice[g]||ref(g))/ref(g);mix[g]=mix0[g]*r*r;tw+=mix[g]}
       for(const g in mix){const q=bu*ARTISAN_VALUE*(mix[g]/tw)/REF2[g]*mor*f, ins=ARTISAN_IN[g];
         let cov=1;if(ins)for(const k in ins){const v=N.e2.cover[k];if(v!=null&&v<cov)cov=v}
-        if(q*cov>0){deliv[n].push({p,g,q:q*cov,kind:"bld",owner:"burgues"});pmProd(p,g,q*cov)}
+        if(q*cov>0){deliv[n].push({p,g,q:q*cov,kind:"bld",owner:"burgues",art:1});pmProd(p,g,q*cov)}
         if(ins)for(const k in ins)fn[k]=(fn[k]||0)+q*ins[k]}}
     // EDIFICIOS
     const st=staffing(p), mul=1+(provProdMul(p)-1)*st, terr=(TERRAINS[p.terrain]||{prod:1}).prod;
@@ -526,6 +536,8 @@ function economyTick2(dt=24,doArb=true){
     const str=strata[n], W=N.sWealth, alc=alcabalaOf(n);
     if(N.e2.islam==null||N.e2.islamCap!==N.capital){const c=S.provs[N.capital];N.e2.islam=!!(c&&islamic(c));N.e2.islamCap=N.capital} // reino de capital islámica
     for(const d of deliv[n])supply[n][d.g]=(supply[n][d.g]||0)+d.q;   // oferta OFRECIDA (el precio la ve toda; la plaza compra solo lo que cabe)
+    const GL=glOf(N);GL.cur.days+=dt/24;
+    for(const d of deliv[n]){const s=glG(GL,d.g).sup,k=d.kind==="bld"?(d.art?"artesanos":"talleres"):"campo";s[k]=(s[k]||0)+d.q}
     // demanda deseada por estamento, escalón y bien
     // want[e][g] = lo que pide; base[e][g] = su cesta sin extra (la cobertura se mide contra la base).
     // A quien le sobra más de un año de cesta, pide MÁS vida diaria y lujo (come y viste mejor), hasta ×(1+WEALTH_BOOST).
@@ -558,7 +570,7 @@ function economyTick2(dt=24,doArb=true){
     for(const g of GOODS2){const sup=supply[n][g]||0;if(!sup){acc[g]=1;continue}
       const dx=demCap(g)+ctrOut(N,g)*dt/24;                           // su demanda + lo que tiene contratado para exportar hoy
       const room=dx+Math.max(0,dx/dt*730*CAP_MONTHS-(N.mkt[g]||0));
-      acc[g]=Math.min(1,room/sup);unsold[g]=(1-acc[g])*sup/dt*730}
+      acc[g]=Math.min(1,room/sup);unsold[g]=(1-acc[g])*sup/dt*730;glG(GL,g).unsold+=(1-acc[g])*sup}
     // la PLAZA paga a los productores (el dinero nace aquí)
     for(const d0 of deliv[n]){
       const a=acc[d0.g]; if(a<1&&d0.g==="comida"&&d0.p.store)d0.p.store.comida=Math.min(storeCap(d0.p,"comida"),d0.p.store.comida+d0.q*(1-a));
@@ -601,16 +613,16 @@ function economyTick2(dt=24,doArb=true){
     // 1) grano para las despensas vacías (antes que nadie: es hambre)
     for(const r of grainReq[n]){ // el grano de socorro llega desde el centro de comercio: se paga el precio MÁS EL FLETE
       const t=reliefFlete(r.p), pr=price.comida*(1+t), can=Math.min(r.q,Math.max(0,W.campesino||0)/pr);
-      r.got=buy("campesino","comida",can); r.p._grainGot=r.got;
+      r.got=buy("campesino","comida",can); r.p._grainGot=r.got; glDem(GL,"comida","socorro",r.q,r.got);
       const fr=r.got*price.comida*t; if(fr>0){const cs=cartShare(r.p);W.campesino-=fr;recFlow(n,"campesino","Compras",-fr);
         pay(n,"campesino",fr*cs,"Transporte");if(cs<1)pay(n,"burgues",fr*(1-cs),"Transporte")}}
     // 2) talleres: su materia prima (es capital de trabajo, va antes que el consumo de sus dueños)
     const coverIn={};
-    for(const o in factNeed[n])for(const g in factNeed[n][o]){const need=factNeed[n][o][g];const q=buy(o,g,need,true); // la materia prima se servía a crédito al taller: el pedido entero atrae al mercader
+    for(const o in factNeed[n])for(const g in factNeed[n][o]){const need=factNeed[n][o][g];const q=buy(o,g,need,true);glDem(GL,g,"talleres",need,q); // la materia prima se servía a crédito al taller: el pedido entero atrae al mercader
       const ci=coverIn[g]||(coverIn[g]={need:0,got:0});ci.need+=need;ci.got+=q}
     // 3) élites por orden de bolsillo  4) campesino
-    for(const e of BUY_ORDER)for(const g in want[e])got[e][g]=buy(e,g,want[e][g]);
-    for(const g in want.campesino)got.campesino[g]=buy("campesino",g,want.campesino[g]);
+    for(const e of BUY_ORDER)for(const g in want[e]){got[e][g]=buy(e,g,want[e][g]);glDem(GL,g,e,want[e][g],got[e][g])}
+    for(const g in want.campesino){got.campesino[g]=buy("campesino",g,want.campesino[g]);glDem(GL,g,"campesino",want.campesino[g],got.campesino[g])}
     // cobertura de insumos (la leen los talleres el próximo tick)
     for(const g in coverIn){const c=coverIn[g].need>0?coverIn[g].got/coverIn[g].need:1;
       N.e2.cover[g]=c; N.inputCover[g]=c}
@@ -639,7 +651,7 @@ function economyTick2(dt=24,doArb=true){
     N.prosp=N.e2.cov.burgues.vida;                             // el ascenso a burgués sigue a la vida diaria del burgués
     // la plaza no guarda más de CAP_MONTHS de demanda: lo que pasa de ahí se va estropeando
     for(const g of GOODS2){const capS=(demCap(g)/dt*730+ctrOut(N,g)*730/24)*CAP_MONTHS, s=N.mkt[g]||0;
-      if(s>capS){const x=(s-capS)*Math.min(1,dt/24/30),v=x*price[g];L.discard+=v;const db=L.dby||(L.dby={});db[g]=(db[g]||0)+v;N.mkt[g]=s-x}}  // MERMA: lo que sobra se estropea poco a poco (1/30 al día): da un mes para que los contratos o el mercado lo coloquen; tirarlo de golpe al renovarse los contratos tiraba lo ya pagado
+      if(s>capS){const x=(s-capS)*Math.min(1,dt/24/30),v=x*price[g];L.discard+=v;glG(GL,g).merma+=x;const db=L.dby||(L.dby={});db[g]=(db[g]||0)+v;N.mkt[g]=s-x}}  // MERMA: lo que sobra se estropea poco a poco (1/30 al día): da un mes para que los contratos o el mercado lo coloquen; tirarlo de golpe al renovarse los contratos tiraba lo ya pagado
     // demanda que se quedó sin cubrir POR FALTA DE MERCANCÍA: es lo único que un mercader puede venir a vender
     if(!N.e2.gap)N.e2.gap={};
     for(const g of GOODS2)N.e2.gap[g]=gapStock[g]||0;   // lo que se habría comprado (había dinero) pero no había mercancía
@@ -674,17 +686,18 @@ function economyTick2(dt=24,doArb=true){
     const N=S.nations[p.owner]; if(!N||!N.e2)continue;
     const pop0=p.pop||0, c=p.pops.campesino||0; let famine=false;
     if(p._grainNeed>0){const left=p._grainNeed-(p._grainGot||0);
-      const cons=c*f; if(cons>0&&left/cons>FAMINE_DEF){p.pop=Math.max(0,pop0-left*STARVE_RATE);famine=true}}
+      const cons=c*f; if(cons>0&&left/cons>FAMINE_DEF){p.pop=Math.max(0,pop0-left*STARVE_RATE);famine=true;const m=pm(p);m.dead=(m.dead||0)+(pop0-p.pop)}}
     p.famine=famine;
     if(!famine){const vida=N.e2.cov.campesino.vida;   // la natalidad sigue a los MESES de grano del granero de su ducado
-      p.pop=pop0*(1+POP_GROWTH_BASE*foodGrowth(p._gm!=null?p._gm:6)*landBirth(p)*(0.5+0.5*vida)*dt)}
+      p.pop=pop0*(1+POP_GROWTH_BASE*foodGrowth(p._gm!=null?p._gm:6)*landBirth(p)*(0.5+0.5*vida)*dt);const m=pm(p);m.born=(m.born||0)+(p.pop-pop0)}
     if(pop0>0){const r=(p.pop||0)/pop0;for(const k in p.pops)p.pops[k]*=r}
     const base=(p.pops.campesino||0)+(p.pops.burgues||0);
     if(base>0){const bu=p.pops.burgues||0, att=Math.max(0,targetBurgFrac(p)*base-bu), gap=(targetBurgFrac(p)+landPush(p))*base-bu;
       // hasta el objetivo de siempre, el ascenso espera a que los burgueses prosperen; lo que empuja la tierra llena, no
       let move=(gap>0?Math.min(gap,att)*Math.max(0,N.prosp==null?1:N.prosp)+Math.max(0,gap-att):gap)*PROMO_RATE*dt;
       if(N.prosp!=null&&N.prosp<POOR_LINE)move-=(p.pops.burgues||0)*PROMO_RATE*dt*(POOR_LINE-N.prosp)*2; // el artesano que no gana para vivir vuelve al campo
-      move=Math.max(-p.pops.burgues,Math.min(p.pops.campesino,move));p.pops.burgues+=move;p.pops.campesino-=move}
+      move=Math.max(-p.pops.burgues,Math.min(p.pops.campesino,move));p.pops.burgues+=move;p.pops.campesino-=move;
+      if(move){const m=pm(p);if(move>0)m.up=(m.up||0)+move;else m.down=(m.down||0)-move}}
     const sc=soldCap(p),s=p.sold!=null?p.sold:sc;p.sold=s+(sc-s)*regen;
   }
 
@@ -702,9 +715,9 @@ function economyTick2(dt=24,doArb=true){
       const w=(TRADE_BULK[BULK2[g]]||1)*PRICE_SCALE, pA=A.mktPrice[g]!=null?A.mktPrice[g]:ref(g), aA=alcabalaOf(a);
       for(let k=list.length-1;k>=0;k--){const c=list[k], b=c.b, B=S.nations[b], j=b<NPLAY?idx[b]:-1;
         if(j<0||!B||!B.alive){list.splice(k,1);continue}                          // el reino ya no existe
-        const cost=pairF[idx[a]*K+j]*w; if(!isFinite(cost)){list.splice(k,1);continue} // EMBARGO: se cancela; la mercancía no sale
+        const cost=pairF[idx[a]*K+j]*w; if(!isFinite(cost)){list.splice(k,1);glG(glOf(A),g).cut[b]="embargo";continue} // EMBARGO: se cancela; la mercancía no sale
         const pB=B.mktPrice[g]!=null?B.mktPrice[g]:ref(g), pn=pB*(1-MARGIN-alcabalaOf(b)), m=pn-pA-cost;
-        if(m<0)continue;                                                          // hoy no sale a cuenta (guerra, precios): no se envía
+        if(m<0){glG(glOf(A),g).cut[b]=S.wars&&atWarPair(a,b)?"guerra":"no sale a cuenta";continue} // hoy no sale a cuenta (guerra, precios): no se envía
         const q=Math.min(c.q*dt/24,A.mkt[g]||0); if(q<=1e-9)continue;
         A.mkt[g]-=q; B.mkt[g]=(B.mkt[g]||0)+q;
         // El mercader COMPRA en la plaza de origen como cualquier comprador (paga allí la comisión y la alcabala) y VENDE
@@ -716,7 +729,7 @@ function economyTick2(dt=24,doArb=true){
         const half=q*m*0.5, tA=half*almojOf(a), tB=half*almojOf(b);          // el mercader se queda el margen neto, menos la aduana
         A.res.dinero+=tA; A.almojRate+=tA/dt; A.sWealth.burgues+=half-tA; addInc(A,"corona",tA); addInc(A,"burgues",half-tA); recFlow(a,"burgues","Comercio exterior",half-tA); recCrown(a,"Almojarifazgo",LABEL2[g],tA);
         B.res.dinero+=tB; B.almojRate+=tB/dt; B.sWealth.burgues+=half-tB; addInc(B,"corona",tB); addInc(B,"burgues",half-tB); recFlow(b,"burgues","Comercio exterior",half-tB); recCrown(b,"Almojarifazgo",LABEL2[g],tB);
-        A.mktInfo[g].exp+=q/dt*730; B.mktInfo[g].imp+=q/dt*730;
+        A.mktInfo[g].exp+=q/dt*730; B.mktInfo[g].imp+=q/dt*730; {const X=glG(glOf(A),g);X.exp+=q;(X.ok||(X.ok={}))[b]=1} glG(glOf(B),g).imp+=q;
         A.e2.wk.d[g]=(A.e2.wk.d[g]||0)+q; B.e2.wk.s[g]=(B.e2.wk.s[g]||0)+q}   // para el precio de la próxima semana
     }
   }
@@ -777,6 +790,46 @@ function reliefRoute(p,payer=p.owner){
   return {km:(p.hubKm||0)+far, from:H||h};
 }
 function reliefFlete(p,payer=p.owner){return Math.min(FLETE_MAX,TRADE_KM2*reliefRoute(p,payer).km*(TRADE_BULK[BULK2.comida]||1)/REF2.comida)}
+// ============================== PARA PLANIFICAR (design/ux/economia-visible.md, fase 1) ==============================
+// Fuentes ÚNICAS de lo que la interfaz explica: la misma fórmula que corre el tick, sin escribir estado.
+// CRECIMIENTO de una provincia (la misma fórmula que DEMOGRAFÍA): %/año y sus factores; y la deriva campesino → burgués.
+function popGrowthWhy(p){
+  const N=S.nations[p.owner], vida=N&&N.e2?N.e2.cov.campesino.vida:1, months=p._gm!=null?p._gm:6;
+  const food=foodGrowth(months), land=landBirth(p), life=0.5+0.5*vida, base=POP_GROWTH_BASE*YR_TICKS;
+  const c=p.pops?p.pops.campesino||0:0, bu=p.pops?p.pops.burgues||0:0, lowBase=c+bu;
+  return {base, months, food, land, vida, life, famine:!!p.famine, rate:p.famine?null:base*food*land*life,
+    burgNow:lowBase>0?bu/lowBase:0, burgTarget:targetBurgFrac(p), push:landPush(p), prosp:N?N.prosp:null, poor:POOR_LINE};
+}
+// REPARTO DE UNA VENTA: de cada ducado que paga el comprador en la plaza por el bien g de la provincia p, quién se lleva
+// qué (fracciones que suman 1). kind: "campo" (cosecha: diezmo y renta en especie, pecho sobre la parte del campesino)
+// o "taller" (jornal a los campesinos y el resto al dueño). Misma cuenta que el cobro del tick (MERCADO de cada reino).
+function saleSplit(p,g,kind,owner){
+  const n=p.owner, alc=alcabalaOf(n), net0=1-MARGIN-alc, t=transport(p,g), m=manorOf(p);
+  const lord=m==="abadengo"?"clero":m==="solariego"?"nobleza":"corona", cs=cartShare(p), net=net0*(1-t), out=[];
+  const add=(who,concept,f)=>{if(f>1e-9)out.push({who,concept,f})};
+  add("burgues","Comisión del comerciante",MARGIN); add("corona","Alcabala",alc);
+  add(lord,"Portazgo",net0*t*TOLL_FRAC); add("campesino","Acarreo",net0*t*(1-TOLL_FRAC)*cs); add("burgues","Flete largo",net0*t*(1-TOLL_FRAC)*(1-cs));
+  if(kind==="taller"){add("campesino","Jornales",net*JORNAL);add(owner||"burgues","Su taller",net*(1-JORNAL))}
+  else{const rent=MANOR_RENT[m]||0, camp=net*(1-DIEZMO_KIND-rent), tax=taxRateOf(n);
+    add("clero","Diezmo",net*DIEZMO_KIND); add(lord,m==="realengo"?"Renta del realengo":"Renta del señorío",net*rent);
+    add("corona","Pecho",camp*tax); add("campesino","Su parte",camp*(1-tax))}
+  return {rows:out, flete:t, manor:m};
+}
+// POR QUÉ TIENE ESTE PRECIO (misma fórmula que weeklyPrice, sin escribir): demanda y oferta previstas si el día de
+// mercado fuera hoy (la previsión + lo que lleva la semana), el factor del stock, el objetivo y el precio que saldrá.
+function priceWhy(N,g){
+  if(!N||!N.e2||!N.mktPrice)return null;
+  const fc=N.e2.fc, wk=N.e2.wk, days=wk&&wk.days>0?wk.days:0;
+  const blend=(f,w)=>{const x=days?(w||0)/days:null;return f==null?(x||0):x==null?f:f+(x-f)*FC_K};
+  const D=blend(fc&&fc.d[g],wk&&wk.d[g]), P=blend(fc&&fc.s[g],wk&&wk.s[g]), stock=N.mkt[g]||0;
+  let r,stockF=1;
+  if(D<=1e-12)r=(P>0||stock>0)?0.5:1; else if(P<=1e-12)r=3;
+  else{const cover=stock/D;stockF=Math.max(COVER_MIN,Math.min(1,Math.pow(COVER_TARGET/Math.max(cover,1),COVER_EXP)));r=(D/P)*stockF}
+  const clamped=Math.max(0.5,Math.min(3,r)), target=ref(g)*clamped, now=N.mktPrice[g]!=null?N.mktPrice[g]:ref(g);
+  const next=now*Math.max(1/(1+PRICE_STEP),Math.min(1+PRICE_STEP,target/now));
+  const d=dayOf(S.hour)%MARKET_DAYS;
+  return {D:D*30,P:P*30,stock,ratio:D>1e-12&&P>1e-12?D/P:null,stockF,r,clamped,target,now,next,inDays:d===0?MARKET_DAYS:MARKET_DAYS-d,step:PRICE_STEP};
+}
 // ============================== SOCORRO DE GRANO (design/grano-ducado.md, ancla 1+2) ==============================
 // Una sola acción: la corona llena el granero de un ducado HASTA SU PRÓXIMA SIEGA (con la reserva de GRAIN_RESERVE, así
 // que el granero no revende lo que le llega). Primero saca grano de su ALMACÉN (solo paga el flete), sin tocar los
@@ -854,4 +907,4 @@ function granaryOf(p){
 }
 
 export { economyTick2, siteOK2, seedEstates2, upkeepScale, seedOwner2, seedWealth2, GOODS2, LABEL2, REF2, NEED2, WANT2, TIERS, BLD2, ESTATE_BUILDS2, buildingProfit2, buildingOutput2,
-  transport, tradeCost2, moneyStock, sinkAdd, ARTISAN_IN, ctrOut, ctrIn, granaryOf, foodGrowth, landYield, landCap, landOcc, landBirth, LAND_FULL, GRAIN_RESERVE, reliefQuote, reliefSend, isMarketDay, MARKET_DAYS, PRICE_SCALE, JORNAL, MARGIN, CROWN_STOCK, CROWN_STOCK_WANT, crownStockOut, specialty2, obsolete2 };
+  transport, tradeCost2, moneyStock, sinkAdd, ARTISAN_IN, ctrOut, ctrIn, granaryOf, foodGrowth, landYield, landCap, landOcc, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX, GRAIN_RESERVE, reliefQuote, reliefSend, isMarketDay, MARKET_DAYS, PRICE_SCALE, JORNAL, MARGIN, CROWN_STOCK, CROWN_STOCK_WANT, crownStockOut, specialty2, obsolete2 };
