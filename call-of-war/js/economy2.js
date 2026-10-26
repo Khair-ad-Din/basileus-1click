@@ -59,7 +59,10 @@ const GRAIN_YIELD=1.35;  // cosecha por campesino y año (× terreno × año del
 // próxima siega (× GRAIN_RESERVE); lo que no cabe se vende entero. Si se vacía, compra en la plaza pagando el precio
 // MÁS EL FLETE desde su centro de comercio: el grano es lo más caro de mover, así que el ducado remoto o de montaña lo
 // paga más caro (limitado por coste, no por cantidad: Granada puede importarlo si puede pagarlo).
-const GRAIN_RESERVE=1.2;  // guarda un 20% más de lo que necesita hasta la próxima siega antes de vender
+const GRAIN_RESERVE=1.2;  // guarda un 20% más de lo que necesita hasta la próxima siega antes de vender (valor por defecto)
+// La reserva es de cada REINO (N.grainReserve): la fijará el futuro decreto "Reserva de los graneros" (design/capacidad-
+// agraria.md, decisión 7: nace con coste de tensión con la nobleza y el golpe al campesino lo da el CAMBIO, no el nivel).
+function reserveOf(n){const N=S.nations[n];return N&&N.grainReserve>0?N.grainReserve:GRAIN_RESERVE}
 const GRAIN_SELL_DAYS=30; // el sobrante se va vendiendo en ~un mes (no de golpe)
 // NATALIDAD: el grano acumulado se convierte en súbditos (más grano → más natalidad → más consumo → equilibrio). Es el
 // tope natural del exceso de alimento y el motor de crecimiento que quiere todo rey. Meses de reserva → factor.
@@ -663,6 +666,7 @@ function economyTick2(dt=24,doArb=true){
     for(const e of STRATA)if(W[e]<0){L.rescue+=-W[e];W[e]=0}
   }
 
+  positoPass();
   // ---------------- EJÉRCITO: mantenimiento y comida (como en la v1) ----------------
   for(const a of S.armies){if(a.nation>=NPLAY)continue;const R=S.nations[a.nation].res;
     for(const k in a.units){const u=UNITS[k].up||{};for(const r in u){const v=u[r]*a.units[k]*dt;R[r]=(R[r]||0)-v;if(r==="dinero"){sinkAdd("Ejército",v);recCrown(a.nation,"Ejército",UNITS[k].label,-v)}}}
@@ -774,6 +778,33 @@ function moneyStock(){let m=0,pl=0;for(let n=0;n<NPLAY;n++){const N=S.nations[n]
 // ============================== GRANERO DEL DUCADO ==============================
 // Clave del granero: el ducado y su dueño (un ducado partido por una conquista tiene dos graneros); una provincia sin
 // ducado es su propio granero.
+// ============================== EL PÓSITO (design/grano-ducado.md §Anclas, paso 5) ==============================
+// El socorro AUTOMÁTICO de la corona: cada día socorre los graneros propios que no llegan a la siega y ya están cerca de
+// vaciarse (o pasan hambre), del más urgente al menos, hasta gastar en el mes un tope = % del ingreso mensual de la corona.
+// Es el mismo socorro que el botón de la ficha (reliefQuote/reliefSend: mismo precio, mismo flete, mismos libros).
+// El jugador fija el % en Hacienda (N.posito, 0 = apagado); la IA usa la misma palanca con POSITO_AI.
+const POSITO_AI=0.10;      // la corona IA dedica hasta el 10% de su ingreso mensual a socorrer graneros
+const POSITO_MONTHS=2;     // actúa cuando al granero le quedan estos meses o menos (y no llega a la siega)
+function positoRate(N){return N.ai?POSITO_AI:(N.posito||0)}
+function positoCap(N){const inc=(N.e2&&N.e2.inc&&N.e2.inc.corona)||0;return Math.max(0,inc*positoRate(N))}
+function positoMonth(N){const mk=monthKeyOf(S.hour),P=N.e2.pos||(N.e2.pos={k:mk,spent:0,n:0});if(P.k!==mk){P.k=mk;P.spent=0;P.n=0}return P}
+function positoPass(){
+  const urg={},seen=new Set();
+  for(const p of S.provs){
+    if(p.owner>=NPLAY||p.wasteland||!p.pops||!p.store)continue;
+    const N=S.nations[p.owner]; if(!N||!N.alive||!(positoRate(N)>0))continue;
+    const k=granaryKey(p); if(seen.has(k))continue;
+    const gm=p._gm!=null?p._gm:12, hungry=p.famine||(p._grainNeed||0)>0;
+    if(!(hungry||(p._gshort&&gm<=POSITO_MONTHS)))continue;
+    seen.add(k); (urg[p.owner]||(urg[p.owner]=[])).push({p,score:hungry?-1:gm});
+  }
+  for(const n in urg){const N=S.nations[n],P=positoMonth(N),cap=positoCap(N);
+    for(const u of urg[n].sort((a,b)=>a.score-b.score)){
+      if(P.spent>=cap)break;
+      const q=reliefQuote(+n,u.p); if(!q||!q.ok||q.falta<=0||P.spent+q.total>cap)continue;
+      reliefSend(+n,u.p); P.spent+=q.total; P.n++; N.e2.posTot=(N.e2.posTot||0)+1; N.e2.posSpent=(N.e2.posSpent||0)+q.total;
+    }}
+}
 function granaryKey(p){return (p.duchy>=0?"d"+p.duchy:"p"+p.id)+"|"+p.owner}
 // Pone en común el grano de las provincias de cada ducado (lo reparte según sus campesinos), vende el SOBRANTE a la plaza
 // del reino (el dinero se reparte como la cosecha: diezmo al clero, renta al señor, el resto al campesino) y, si se ha
@@ -841,7 +872,7 @@ function granaryMembers(p){const k=granaryKey(p),ps=[];
 function reliefQuote(payer,p){
   const N=S.nations[payer]; if(!N||!p||!p.pops)return null;
   const ps=granaryMembers(p); let st=0,need=0,c=0;
-  for(const q of ps){const cq=q.pops.campesino||0;c+=cq;st+=q.store.grano||0;need+=cq*monthsToHarvest(q,S.hour)/12*GRAIN_RESERVE}
+  for(const q of ps){const cq=q.pops.campesino||0;c+=cq;st+=q.store.grano||0;need+=cq*monthsToHarvest(q,S.hour)/12*reserveOf(q.owner)}
   const falta=Math.max(0,need-st);
   let army=0;for(const a of S.armies)if(a.nation===payer)army+=armyFood(a)*730*RELIEF_ARMY_MONTHS;
   const almacen=Math.min(falta,Math.max(0,(N.res.grano||0)-army)), compra=falta-almacen;
@@ -867,7 +898,7 @@ function reliefSend(payer,p){
   N.sWealth.burgues+=q.flete*(1-cs); recFlow(payer,"burgues","Transporte",q.flete*(1-cs));
   const st2=q.st+q.falta;   // el granero ya llega a la siega: se actualiza al momento (el mapa y la ficha no esperan al tick)
   for(const r of q.ps){const w=q.c>0?(r.pops.campesino||0)/q.c:1/q.ps.length;r.store.grano+=q.falta*w;
-    r._gm=q.c>0?st2/(q.c/12):12; r._gshort=st2<q.need/GRAIN_RESERVE; r._grainNeed=0}
+    r._gm=q.c>0?st2/(q.c/12):12; r._gshort=st2<q.need/reserveOf(r.owner); r._grainNeed=0}
   return q;
 }
 function granaryPass(deliv,grainReq,dt){
@@ -877,7 +908,7 @@ function granaryPass(deliv,grainReq,dt){
     const N=S.nations[p.owner]; if(!N||!N.alive)continue;
     const k=granaryKey(p); let g=G.get(k); if(!g){g={ps:[],c:0,st:0,cap:0,res:0,need:0};G.set(k,g)}
     const c=p.pops.campesino||0, nd=c*monthsToHarvest(p,S.hour)/12; g.ps.push(p); g.c+=c; g.st+=p.store.grano; g.cap+=storeCap(p,"grano");
-    g.need+=nd; g.res+=nd*GRAIN_RESERVE;                           // lo que necesita hasta su próxima siega (y con reserva)
+    g.need+=nd; g.res+=nd*reserveOf(p.owner);                           // lo que necesita hasta su próxima siega (y con reserva)
   }
   for(const g of G.values()){
     if(g.c<=0){for(const p of g.ps){p._gm=12;p._gshort=false;if(p.store.grano<0)p.store.grano=0}continue}
@@ -907,4 +938,4 @@ function granaryOf(p){
 }
 
 export { economyTick2, siteOK2, seedEstates2, upkeepScale, seedOwner2, seedWealth2, GOODS2, LABEL2, REF2, NEED2, WANT2, TIERS, BLD2, ESTATE_BUILDS2, buildingProfit2, buildingOutput2,
-  transport, tradeCost2, moneyStock, sinkAdd, ARTISAN_IN, ctrOut, ctrIn, granaryOf, foodGrowth, landYield, landCap, landOcc, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX, GRAIN_RESERVE, reliefQuote, reliefSend, isMarketDay, MARKET_DAYS, PRICE_SCALE, JORNAL, MARGIN, CROWN_STOCK, CROWN_STOCK_WANT, crownStockOut, specialty2, obsolete2 };
+  transport, tradeCost2, moneyStock, sinkAdd, ARTISAN_IN, ctrOut, ctrIn, granaryOf, foodGrowth, positoCap, positoMonth, POSITO_MONTHS, reserveOf, landYield, landCap, landOcc, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX, GRAIN_RESERVE, reliefQuote, reliefSend, isMarketDay, MARKET_DAYS, PRICE_SCALE, JORNAL, MARGIN, CROWN_STOCK, CROWN_STOCK_WANT, crownStockOut, specialty2, obsolete2 };

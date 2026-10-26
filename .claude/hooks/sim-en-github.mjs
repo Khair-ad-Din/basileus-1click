@@ -11,7 +11,7 @@ let raw="";process.stdin.on("data",d=>raw+=d).on("end",()=>{
   let m=null;
   for(const seg of cmd.split(/&&|\|\||[;|\n]/)){
     const x=seg.match(/^\s*(?:\w+=\S*\s+)*(?:timeout\s+\d+\s+)?node\s+(?:--\S+\s+)*\S*?(capacidad-probe|sim-run|verify-v2)\.mjs((?:\s+[^\s>]+)*)/);
-    if(x){m=x;break}}
+    if(x&&!/\s--check\b/.test(seg)){m=x;break}}   // node --check solo comprueba la sintaxis: no simula nada
   if(!m)process.exit(0);
   const nums=m[2].trim().split(/\s+/).filter(a=>/^\d+$/.test(a)).map(Number);
   // verify-v2: [años]; capacidad-probe: [años] [década]; sim-run: <variante> [años] [década]
