@@ -76,7 +76,7 @@ const HARVEST_TAIL=0.30;         // caída EXTRA (máx.) del año de desastre: l
 const HARVEST_FLOOR=0.25;        // suelo: ni el peor año anula la cosecha del todo
 const HARVEST_AC=HARVEST_AMP*Math.sqrt(HARVEST_COMMON);     // amplitud del shock común
 const HARVEST_AL=HARVEST_AMP*Math.sqrt(1-HARVEST_COMMON);   // amplitud del shock local (AC²+AL²=AMP²)
-const SUBS_BASICS=["comida"];    // único básico con DESPENSA local (colchón anti-hambruna); el resto es flujo
+const SUBS_BASICS=["grano"];    // único básico con DESPENSA local (colchón anti-hambruna); el resto es flujo
 // El GRANO es casi autosuficiente por terreno (0.8-1.4): es el staple de supervivencia y, SIN mercado
 // internacional aún (Bloque 3), un país de terreno pobre no puede importarlo → no debe colapsar por hambre.
 // La ESPECIALIZACIÓN fuerte va en los básicos industriales (madera/piedra/hierro), que no matan de hambre y
@@ -88,19 +88,19 @@ const SUBS_BASICS=["comida"];    // único básico con DESPENSA local (colchón 
 // materia prima (cereal/cultivo/ganado/bosque/extractivo/mar) y cada bien hereda el de la suya (ver RES_CAT). El
 // GRANO (cereal) queda suave (0.9-1.4, no matar de hambre); los industriales fuertes por zona → mueven el comercio.
 const TERRAIN_CAT={ // terreno → {categoría: multiplicador de producción}
-  vega:    {cereal:1.4, cultivo:1.3, ganado:0.8, bosque:0.5, extractivo:0.4},
-  pradera: {cereal:1.3, cultivo:0.9, ganado:1.5, bosque:0.6, extractivo:0.5},
-  llanura: {cereal:1.15,cultivo:1.0, ganado:1.0, bosque:0.8, extractivo:0.75},
-  colinas: {cereal:1.0, cultivo:1.2, ganado:1.0, bosque:1.0, extractivo:1.55},
-  bosque:  {cereal:0.95,cultivo:0.5, ganado:1.0, bosque:2.6, extractivo:0.8},
-  pantano: {cereal:0.92,cultivo:0.6, ganado:0.8, bosque:2.0, extractivo:0.7},
-  estepa:  {cereal:0.97,cultivo:0.5, ganado:1.5, bosque:0.6, extractivo:1.05},
-  desierto:{cereal:0.9, cultivo:0.5, ganado:0.6, bosque:0.35,extractivo:1.55},
-  montana: {cereal:0.9, cultivo:0.4, ganado:0.7, bosque:0.7, extractivo:2.5},
-  tundra:  {cereal:0.9, cultivo:0.2, ganado:0.7, bosque:1.1, extractivo:0.85},
+  vega:    {cereal:1.4, cultivo:1.3, carne:0.8, bosque:0.5, extractivo:0.4},
+  pradera: {cereal:1.3, cultivo:0.9, carne:1.5, bosque:0.6, extractivo:0.5},
+  llanura: {cereal:1.15,cultivo:1.0, carne:1.0, bosque:0.8, extractivo:0.75},
+  colinas: {cereal:1.0, cultivo:1.2, carne:1.0, bosque:1.0, extractivo:1.55},
+  bosque:  {cereal:0.95,cultivo:0.5, carne:1.0, bosque:2.6, extractivo:0.8},
+  pantano: {cereal:0.92,cultivo:0.6, carne:0.8, bosque:2.0, extractivo:0.7},
+  estepa:  {cereal:0.97,cultivo:0.5, carne:1.5, bosque:0.6, extractivo:1.05},
+  desierto:{cereal:0.9, cultivo:0.5, carne:0.6, bosque:0.35,extractivo:1.55},
+  montana: {cereal:0.9, cultivo:0.4, carne:0.7, bosque:0.7, extractivo:2.5},
+  tundra:  {cereal:0.9, cultivo:0.2, carne:0.7, bosque:1.1, extractivo:0.85},
 };
 const MAR_MUL=1.2, MAR_INLAND=0.15; // categoría 'mar' (pescado/sal/ámbar): solo rinde en la COSTA
-const SUBS_STORE_YEARS={comida:1.25}; // capacidad del GRANERO en años de consumo (× Almacén): cabe una cosecha entera y algo de remanente
+const SUBS_STORE_YEARS={grano:1.25}; // capacidad del GRANERO en años de consumo (× Almacén): cabe una cosecha entera y algo de remanente
 function terrMul(p,k){ // vocación del terreno para el bien k, POR CATEGORÍA
   const cat=RES_CAT[k]; if(!cat)return 1;
   if(cat==="mar")return p.coastal?MAR_MUL:MAR_INLAND;
@@ -150,7 +150,7 @@ function monthsToHarvest(p,hour){ // meses (con fracción) que faltan para la pr
 }
 function storeCap(p,k){return (p.pop||0)*(SUBS_STORE_YEARS[k]||0.5)*(1+0.8*lvlOf(p,"almacen"))} // el Almacén amplía la reserva
 function storeOf(p,k){const c=storeCap(p,k);return (p.store&&p.store[k]!=null)?p.store[k]:c*0.6} // reserva actual (o siembra)
-function foodFill(p){const c=storeCap(p,"comida");return c>0?Math.min(1,storeOf(p,"comida")/c):0.5} // llenado de la despensa (0..1)
+function foodFill(p){const c=storeCap(p,"grano");return c>0?Math.min(1,storeOf(p,"grano")/c):0.5} // llenado de la despensa (0..1)
 
 // ---- Movilidad social (Fase C): ascensos/descensos campesino<->burgués ----
 // Modelo "fracción objetivo + deriva": cada provincia tiende a una composición según su DESARROLLO
@@ -186,7 +186,7 @@ const TRADE_SEA=0.68;         // ambas capitales costeras. NO es el 8:4:1 tierra
                               // 5,16% en coca genovesa): demasiado ruido para lo que aporta.
 // PESO FÍSICO por unidad, relativo al grano (=1.0). Calibrado: la sal a 1800 km por mar = 85% de su valor
 // (ref 1.6) exige peso 2.1 — es un mineral, pesa más que el grano por unidad. El ganado ANDA SOLO.
-const TRADE_BULK={cereal:1.0, cultivo:1.0, mar:2.1, ganado:0.8, bosque:1.6, extractivo:2.2,
+const TRADE_BULK={cereal:1.0, cultivo:1.0, mar:2.1, carne:0.8, bosque:1.6, extractivo:2.2,
   manufactura:0.6, comercio:0.5, moneda:0.05};
 // El riesgo era POLÍTICO, no meteorológico: ≥50% del coste del seguro marítimo venía de corso e
 // incautaciones por guerra (el recargo de invierno nunca pasó del 13%).
@@ -236,7 +236,7 @@ const JOBS_PER_LEVEL=550;   // puestos de trabajo que exige cada nivel de edific
 const SPEC_BASE=0.06;       // fracción de la población especializable (siempre hay algo de artesanía)
 const SPEC_K=0.6;           // + capacidad de especialistas por excedente agrícola estructural
 const SPEC_MAX=0.35;        // tope de especialistas (urbanización máxima medieval)
-function structPPF(p){return terrMul(p,"comida")*(1+0.4*lvlOf(p,"granja"))} // capacidad de grano/campesino del terreno (sin cosecha)
+function structPPF(p){return terrMul(p,"grano")*(1+0.4*lvlOf(p,"granja"))} // capacidad de grano/campesino del terreno (sin cosecha)
 function specialistCap(p){  // cuántos pops puede sostener la provincia fuera del campo
   const f=Math.max(0.02,Math.min(SPEC_MAX,SPEC_BASE+SPEC_K*(structPPF(p)-1)));
   return (p.pop||0)*f;
@@ -312,7 +312,7 @@ function logEconMonth(monthIdx){ // se llama ANTES de cerrar el mes: S.cBook/S.s
   for(const p of S.provs)if(p.owner===n&&!p.wasteland){
     nprov++; pop+=p.pop||0; if(p.famine)fam++;
     if(p.pops)for(const k of STRATA)P[ESTATE_ABBR[k]]+=p.pops[k]||0;
-    st+=(p.store&&p.store.comida)||0; stc+=storeCap(p,"comida");
+    st+=(p.store&&p.store.grano)||0; stc+=storeCap(p,"grano");
     cos+=harvestMul(p); mor+=(p.morale||0)*(p.pop||0); mob+=p.mob||0;
     const j=buildJobs(p); if(j>0){dot+=staffing(p);ndot++}
     slots+=buildSlots(p); used+=usedSlots(p);
@@ -500,30 +500,30 @@ function armyForage(a){
   const out=[],localNeed=armyFood(a)*((a.supply==null?70:a.supply)/100);
   if(localNeed<=1e-9)return out;
   const A=S.provs[a.prov],pool=[];
-  if(A&&!A.wasteland&&A.store&&A.store.comida>0)pool.push(A);
-  for(const nb of (S.adj[a.prov]||[])){const q=S.provs[nb];if(q&&!q.wasteland&&q.store&&q.store.comida>0)pool.push(q)}
-  let avail=0;for(const q of pool)avail+=q.store.comida;
+  if(A&&!A.wasteland&&A.store&&A.store.grano>0)pool.push(A);
+  for(const nb of (S.adj[a.prov]||[])){const q=S.provs[nb];if(q&&!q.wasteland&&q.store&&q.store.grano>0)pool.push(q)}
+  let avail=0;for(const q of pool)avail+=q.store.grano;
   if(avail<=0)return out;
   const take=Math.min(localNeed,avail);
-  for(const q of pool)out.push({p:q,amt:take*(q.store.comida/avail)});
+  for(const q of pool)out.push({p:q,amt:take*(q.store.grano/avail)});
   return out.sort((x,y)=>y.amt-x.amt);
 }
 // grano que las tropas forrajean de la reserva de la provincia p POR TICK (replica el reparto del
 // tick: cada ejército reparte su parte local entre la provincia que pisa y sus vecinas, proporcional
 // a la reserva). Suma la porción que toca a p de todos los ejércitos que la incluyen en su pool.
 function troopDrainOn(p){
-  if(!p||p.wasteland||!p.store||!(p.store.comida>0))return 0;
+  if(!p||p.wasteland||!p.store||!(p.store.grano>0))return 0;
   let drain=0;
   for(const a of S.armies){
     if(a.nation>=NPLAY)continue;
     const localNeed=armyFood(a)*((a.supply==null?70:a.supply)/100);
     if(localNeed<=1e-9)continue;
     const A=S.provs[a.prov],pool=[];
-    if(A&&!A.wasteland&&A.store&&A.store.comida>0)pool.push(A);
-    for(const nb of (S.adj[a.prov]||[])){const q=S.provs[nb];if(q&&!q.wasteland&&q.store&&q.store.comida>0)pool.push(q)}
+    if(A&&!A.wasteland&&A.store&&A.store.grano>0)pool.push(A);
+    for(const nb of (S.adj[a.prov]||[])){const q=S.provs[nb];if(q&&!q.wasteland&&q.store&&q.store.grano>0)pool.push(q)}
     if(pool.indexOf(p)<0)continue;
-    let avail=0;for(const q of pool)avail+=q.store.comida;
-    if(avail>0)drain+=Math.min(localNeed,avail)*(p.store.comida/avail);
+    let avail=0;for(const q of pool)avail+=q.store.grano;
+    if(avail>0)drain+=Math.min(localNeed,avail)*(p.store.grano/avail);
   }
   return drain;
 }

@@ -65,8 +65,8 @@ for(let y=0;y<YEARS;y++){
     e2.economyTick2(24,true);es.budgetManage();
     for(const p of LP)if(p.famine){const A=acc[preg.get(p)],k=gk(p)+"|"+y;A.fam.add(k);const b=before.get(p),dd=b>(p.pop||0)?b-(p.pop||0):0;
       A.dead+=dd;const G=gAcc[isAdv(p)?"adv":"rest"];G.dead+=dd;G.fam.add(k)}
-    if(d%7===0)for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(!N.alive||!N.mktPrice||!(N.mktPrice.comida>0))continue;const A=acc[natReg(n)];
-      const r=N.mktPrice.comida/(e2.REF2.comida*e2.PRICE_SCALE);A.pr+=r;A.prN++;if(r>=2.9)A.cap++}
+    if(d%7===0)for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(!N.alive||!N.mktPrice||!(N.mktPrice.grano>0))continue;const A=acc[natReg(n)];
+      const r=N.mktPrice.grano/(e2.REF2.grano*e2.PRICE_SCALE);A.pr+=r;A.prN++;if(r>=2.9)A.cap++}
     if(S.pmKey!==pmKey0){pmKey0=S.pmKey;for(const p of LP){const m=p.m;if(m&&m.pay.nobleza&&m.pay.nobleza["Renta del señorío"])acc[preg.get(p)].rent+=m.pay.nobleza["Renta del señorío"]}}}
   if((y+1)%DEC===0){const snap={y:y+1,r:{}};
     for(const r of RN)snap.r[r]={c:0,K:0,pop:0,hi:0};

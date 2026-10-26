@@ -30,8 +30,8 @@ function seaCol(P){
 }
 const WASTECOL=hex2rgb("#847c6a");
 // Mapa de RECURSOS: color por bien de la provincia (resType). Plata/oro destacan (metales preciosos).
-const RES_MAPHEX={comida:"#d9c463",materiales:"#4a7c3f",piedra:"#9a948a",metal:"#6b7078",
-  petroleo:"#b0824e",raros:"#d9713a",pano:"#7fb0c0",vino:"#8a3d6b",sal:"#e6e0cf",seda:"#d18ac0",
+const RES_MAPHEX={grano:"#d9c463",madera:"#4a7c3f",piedra:"#9a948a",hierro:"#6b7078",
+  caballos:"#b0824e",especias:"#d9713a",pano:"#7fb0c0",bebida:"#8a3d6b",sal:"#e6e0cf",seda:"#d18ac0",
   plata:"#cfd3d9",oro:"#e8c24a",dinero:"#d4af37"};
 const RES_MAPCOL=Object.fromEntries(Object.keys(RES_MAPHEX).map(k=>[k,hex2rgb(RES_MAPHEX[k])]));
 function resColor(pid){

@@ -17,7 +17,7 @@ function sink2(v,cat="Obras y reparaciones"){sinkAdd(cat,v)}
  * obra por provincia). Clero → iglesias + viñedos; Nobleza → industria BASE + militar; Burgués →
  * industria de LUJO + comercio/infraestructura. El dueño se fija al completar la obra (hourTick). */
 // precio nominal de los insumos de obra (ducados/unidad) para que el estamento valore el coste y lo pague de su bolsillo
-const BUILD_MAT_PRICE={dinero:1,materiales:1,piedra:1,metal:2,comida:0.8,pano:2.2,vino:2.2,sal:1.6,seda:5,raros:4,petroleo:2};
+const BUILD_MAT_PRICE={dinero:1,madera:1,piedra:1,hierro:2,grano:0.8,pano:2.2,bebida:2.2,sal:1.6,seda:5,especias:4,caballos:2};
 const INVEST_MONTHS=12; // v2: un estamento invierte solo lo que le sobra tras asegurarse un año de su cesta
 const ESTATE_BUILD_KEEP=4; // colchón: solo construyen si su riqueza supera KEEP× el coste (invierten el excedente, no el principal)
 function estateCostDinero(cost){let t=0;for(const k in cost)t+=cost[k]*(BUILD_MAT_PRICE[k]||1);return t}

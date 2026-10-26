@@ -130,7 +130,7 @@ function continueGame(){
     p.buildQueue=d[3]||[];p.recruitQueue=d[4]||[];
     if(d[5]!=null)p.pop=d[5];   // población viva (creció/decreció durante la partida)
     if(d[6]!=null)p.sold=d[6];  // soldadesca acumulada
-    if(d[7]!=null)p.store=(typeof d[7]==="object")?d[7]:{comida:d[7]};  // reservas locales por bien (v3: era un escalar de comida)
+    if(d[7]!=null)p.store=(typeof d[7]==="object")?d[7]:{grano:d[7]};  // reservas locales por bien (v3: era un escalar de comida)
     p.occupier=d[8]!=null?d[8]:-1; // control militar (ocupación EU4)
     p.siege=d[9]||null;            // asedio en curso {by,need,prog}
     p.bOwner=d[10]||{};            // E2: dueño de cada edificio por estamento (vacío = todo corona)

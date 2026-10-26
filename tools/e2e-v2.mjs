@@ -26,7 +26,7 @@ console.log("click:",await ev(`(()=>{const c=[...document.querySelectorAll('#nat
 await sleep(2500);
 console.log("run:",await ev(`(async()=>{const sim=await import('./js/sim.js');const S=window.__S;const t0=Date.now();for(let h=0;h<${DAYS}*24;h++)sim.hourTick();
   const N=S.nations[S.player];return {dias:${DAYS},ms:Date.now()-t0,player:S.player,tesoro:Math.round(N.res.dinero),riqueza:Object.fromEntries(Object.entries(N.sWealth).map(([k,v])=>[k,Math.round(v)])),
-   cov:N.e2&&N.e2.cov,precios:Object.fromEntries(Object.entries(N.mktPrice||{}).filter(([k])=>['comida','pano','herramientas','seda','lana','metal'].includes(k)).map(([k,v])=>[k,+v.toFixed(1)])),
+   cov:N.e2&&N.e2.cov,precios:Object.fromEntries(Object.entries(N.mktPrice||{}).filter(([k])=>['grano','pano','herramientas','seda','lana','hierro'].includes(k)).map(([k,v])=>[k,+v.toFixed(1)])),
    obras:S.provs.filter(p=>p.owner===S.player).reduce((a,p)=>a+p.buildQueue.length,0)}})()`));
 for(const [name,expr] of [["Mercado","openMercado()"],["Bien paño","openMktGood('pano')"],["cerrar bien","closeMktGood()"],["Estamentos","openEstates()"],["Tesorería","openTreasury()"],["Fiscal","openFiscal()"],["Mapa bien","showGoodMap&&showGoodMap('pano')"],
   ["Ficha provincia","(()=>{const S=window.__S;S.selProv=S.nations[S.player].capital;S.selArmy=null;S.provTab=null;setProvTab('build');return document.getElementById('provPanel').className})()"],["Economía provincia","setProvTab('eco')"],["Detalle cobrador","provEcoDrill('corona')"],

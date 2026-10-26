@@ -21,25 +21,25 @@ const PRICE_SCALE=8;     // palanca GLOBAL de precios: iguala el dinero del come
                          // (edificios, tropas, mantenimiento). Con 1, clero y nobleza no cubrían ni el mantenimiento.
 
 // Los 17 bienes. Reusan las claves de la v1 (iconos/UI); la etiqueta v2 está en LABEL2.
-const GOODS2=["comida","sal","lienzo","ganado","pescado","vino","pano","herramientas","seda","raros","pieles",
-  "lana","metal","materiales","piedra","petroleo","armas"];
-const LABEL2={comida:"Grano",sal:"Sal",lienzo:"Lienzo",ganado:"Carne",pescado:"Pescado",vino:"Bebida",pano:"Paño",
-  herramientas:"Herramientas",seda:"Seda",raros:"Especias",pieles:"Pieles",lana:"Lana",metal:"Hierro",
-  materiales:"Madera",piedra:"Piedra",petroleo:"Caballos",armas:"Armas"};
-const REF2={comida:1,sal:3,lienzo:4,ganado:3,pescado:3,vino:2,pano:8,herramientas:6,seda:30,raros:30,pieles:20,
-  lana:2,metal:3,materiales:1,piedra:1,petroleo:25,armas:15};
+const GOODS2=["grano","sal","lienzo","carne","pescado","bebida","pano","herramientas","seda","especias","pieles",
+  "lana","hierro","madera","piedra","caballos","armas"];
+const LABEL2={grano:"Grano",sal:"Sal",lienzo:"Lienzo",carne:"Carne",pescado:"Pescado",bebida:"Bebida",pano:"Paño",
+  herramientas:"Herramientas",seda:"Seda",especias:"Especias",pieles:"Pieles",lana:"Lana",hierro:"Hierro",
+  madera:"Madera",piedra:"Piedra",caballos:"Caballos",armas:"Armas"};
+const REF2={grano:1,sal:3,lienzo:4,carne:3,pescado:3,bebida:2,pano:8,herramientas:6,seda:30,especias:30,pieles:20,
+  lana:2,hierro:3,madera:1,piedra:1,caballos:25,armas:15};
 // categoría de PESO para el transporte (TRADE_BULK de la v1, calibrado): grano y piedra se quedan locales solos
-const BULK2={comida:"cereal",sal:"mar",lienzo:"manufactura",ganado:"ganado",pescado:"mar",vino:"manufactura",
-  pano:"manufactura",herramientas:"manufactura",seda:"manufactura",raros:"comercio",pieles:"bosque",lana:"ganado",
-  metal:"extractivo",materiales:"bosque",piedra:"extractivo",petroleo:"ganado",armas:"manufactura"};
+const BULK2={grano:"cereal",sal:"mar",lienzo:"manufactura",carne:"carne",pescado:"mar",bebida:"manufactura",
+  pano:"manufactura",herramientas:"manufactura",seda:"manufactura",especias:"comercio",pieles:"bosque",lana:"carne",
+  hierro:"extractivo",madera:"bosque",piedra:"extractivo",caballos:"carne",armas:"manufactura"};
 // TRADE_KM de la v1 está anclado al grano a 0,8 (1.100 km = 50% del valor); aquí el grano vale 1.
 const TRADE_KM2=TRADE_KM/0.8;
 
 // NECESIDADES por persona y año, en TRES ESCALONES. WANT multiplica cada escalón por estamento (los ricos piden más).
 const NEED2={
-  subs:{comida:1.0, sal:0.01, lienzo:0.01},
-  vida:{ganado:0.006, pescado:0.006, vino:0.012, pano:0.004, herramientas:0.003, materiales:0.012, piedra:0.002},
-  lujo:{seda:0.005, raros:0.005, pieles:0.004, petroleo:0.002, armas:0.002},
+  subs:{grano:1.0, sal:0.01, lienzo:0.01},
+  vida:{carne:0.006, pescado:0.006, bebida:0.012, pano:0.004, herramientas:0.003, madera:0.012, piedra:0.002},
+  lujo:{seda:0.005, especias:0.005, pieles:0.004, caballos:0.002, armas:0.002},
 };
 const TIERS=["subs","vida","lujo"];
 const TIER_OF={};for(const t in NEED2)for(const g in NEED2[t])TIER_OF[g]=t;
@@ -96,35 +96,35 @@ function foodGrowth(months){return months<=1?0.3:months<=12?0.3+0.7*(months-1)/1
 // Lo que produce TODA provincia según su terreno (la categoría "mar" solo rinde en la COSTA: sal marina y pesca de bajura).
 // Revisado 2026-09-27 con el informe regional (--regiones): sal y pescado faltaban en todo el Mediterráneo y el Este,
 // los caballos solo salían en la estepa y el Norte no tenía cerveza. Bebida = vino/cerveza/hidromiel caseros.
-const BASE2={materiales:[0.02,"bosque"], piedra:[0.004,"extractivo"], metal:[0.01,"extractivo"],
-             ganado:[0.012,"ganado"], vino:[0.012,"cereal"], lienzo:[0.002,"cultivo"], lana:[0.012,"ganado"],
-             sal:[0.006,"mar"], pescado:[0.006,"mar"], petroleo:[0.0005,"ganado"]};
+const BASE2={madera:[0.02,"bosque"], piedra:[0.004,"extractivo"], hierro:[0.01,"extractivo"],
+             carne:[0.012,"carne"], bebida:[0.012,"cereal"], lienzo:[0.002,"cultivo"], lana:[0.012,"carne"],
+             sal:[0.006,"mar"], pescado:[0.006,"mar"], caballos:[0.0005,"carne"]};
 // Ciudades-puerto de especias y ciudades sederas (su resType es de ciudad): el mercader las trae / el taller las teje,
 // por habitante y año. Alejandría, Beirut, Venecia, Génova… eran la puerta de entrada de las especias en Europa.
-const URBAN2={raros:0.4, seda:0.006};    // especias: solo por las puertas de entrada (SPICE_GATES), de ahí la tasa mayor.
+const URBAN2={especias:0.4, seda:0.006};    // especias: solo por las puertas de entrada (SPICE_GATES), de ahí la tasa mayor.
                          // 0,05 dejaba la oferta en el 23% de la demanda y el precio en el techo ×3; en 1444 la pimienta ya
                          // había salido del pico de 1410-27 y Alejandría/Beirut ofrecían más (Ashtor; O'Rourke-Williamson):
                          // objetivo ~×1 (consejo 2026-09-27)
 // Hierro: fuera de las 6 zonas mineras hay hierro de pantano y de ladera en casi todas partes (poco); en ellas, ×8.
 const IRON_ZONE2=8;
 // ESPECIALIDAD de la provincia (su resType de la v1, plegado a los 17 bienes) por campesino y año
-const SPEC2={vino:0.06, seda:0.02, raros:0.02, sal:0.12, petroleo:0.02, lana:0.2, ganado:0.03, lienzo:0.03,
+const SPEC2={bebida:0.06, seda:0.02, especias:0.02, sal:0.12, caballos:0.02, lana:0.2, carne:0.03, lienzo:0.03,
              pescado:0.12, pieles:0.04};
-const FOLD2={vino:"vino",uva:"vino",sedacruda:"seda",sal:"sal",petroleo:"petroleo",lana:"lana",ganado:"ganado",
-  cuero:"ganado",lino:"lienzo",algodon:"lienzo",pescado:"pescado",pieles:"pieles",ambar:"pieles",cana:"raros"};
+const FOLD2={bebida:"bebida",uva:"bebida",sedacruda:"seda",sal:"sal",caballos:"caballos",lana:"lana",carne:"carne",
+  cuero:"carne",lino:"lienzo",algodon:"lienzo",pescado:"pescado",pieles:"pieles",ambar:"pieles",cana:"especias"};
 
 // EDIFICIOS que venden a la plaza. Cada nivel produce BLD_VALUE ducados/año (a precio de referencia) × v.
 // in = unidades de insumo por unidad de producto. raw = categoría de terreno que modula la extracción.
 const BLD_VALUE=1500;    // (6000 rendía ~4× un taller de la v1 y se amortizaba en semanas: se construían por todas partes)
 const BLD2={
-  aserradero:{out:"materiales",raw:"bosque"}, cantera:{out:"piedra",raw:"extractivo"}, mina:{out:"metal",raw:"extractivo"},
-  granja:{out:"comida",raw:"cereal"},   // explotación directa del señor (reserva, granja cisterciense): su grano es de su DUEÑO
-  salina:{out:"sal"}, vinedo:{out:"vino"}, majuelo:{out:"vino"}, cerveceria:{out:"vino",in:{comida:0.5}},
+  aserradero:{out:"madera",raw:"bosque"}, cantera:{out:"piedra",raw:"extractivo"}, mina:{out:"hierro",raw:"extractivo"},
+  granja:{out:"grano",raw:"cereal"},   // explotación directa del señor (reserva, granja cisterciense): su grano es de su DUEÑO
+  salina:{out:"sal"}, vinedo:{out:"bebida"}, majuelo:{out:"bebida"}, cerveceria:{out:"bebida",in:{grano:0.5}},
   telar:{out:"pano",in:{lana:1},v:1.5}, telarLino:{out:"lienzo"}, linar:{out:"lienzo"}, fustaneria:{out:"lienzo"},
-  algodonal:{out:"lienzo"}, sederia:{out:"seda",v:4}, morera:{out:"seda"}, especiar:{out:"raros",v:4}, canaveral:{out:"raros"},
-  ingenio:{out:"raros"}, yeguada:{out:"petroleo"}, majada:{out:"lana",raw:"ganado"}, dehesa:{out:"ganado",raw:"ganado"},
+  algodonal:{out:"lienzo"}, sederia:{out:"seda",v:4}, morera:{out:"seda"}, especiar:{out:"especias",v:4}, canaveral:{out:"especias"},
+  ingenio:{out:"especias"}, yeguada:{out:"caballos"}, majada:{out:"lana",raw:"carne"}, dehesa:{out:"carne",raw:"carne"},
   pesqueria:{out:"pescado"}, cazadero:{out:"pieles"}, ambarera:{out:"pieles"},
-  herreria:{out:"herramientas",in:{metal:1},v:1.5}, armeria:{out:"armas",in:{metal:2},v:1.5}, aceria:{out:"armas",in:{metal:2},v:1.5},
+  herreria:{out:"herramientas",in:{hierro:1},v:1.5}, armeria:{out:"armas",in:{hierro:2},v:1.5}, aceria:{out:"armas",in:{hierro:2},v:1.5},
 };
 // ARTESANOS: cada burgués trabaja en su oficio y produce ARTISAN_VALUE ducados/año (a precio de referencia) de
 // manufacturas, repartidos según ARTISAN_MIX. Compra sus insumos en la plaza (misma receta que el taller: in por
@@ -134,7 +134,7 @@ const ARTISAN_MIX={lienzo:0.45, pano:0.2, herramientas:0.35};       // oficio co
 const ARTISAN_MIX_PANO={lienzo:0.1, pano:0.8, herramientas:0.1};   // ciudades pañeras (su especialidad es el paño):
                          // el paño fino se concentraba en Flandes, Italia e Inglaterra y desde allí se exportaba
 const ARTISAN_MIX_ARMS={armas:0.5, herramientas:0.35, pano:0.15};  // centros armeros (Milán-Brescia, Núremberg, Toledo…): la forja es su oficio
-const ARTISAN_IN={pano:{lana:1}, herramientas:{metal:1}, armas:{metal:2}};   // (misma receta que BLD2)
+const ARTISAN_IN={pano:{lana:1}, herramientas:{hierro:1}, armas:{hierro:2}};   // (misma receta que BLD2)
 const POOR_LINE=0.5;     // por debajo de este % de vida diaria cubierta, parte de los burgueses vuelve a campesino
 // ============================== GEOGRAFÍA DE LOS RECURSOS (cronista, 2026-09-27) ==============================
 // Cajas [latMin,latMax,lonMin,lonMax]. Fuentes y razonamiento: design/economia-v2.md §12. Lo esencial:
@@ -184,10 +184,10 @@ function geoMul(p,g){
   switch(g){
     case "sal": return (p.coastal&&ll(p)[1]<SALT_SEA_LAT)?1:0;          // sal marina solo en el Sur; la de roca va aparte (SALT_POINTS)
     case "pescado": return inBox(p,FISH_POINTS)?FISH_ZONE_MUL:1;
-    case "petroleo": return (inBox(p,HORSE_POINTS)||p.terrain==="estepa")?HORSE_ZONE_MUL:(inBox(p,ARID_LOW)?0.3:1);
-    case "metal": return inBox(p,ARID_LOW)?ARID_MUL:(((p.metalMul!=null&&p.metalMul>1)||inBox(p,IRON_EXTRA2))?IRON_ZONE2:inBox(p,IRON_MINOR2)?IRON_MINOR_MUL:1);
-    case "materiales": return inBox(p,ARID_LOW)?ARID_MUL:1;
-    case "vino": return islamic(p)?ISLAM_DRINK:1;
+    case "caballos": return (inBox(p,HORSE_POINTS)||p.terrain==="estepa")?HORSE_ZONE_MUL:(inBox(p,ARID_LOW)?0.3:1);
+    case "hierro": return inBox(p,ARID_LOW)?ARID_MUL:(((p.metalMul!=null&&p.metalMul>1)||inBox(p,IRON_EXTRA2))?IRON_ZONE2:inBox(p,IRON_MINOR2)?IRON_MINOR_MUL:1);
+    case "madera": return inBox(p,ARID_LOW)?ARID_MUL:1;
+    case "bebida": return islamic(p)?ISLAM_DRINK:1;
   }
   return 1;
 }
@@ -200,9 +200,9 @@ const OR=(...fs)=>p=>fs.some(fn=>fn(p));
 const SITE2={
   salina:OR(RT("sal"),p=>inBox(p,SALT_POINTS),p=>!!p.coastal&&ll(p)[1]<SALT_SEA_LAT), pesqueria:p=>!!p.coastal, cazadero:OR(RT("pieles","ambar"),TR("bosque","tundra")),
   ambarera:RT("ambar"), especiar:p=>inBox(p,SPICE_GATES), ingenio:RT("cana","azucar"), canaveral:RT("cana","azucar"),
-  sederia:RT("seda","sedacruda"), morera:RT("seda","sedacruda"), yeguada:OR(RT("petroleo"),TR("estepa","pradera")),
-  majada:OR(RT("lana"),TR("pradera","colinas","montana","estepa")), dehesa:OR(RT("ganado","cuero"),TR("pradera","estepa","llanura")),
-  vinedo:RT("vino","uva"), majuelo:RT("vino","uva"), linar:RT("lino","lienzo","algodon"), algodonal:RT("algodon","fustan"),
+  sederia:RT("seda","sedacruda"), morera:RT("seda","sedacruda"), yeguada:OR(RT("caballos"),TR("estepa","pradera")),
+  majada:OR(RT("lana"),TR("pradera","colinas","montana","estepa")), dehesa:OR(RT("carne","cuero"),TR("pradera","estepa","llanura")),
+  vinedo:RT("bebida","uva"), majuelo:RT("bebida","uva"), linar:RT("lino","lienzo","algodon"), algodonal:RT("algodon","fustan"),
   armeria:OR(RT("armas","acero"),p=>inBox(p,ARMS_CENTERS)), aceria:OR(RT("armas","acero"),p=>inBox(p,ARMS_CENTERS)),
   telarLino:OR(RT("lino","lienzo","algodon","fustan"),TR("vega","llanura","pradera")), fustaneria:RT("algodon","fustan","lino"),
 };
@@ -216,7 +216,7 @@ function obsolete2(b){const B=BUILDINGS[b]; if(!B||BLD2[b])return false; const f
 // Lo que DISTINGUE a la provincia en v2 (para la ficha): su especialidad plegada a los 17 bienes y lo que da su sitio
 // (puerta de las especias, ciudad sedera o pañera, salina/mina de sal, centro armero). Solo lectura (UI).
 function specialty2(p){const s=[],add=g=>{if(s.indexOf(g)<0)s.push(g)};
-  if(inBox(p,SPICE_GATES))add("raros");
+  if(inBox(p,SPICE_GATES))add("especias");
   if(p.urban&&p.resType==="seda")add("seda");
   if(p.urban&&p.resType==="pano")add("pano");
   const sg=FOLD2[p.resType]; if(sg&&!p.urban)add(sg);
@@ -224,7 +224,7 @@ function specialty2(p){const s=[],add=g=>{if(s.indexOf(g)<0)s.push(g)};
   if(inBox(p,ARMS_CENTERS))add("armas");
   return s}
 // Lo que la CORONA produce en sus propios edificios para sus obras y su ejército NO va a la plaza: va a su almacén.
-const CROWN_STOCK=new Set(["materiales","piedra","metal","comida","petroleo"]);
+const CROWN_STOCK=new Set(["madera","piedra","hierro","grano","caballos"]);
 const CROWN_STOCK_WANT=3000;   // unidades en el almacén de la corona por debajo de las cuales le HACE FALTA producir ese bien
 // DUEÑO de los talleres sembrados al arrancar (el del resType de cada provincia). En la v1 eran todos de la corona
 // porque su producción iba a su almacén; en la v2 se VENDE, y una corona dueña de toda la industria sería 5× más rica
@@ -474,12 +474,12 @@ function economyTick2(dt=24,doArb=true){
     // GRANO: la provincia SIEGA una vez al año, en su mes, y lo cosechado entra en el granero (p.store.comida, que se
     // pone en común con su ducado después de esta pasada: granaryPass). Sus campesinos comen de él cada día.
     if(!p.store)p.store={};
-    if(p.store.comida==null)p.store.comida=storeCap(p,"comida")*0.6;
+    if(p.store.grano==null)p.store.grano=storeCap(p,"grano")*0.6;
     {const cal=calOf(S.hour);
       if(cal.m===harvestMonth(p)&&p.store.hy!==cal.y){p.store.hy=cal.y;
-        const gh=c*GRAIN_YIELD*landYield(p)*terrMul(p,"comida")*harvestMul(p);   // la cosecha del AÑO, con el techo de la tierra (la Granja no la multiplica: es la explotación de su dueño, BLD2)
-        p.store.comida+=gh; N.e2.st.prodV+=gh*REF2.comida; pmProd(p,"comida",gh)}}
-    p.store.comida-=c*f;
+        const gh=c*GRAIN_YIELD*landYield(p)*terrMul(p,"grano")*harvestMul(p);   // la cosecha del AÑO, con el techo de la tierra (la Granja no la multiplica: es la explotación de su dueño, BLD2)
+        p.store.grano+=gh; N.e2.st.prodV+=gh*REF2.grano; pmProd(p,"grano",gh)}}
+    p.store.grano-=c*f;
     p._grainNeed=0;p._grainGot=0;
     const sh=harvestShares(p);
     // lo que produce toda provincia + su especialidad
@@ -487,7 +487,7 @@ function economyTick2(dt=24,doArb=true){
       q*=geoMul(p,g);
       if(q>0)pushHarvest(deliv[n],p,g,q,sh,N)}
     const sg=FOLD2[p.resType];
-    const ug=inBox(p,SPICE_GATES)?"raros":(p.urban&&p.resType==="seda"?"seda":null);   // puertas de las especias (tenga el resType que tenga) · ciudades sederas
+    const ug=inBox(p,SPICE_GATES)?"especias":(p.urban&&p.resType==="seda"?"seda":null);   // puertas de las especias (tenga el resType que tenga) · ciudades sederas
     if(ug&&!isOccupied(p)){const q=(p.pop||0)*URBAN2[ug]*mor*f;if(q>0){deliv[n].push({p,g:ug,q,kind:"bld",owner:"burgues"});pmProd(p,ug,q)}}
     if(inBox(p,SALT_POINTS)){const q=c*SALT_ZONE_RATE*mor*f;if(q>0)pushHarvest(deliv[n],p,"sal",q,sh,N)} // mina de sal de roca/salmuera o gran salina
     if(sg&&!p.urban){const q=c*SPEC2[sg]*terrMul(p,p.resType)*mor*f;if(q>0)pushHarvest(deliv[n],p,sg,q,sh,N)}
@@ -545,20 +545,20 @@ function economyTick2(dt=24,doArb=true){
     for(const e of STRATA){want[e]={};base[e]={};
       const bm=(N.e2.basket&&N.e2.basket[e])||0, spare=bm>0?Math.max(0,Math.min(1,(W[e]||0)/(12*bm)-1)):0;
       for(const t of TIERS){const w=WANT2[e][t];if(!w)continue;const boost=t==="subs"?1:1+WEALTH_BOOST*spare;
-        for(const g in NEED2[t]){if(e==="campesino"&&g==="comida")continue; // el campesino come de su despensa; en el islam apenas se bebe
-          const q=NEED2[t][g]*w*str[e]*f*(g==="vino"&&N.e2.islam?ISLAM_DRINK:1); base[e][g]=(base[e][g]||0)+q; want[e][g]=(want[e][g]||0)+q*boost}}}
+        for(const g in NEED2[t]){if(e==="campesino"&&g==="grano")continue; // el campesino come de su despensa; en el islam apenas se bebe
+          const q=NEED2[t][g]*w*str[e]*f*(g==="bebida"&&N.e2.islam?ISLAM_DRINK:1); base[e][g]=(base[e][g]||0)+q; want[e][g]=(want[e][g]||0)+q*boost}}}
     const dem={};
     for(const e of STRATA)for(const g in want[e])dem[g]=(dem[g]||0)+want[e][g];
     let reqQ=0;for(const r of grainReq[n])reqQ+=r.q;
-    dem.comida=(dem.comida||0)+reqQ;
+    dem.grano=(dem.grano||0)+reqQ;
     // el almacén de la plaza se dimensiona con la demanda ESTABLE: sin las compras de socorro de los graneros vacíos, que
     // van a ráfagas (un día la plaza aceptaba mucho grano y al siguiente, con el tope más bajo, tiraba lo ya pagado)
-    const demCap=g=>(dem[g]||0)-(g==="comida"?reqQ:0);
+    const demCap=g=>(dem[g]||0)-(g==="grano"?reqQ:0);
     for(const o in factNeed[n])for(const g in factNeed[n][o])dem[g]=(dem[g]||0)+factNeed[n][o][g];
     // PRECIO de la semana: el día de mercado se fija el de la semana que empieza (weeklyPrice) con lo acumulado en la
     // anterior (tras las compras, abajo). Entre mercados, todos compran y venden al precio fijado.
     const wk=N.e2.wk||(N.e2.wk={d:{},s:{},days:0});
-    if(!N.e2.fc||!(N.mktPrice.comida>0)){   // primera vez (o partida guardada sin precio): con la demanda DESEADA de hoy
+    if(!N.e2.fc||!(N.mktPrice.grano>0)){   // primera vez (o partida guardada sin precio): con la demanda DESEADA de hoy
       if(!(wk.days>0)){for(const g of GOODS2){wk.d[g]=dem[g]||0;wk.s[g]=supply[n][g]||0}wk.days=dt/24}
       weeklyPrice(N)}
     else if(marketDay)weeklyPrice(N);
@@ -573,7 +573,7 @@ function economyTick2(dt=24,doArb=true){
       acc[g]=Math.min(1,room/sup);unsold[g]=(1-acc[g])*sup/dt*730;glG(GL,g).unsold+=(1-acc[g])*sup}
     // la PLAZA paga a los productores (el dinero nace aquí)
     for(const d0 of deliv[n]){
-      const a=acc[d0.g]; if(a<1&&d0.g==="comida"&&d0.p.store)d0.p.store.comida=Math.min(storeCap(d0.p,"comida"),d0.p.store.comida+d0.q*(1-a));
+      const a=acc[d0.g]; if(a<1&&d0.g==="grano"&&d0.p.store)d0.p.store.grano=Math.min(storeCap(d0.p,"grano"),d0.p.store.grano+d0.q*(1-a));
       const d=a<1?{...d0,q:d0.q*a}:d0; if(d.q<=0)continue;
       const p=d.p, val=d.q*price[d.g]*(1-MARGIN-alc), t=transport(p,d.g);
       const net=val*(1-t), toll=val*t*TOLL_FRAC;
@@ -612,9 +612,9 @@ function economyTick2(dt=24,doArb=true){
     };
     // 1) grano para las despensas vacías (antes que nadie: es hambre)
     for(const r of grainReq[n]){ // el grano de socorro llega desde el centro de comercio: se paga el precio MÁS EL FLETE
-      const t=reliefFlete(r.p), pr=price.comida*(1+t), can=Math.min(r.q,Math.max(0,W.campesino||0)/pr);
-      r.got=buy("campesino","comida",can); r.p._grainGot=r.got; glDem(GL,"comida","socorro",r.q,r.got);
-      const fr=r.got*price.comida*t; if(fr>0){const cs=cartShare(r.p);W.campesino-=fr;recFlow(n,"campesino","Compras",-fr);
+      const t=reliefFlete(r.p), pr=price.grano*(1+t), can=Math.min(r.q,Math.max(0,W.campesino||0)/pr);
+      r.got=buy("campesino","grano",can); r.p._grainGot=r.got; glDem(GL,"grano","socorro",r.q,r.got);
+      const fr=r.got*price.grano*t; if(fr>0){const cs=cartShare(r.p);W.campesino-=fr;recFlow(n,"campesino","Compras",-fr);
         pay(n,"campesino",fr*cs,"Transporte");if(cs<1)pay(n,"burgues",fr*(1-cs),"Transporte")}}
     // 2) talleres: su materia prima (es capital de trabajo, va antes que el consumo de sus dueños)
     const coverIn={};
@@ -636,11 +636,11 @@ function economyTick2(dt=24,doArb=true){
     const k=Math.min(1,COV_SMOOTH*dt);
     for(const e of STRATA)for(const t of TIERS){
       if(!WANT2[e][t]){N.e2.cov[e][t]=1;continue}
-      let nv=0,gv=0;for(const g in NEED2[t]){if(e==="campesino"&&g==="comida")continue;
+      let nv=0,gv=0;for(const g in NEED2[t]){if(e==="campesino"&&g==="grano")continue;
         const w=base[e][g]||0;nv+=w*REF2[g];gv+=Math.min(w,got[e][g]||0)*REF2[g]}
       if(e==="campesino"&&t==="subs"){ // su grano: lo que no tuvo que comprar + lo que pudo comprar
         let need=0,miss=0;for(const r of grainReq[n]){need+=r.q;miss+=r.q-r.got}
-        const tot=(str.campesino||0)*f; nv+=tot*REF2.comida; gv+=(tot-miss)*REF2.comida}
+        const tot=(str.campesino||0)*f; nv+=tot*REF2.grano; gv+=(tot-miss)*REF2.grano}
       const c=nv>0?gv/nv:1; N.e2.cov[e][t]+=(c-N.e2.cov[e][t])*k}
     // coste MENSUAL de la cesta de cada estamento al precio de hoy: la IA de obras invierte solo lo que sobra tras
     // asegurarse INVEST_MONTHS de cesta (si no, las élites lo meten todo en talleres y dejan de consumir)
@@ -668,13 +668,13 @@ function economyTick2(dt=24,doArb=true){
     for(const k in a.units){const u=UNITS[k].up||{};for(const r in u){const v=u[r]*a.units[k]*dt;R[r]=(R[r]||0)-v;if(r==="dinero"){sinkAdd("Ejército",v);recCrown(a.nation,"Ejército",UNITS[k].label,-v)}}}
     const food=armyFood(a)*dt; if(food<=1e-9)continue;
     const forage=(a.supply==null?70:a.supply)/100;
-    R.comida=Math.max(0,(R.comida||0)-food*(1-forage));
+    R.grano=Math.max(0,(R.grano||0)-food*(1-forage));
     const localNeed=food*forage;
     if(localNeed>1e-9){const P=S.provs[a.prov],pool=[];
-      if(P&&!P.wasteland&&P.store&&P.store.comida>0)pool.push(P);
-      for(const nb of (S.adj[a.prov]||[])){const q=S.provs[nb];if(q&&!q.wasteland&&q.store&&q.store.comida>0)pool.push(q)}
-      let avail=0;for(const q of pool)avail+=q.store.comida;
-      if(avail>0){const take=Math.min(localNeed,avail);for(const q of pool)q.store.comida-=take*(q.store.comida/avail)}}
+      if(P&&!P.wasteland&&P.store&&P.store.grano>0)pool.push(P);
+      for(const nb of (S.adj[a.prov]||[])){const q=S.provs[nb];if(q&&!q.wasteland&&q.store&&q.store.grano>0)pool.push(q)}
+      let avail=0;for(const q of pool)avail+=q.store.grano;
+      if(avail>0){const take=Math.min(localNeed,avail);for(const q of pool)q.store.grano-=take*(q.store.grano/avail)}}
   }
   for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(!N||!N.alive)continue;
     for(const k in N.res)if(k!=="dinero"&&N.res[k]<0)N.res[k]=0}
@@ -789,7 +789,7 @@ function reliefRoute(p,payer=p.owner){
   let far=(H&&h&&H.id!==h.id)?kmBetween(h,H):0; if(far&&H.coastal&&h.coastal)far*=TRADE_SEA;
   return {km:(p.hubKm||0)+far, from:H||h};
 }
-function reliefFlete(p,payer=p.owner){return Math.min(FLETE_MAX,TRADE_KM2*reliefRoute(p,payer).km*(TRADE_BULK[BULK2.comida]||1)/REF2.comida)}
+function reliefFlete(p,payer=p.owner){return Math.min(FLETE_MAX,TRADE_KM2*reliefRoute(p,payer).km*(TRADE_BULK[BULK2.grano]||1)/REF2.grano)}
 // ============================== PARA PLANIFICAR (design/ux/economia-visible.md, fase 1) ==============================
 // Fuentes ÚNICAS de lo que la interfaz explica: la misma fórmula que corre el tick, sin escribir estado.
 // CRECIMIENTO de una provincia (la misma fórmula que DEMOGRAFÍA): %/año y sus factores; y la deriva campesino → burgués.
@@ -837,18 +837,18 @@ function priceWhy(N,g){
 // medias. reliefQuote es la ÚNICA fuente del precio: tooltip, botón, (futuro) mapa, pósito automático, IA y aliados.
 const RELIEF_ARMY_MONTHS=3;
 function granaryMembers(p){const k=granaryKey(p),ps=[];
-  for(const q of S.provs)if(q.owner===p.owner&&!q.wasteland&&q.pops&&q.store&&q.store.comida!=null&&granaryKey(q)===k)ps.push(q);return ps}
+  for(const q of S.provs)if(q.owner===p.owner&&!q.wasteland&&q.pops&&q.store&&q.store.grano!=null&&granaryKey(q)===k)ps.push(q);return ps}
 function reliefQuote(payer,p){
   const N=S.nations[payer]; if(!N||!p||!p.pops)return null;
   const ps=granaryMembers(p); let st=0,need=0,c=0;
-  for(const q of ps){const cq=q.pops.campesino||0;c+=cq;st+=q.store.comida||0;need+=cq*monthsToHarvest(q,S.hour)/12*GRAIN_RESERVE}
+  for(const q of ps){const cq=q.pops.campesino||0;c+=cq;st+=q.store.grano||0;need+=cq*monthsToHarvest(q,S.hour)/12*GRAIN_RESERVE}
   const falta=Math.max(0,need-st);
   let army=0;for(const a of S.armies)if(a.nation===payer)army+=armyFood(a)*730*RELIEF_ARMY_MONTHS;
-  const almacen=Math.min(falta,Math.max(0,(N.res.comida||0)-army)), compra=falta-almacen;
+  const almacen=Math.min(falta,Math.max(0,(N.res.grano||0)-army)), compra=falta-almacen;
   // price: lo que le cuesta a la corona cada unidad comprada = el de la plaza SIN su propia alcabala (no se paga a sí misma)
-  const mktPrice=(N.mktPrice&&N.mktPrice.comida)||ref("comida"), alc=alcabalaOf(payer), price=mktPrice*(1-alc);
+  const mktPrice=(N.mktPrice&&N.mktPrice.grano)||ref("grano"), alc=alcabalaOf(payer), price=mktPrice*(1-alc);
   const t=reliefFlete(p,payer), rr=reliefRoute(p,payer);
-  const enPlaza=N.mkt.comida||0, flete=falta*mktPrice*t, cost=compra*price, total=cost+flete;
+  const enPlaza=N.mkt.grano||0, flete=falta*mktPrice*t, cost=compra*price, total=cost+flete;
   const why=falta<=0?"no le falta":compra>enPlaza+1e-9?"no hay tanto grano en la plaza":!canAfford(payer,{dinero:total})?"sin dinero":null;
   return {falta,almacen,compra,price,mktPrice,alc,fletePct:t,km:rr.km,from:rr.from?rr.from.name:"",flete,cost,total,enPlaza,ps,c,st,need,ok:!why,why};
 }
@@ -858,7 +858,7 @@ function reliefQuote(payer,p){
 function reliefSend(payer,p){
   const q=reliefQuote(payer,p); if(!q||!q.ok)return q;
   const N=S.nations[payer], dn=p.duchy>=0&&S.duchies&&S.duchies[p.duchy]?S.duchies[p.duchy].name:p.name;
-  N.res.comida=(N.res.comida||0)-q.almacen; N.mkt.comida=(N.mkt.comida||0)-q.compra;
+  N.res.grano=(N.res.grano||0)-q.almacen; N.mkt.grano=(N.mkt.grano||0)-q.compra;
   N.res.dinero-=q.total; recCrown(payer,"Socorro",dn,-q.total);
   const mv=q.compra*q.mktPrice;                                   // lo comprado a precio de la plaza
   N.sWealth.burgues+=mv*MARGIN; recFlow(payer,"burgues","Comisión de la plaza",mv*MARGIN);
@@ -866,42 +866,42 @@ function reliefSend(payer,p){
   const cs=cartShare(p); N.sWealth.campesino+=q.flete*cs; recFlow(payer,"campesino","Transporte",q.flete*cs);
   N.sWealth.burgues+=q.flete*(1-cs); recFlow(payer,"burgues","Transporte",q.flete*(1-cs));
   const st2=q.st+q.falta;   // el granero ya llega a la siega: se actualiza al momento (el mapa y la ficha no esperan al tick)
-  for(const r of q.ps){const w=q.c>0?(r.pops.campesino||0)/q.c:1/q.ps.length;r.store.comida+=q.falta*w;
+  for(const r of q.ps){const w=q.c>0?(r.pops.campesino||0)/q.c:1/q.ps.length;r.store.grano+=q.falta*w;
     r._gm=q.c>0?st2/(q.c/12):12; r._gshort=st2<q.need/GRAIN_RESERVE; r._grainNeed=0}
   return q;
 }
 function granaryPass(deliv,grainReq,dt){
   const G=new Map();
   for(const p of S.provs){
-    if(p.owner>=NPLAY||p.wasteland||!p.pops||!p.store||p.store.comida==null)continue;
+    if(p.owner>=NPLAY||p.wasteland||!p.pops||!p.store||p.store.grano==null)continue;
     const N=S.nations[p.owner]; if(!N||!N.alive)continue;
     const k=granaryKey(p); let g=G.get(k); if(!g){g={ps:[],c:0,st:0,cap:0,res:0,need:0};G.set(k,g)}
-    const c=p.pops.campesino||0, nd=c*monthsToHarvest(p,S.hour)/12; g.ps.push(p); g.c+=c; g.st+=p.store.comida; g.cap+=storeCap(p,"comida");
+    const c=p.pops.campesino||0, nd=c*monthsToHarvest(p,S.hour)/12; g.ps.push(p); g.c+=c; g.st+=p.store.grano; g.cap+=storeCap(p,"grano");
     g.need+=nd; g.res+=nd*GRAIN_RESERVE;                           // lo que necesita hasta su próxima siega (y con reserva)
   }
   for(const g of G.values()){
-    if(g.c<=0){for(const p of g.ps){p._gm=12;p._gshort=false;if(p.store.comida<0)p.store.comida=0}continue}
+    if(g.c<=0){for(const p of g.ps){p._gm=12;p._gshort=false;if(p.store.grano<0)p.store.grano=0}continue}
     if(g.st<0){const need=-g.st;
-      for(const p of g.ps){const w=(p.pops.campesino||0)/g.c;p.store.comida=0;p._gm=0;p._gshort=true;
+      for(const p of g.ps){const w=(p.pops.campesino||0)/g.c;p.store.grano=0;p._gm=0;p._gshort=true;
         if(w>0){p._grainNeed=need*w;grainReq[p.owner].push({p,q:need*w,got:0})}}
       continue}
     const over=Math.max(0,g.st-g.cap), sale=over+Math.max(0,g.st-over-g.res)*Math.min(1,dt/24/GRAIN_SELL_DAYS);
     const left=g.st-sale;
     // _gshort: ¿llega el GRANERO a la siega de sus provincias? Se decide con el granero entero (un ducado puede segar en
     // dos meses distintos), igual que el socorro: si una provincia sale "no llega", su botón de socorro existe
-    for(const p of g.ps){const w=(p.pops.campesino||0)/g.c;p.store.comida=left*w;p._gm=left/(g.c/12);p._gshort=left<g.need;
+    for(const p of g.ps){const w=(p.pops.campesino||0)/g.c;p.store.grano=left*w;p._gm=left/(g.c/12);p._gshort=left<g.need;
       if(sale*w>1e-9)pushGrain(deliv[p.owner],p,sale*w)}
   }
 }
 function pushGrain(list,p,q){const sh=harvestShares(p);
-  list.push({p,g:"comida",q:q*(1-sh.tithe-sh.rent),kind:"camp"},{p,g:"comida",q:q*sh.tithe,kind:"tithe"},{p,g:"comida",q:q*sh.rent,kind:"rent",owner:sh.lord})}
+  list.push({p,g:"grano",q:q*(1-sh.tithe-sh.rent),kind:"camp"},{p,g:"grano",q:q*sh.tithe,kind:"tithe"},{p,g:"grano",q:q*sh.rent,kind:"rent",owner:sh.lord})}
 // Para la interfaz: el granero del ducado de una provincia (meses que le quedan, cuándo siega, cómo viene el año, y lo
 // que costaría traer grano: precio + flete).
 function granaryOf(p){
-  if(!p||!p.store||p.store.comida==null||!p.pops)return null;
+  if(!p||!p.store||p.store.grano==null||!p.pops)return null;
   const k=granaryKey(p);let st=0,c=0,cap=0,need=0;
-  for(const q of S.provs)if(q.owner===p.owner&&!q.wasteland&&q.pops&&q.store&&granaryKey(q)===k){const cq=q.pops.campesino||0;st+=q.store.comida||0;c+=cq;cap+=storeCap(q,"comida");need+=cq*monthsToHarvest(q,S.hour)/12}
-  const N=S.nations[p.owner], pr=(N&&N.mktPrice&&N.mktPrice.comida)||ref("comida"), t=reliefFlete(p), rr=reliefRoute(p);
+  for(const q of S.provs)if(q.owner===p.owner&&!q.wasteland&&q.pops&&q.store&&granaryKey(q)===k){const cq=q.pops.campesino||0;st+=q.store.grano||0;c+=cq;cap+=storeCap(q,"grano");need+=cq*monthsToHarvest(q,S.hour)/12}
+  const N=S.nations[p.owner], pr=(N&&N.mktPrice&&N.mktPrice.grano)||ref("grano"), t=reliefFlete(p), rr=reliefRoute(p);
   const months=c>0?st/(c/12):12, hm=harvestMonth(p), mth=monthsToHarvest(p,S.hour);
   return {st,cap,c,months,harvestMonth:hm,monthsToHarvest:mth,harvest:harvestMul(p),price:pr,flete:t,priceIn:pr*(1+t),short:st<need,from:rr.from?rr.from.name:"",km:rr.km}
 }

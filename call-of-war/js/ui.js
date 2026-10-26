@@ -1,5 +1,5 @@
 // ui.js
-import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, RES_DESC, RES_ICON, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, WAR_LOCK_HOURS, terrainFx, STRATA, STRATA_INFO, RES_ART, RES_FILE, RES_CAT } from "./config.js";
+import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, RES_DESC, RES_ICON, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, WAR_LOCK_HOURS, terrainFx, STRATA, STRATA_INFO, RES_ART, RES_CAT } from "./config.js";
 import { S } from "./state.js";
 import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildJobs, buildMax, buildSlots, canAfford, costFor, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationProvCount, nationStrength, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, resetTsyLedger, tsyAvail, tsyMonthBal, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, provProdMul, YR_TICKS, manorOf, MANOR_RENT, bOwnerOf } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
@@ -67,12 +67,12 @@ function fmtDur(h){ // horas de juego -> texto legible
 }
 // icono de UI (stats, pestañas, menús): sprite de assets/ui. big = tamaño de botón/pestaña.
 function uiIcon(name,big){return "<img class='uic"+(big?" big":"")+"' src='assets/ui/"+name+".png' alt=''>"}
-// icono de recurso: sprite de assets/res (archivo = nombre del bien, RES_FILE); sin sprite, el hueco [ ]
+// icono de recurso: sprite de assets/res (el archivo se llama como la clave del bien); sin sprite, el hueco [ ]
 // nombre de un bien: en la v2 algunas claves de la v1 cambian de sentido (ganado=Carne, vino=Bebida, petroleo=Caballos…)
 function gLabel(k){return LABEL2[k]||RES_LABEL[k]||k}
 function resImg(k){
   return RES_ART.has(k) // ¿tiene sprite .png? si no, se pinta con su emoji (bienes nuevos)
-    ?"<img class='ric' src='assets/res/"+(RES_FILE[k]||k)+".png' alt='"+gLabel(k)+"' title='"+gLabel(k)+"'>"
+    ?"<img class='ric' src='assets/res/"+k+".png' alt='"+gLabel(k)+"' title='"+gLabel(k)+"'>"
     :ph(k);
 }
 function buildResBar(){
@@ -152,7 +152,7 @@ function statv(val,brk){return "<b class='statv' data-tip=\""+ta(brk)+"\">"+val+
 // Línea del TERRENO: su nombre + su vocación por CATEGORÍA de producción (cereal/cultivo/ganado/bosque/
 // extractivo/mar). El campo produce según el terreno: verde ×>1 rinde bien, rojo ×<1 rinde mal. Cada bien
 // hereda el factor de su categoría. Va en su propia línea (separada del recurso estratégico).
-const VOC_CATS=[["cereal","🌾","Cereal"],["cultivo","🍇","Cultivo"],["ganado","🐑","Ganadería"],
+const VOC_CATS=[["cereal","🌾","Cereal"],["cultivo","🍇","Cultivo"],["carne","🐑","Ganadería"],
   ["bosque","🪵","Bosque"],["extractivo","⛏","Minería"],["mar","🐟","Mar"]];
 function terrainVocationHTML(p){
   if(p.wasteland||!p.terrain)return"";
@@ -321,7 +321,7 @@ function roadsHTML(p){
     }else if(lvl>=3){
       rows+="<div class='recrow'><span class='u'>"+name+"</span><span class='cst'>✓ nivel 3/3</span></div>";
     }else{
-      const dis=!canAfford(S.player,{dinero:800,materiales:1200});
+      const dis=!canAfford(S.player,{dinero:800,madera:1200});
       const tag=lvl>0?"<span class='cst' style='margin-right:6px'>nivel "+lvl+"/3</span>":"<span class='sm'>("+kmR+" km)</span> ";
       rows+="<div class='recrow'><span class='u'>"+name+" "+tag+"</span>"+
         "<button class='bbtn' "+(dis?"disabled":"")+" onclick='tryRoad("+p.id+","+b+")'>"+(lvl>0?"Mejorar":"Camino")+"</button></div>";
@@ -575,8 +575,8 @@ function refreshArmyWin(){
   if(fp.length)for(const it of fp)ltip+="  · "+it.p.name+": "+n1(it.amt*730)+"/mes\n";
   else ltip+="  · sin reservas locales alrededor";
   s+="<div class='prow'>"+
-     "<b class='statv' id='supLoc' data-tip=\""+ta(ltip)+"\"><span class='n'>"+n1(localM)+"</span> "+resImg('comida')+"/mes</b>"+
-     "<b class='statv' data-tip=\""+ta("De las arcas NACIONALES: "+n1(natM)+" grano/mes\nSale del Grano del tesoro del reino.")+"\" id='supNat'><span class='n'>"+n1(natM)+"</span> "+resImg('comida')+"/mes</b></div>";
+     "<b class='statv' id='supLoc' data-tip=\""+ta(ltip)+"\"><span class='n'>"+n1(localM)+"</span> "+resImg('grano')+"/mes</b>"+
+     "<b class='statv' data-tip=\""+ta("De las arcas NACIONALES: "+n1(natM)+" grano/mes\nSale del Grano del tesoro del reino.")+"\" id='supNat'><span class='n'>"+n1(natM)+"</span> "+resImg('grano')+"/mes</b></div>";
   s+="</div>";
   el.innerHTML=s;el.className="show";el.style.display="block";
   refreshArmyEdit(a); // menú Editar (licenciar) a la derecha
@@ -1405,7 +1405,7 @@ function priceBlocks(N,g){ // economy2 priceWhy: la misma fórmula que el día d
 }
 function mktRowTip(g,mi,N){
   const p=N.mktPrice[g]!=null?N.mktPrice[g]:gRef(g);
-  const un=mi.unsold>0.5?[[g==="comida"?"Devuelto":"Perdido",{v:nfE(mi.unsold),c:"#d6a15a"}]]:[];
+  const un=mi.unsold>0.5?[[g==="grano"?"Devuelto":"Perdido",{v:nfE(mi.unsold),c:"#d6a15a"}]]:[];
   return tipBox(gLabel(g),[...priceBlocks(N,g),{h:"Mes",cols:["Flujo","Unidades"],trows:[["Producido",nfE(mi.prod)],["Importado",nfE(mi.imp)],["Exportado",nfE(mi.exp)],
     ["Demanda",nfE(mi.dem)],["Comprado",nfE(mi.sold)],...un,["Plaza",nfE(N.mkt[g])]]}],"Precio "+prE(p)+" "+COIN()+" (normal "+prE(gRef(g))+")");
 }
@@ -1443,7 +1443,7 @@ function refreshMercado2(body){
   body.innerHTML=h+"</table>";
 }
 // cadena de un bien en v2: de qué se hace y para qué sirve (talleres BLD2 + oficio de los artesanos)
-const ARTISAN_IN2={pano:{lana:1},herramientas:{metal:1},armas:{metal:2}};
+const ARTISAN_IN2={pano:{lana:1},herramientas:{hierro:1},armas:{hierro:2}};
 function chain2(g){
   const from=new Set(),to=new Set();
   const add=(out,ins)=>{if(!ins)return;if(out===g)for(const k in ins)from.add(k);if(ins[g]!=null)to.add(out)};
@@ -1491,8 +1491,8 @@ function goodFlowHTML(N,g){
     "<tr><td>Oferta</td><td>"+stackBar(sp,170,supTip)+"</td><td class='r'>"+nfE(supT)+"</td></tr>"+
     "<tr><td>Demanda</td><td>"+stackBar(dp,170,demTip)+"</td><td class='r'>"+nfE(wantT+ex)+"</td></tr></table>";
   const un=x.unsold*k, me=x.merma*k;
-  h+="<table class='e2t' style='margin-top:8px'><tr><th>"+(g==="comida"?"Devuelto":"Perdido")+"</th><th>Merma</th><th>Plaza</th></tr><tr>"+
-    "<td data-tip='"+(g==="comida"?"Vuelve al granero de su ducado":"Llega sin comprador y no se paga")+"'"+(un>=0.5?" class='"+(g==="comida"?"":"neg")+"'":"")+">"+nfE(un)+"</td>"+
+  h+="<table class='e2t' style='margin-top:8px'><tr><th>"+(g==="grano"?"Devuelto":"Perdido")+"</th><th>Merma</th><th>Plaza</th></tr><tr>"+
+    "<td data-tip='"+(g==="grano"?"Vuelve al granero de su ducado":"Llega sin comprador y no se paga")+"'"+(un>=0.5?" class='"+(g==="grano"?"":"neg")+"'":"")+">"+nfE(un)+"</td>"+
     "<td data-tip='Se estropea en la plaza'"+(me>=0.5?" class='neg'":"")+">"+nfE(me)+"</td><td>"+nfE(N.mkt[g]||0)+"</td></tr></table>";
   return h;
 }
@@ -1558,8 +1558,8 @@ function estateOwned(e){ // edificios del estamento en el reino: {b:{lv,off}}
 function covCell(N,e,t,cnt){
   if(!WANT2[e][t])return "<td></td>";
   const v=N.e2.cov[e][t],pc=pctE(v), cons=S.sConsumePrev?S.sConsumePrev[e]||{}:(S.sConsume&&S.sConsume[e])||{}, trows=[];
-  if(e==="campesino"&&t==="subs")trows.push([resImg("comida")+" Grano","granero","",""]);
-  if(cnt)for(const g in NEED2[t]){if(e==="campesino"&&g==="comida")continue;
+  if(e==="campesino"&&t==="subs")trows.push([resImg("grano")+" Grano","granero","",""]);
+  if(cnt)for(const g in NEED2[t]){if(e==="campesino"&&g==="grano")continue;
     const want=NEED2[t][g]*WANT2[e][t]*(cnt[e]||0)/12, got=(cons[g]&&cons[g][0])||0; if(want<0.5)continue;
     const r=got/want;trows.push([resImg(g)+" "+gLabel(g),nfE(got),nfE(want),{v:Math.min(999,Math.round(100*r))+"%",c:r<0.9?"#d08080":null}])}
   const tip=trows.length?tipBox(TIER_META[t][1],[{cols:["Bien","Consigue","Pide","Parte"],trows}],STRATA_INFO[e].label+", al mes"):tipBox(TIER_META[t][1],[{rows:[[TIER_TIP[t],""]]}]);
@@ -1670,7 +1670,7 @@ function bldEcon2(p,b,lvl){ // {o, stock:[{k,q}] | out:{g,q}, ins, noSite, profi
 }
 function benefitHTML2(p,b,lvl){
   const B=BUILDINGS[b],fx=B.fx||{},e=bldEcon2(p,b,Math.max(1,lvl)),N=S.nations[p.owner],lines=[];
-  if(b==="granja")lines.push("<div class='bl'>+40% "+resImg("comida")+" del campo</div>");
+  if(b==="granja")lines.push("<div class='bl'>+40% "+resImg("grano")+" del campo</div>");
   if(e.stock)for(const x of e.stock)lines.push("<div class='bl' data-tip='Al almacén de la corona (obras y ejército): no se vende'>→ "+resImg(x.k)+" "+nfE(x.q)+"/mes 📦</div>");
   if(e.noSite)lines.push("<div class='bl' style='color:#d0913a'>✖ sin materia prima aquí</div>");
   if(e.out&&e.out.g)lines.push("<div class='bl' data-tip=\""+ta("Lo que vende a la plaza"+(lvl>0?"":" (un nivel)")+", al mes")+"\">→ "+resImg(e.out.g)+" "+nfE(e.out.q)+"/mes</div>");
@@ -1772,7 +1772,7 @@ function reliefRow2(p,g,hm){
 function tradeRow2(p){ // su centro de comercio y lo que cuesta llevar allí cada bien (flete)
   const hub=(p.hubOf!=null&&p.hubOf>=0)?S.provs[p.hubOf]:null, km=Math.round(p.hubKm||0);
   const rows=[["Centro de comercio",hub?hub.name+(km?" · "+km+" km":""):"—"]];
-  for(const g of ["comida","lana","pano","seda"])rows.push(["Flete "+gLabel(g).toLowerCase(),pctE(transport(p,g))+"% del valor"]);
+  for(const g of ["grano","lana","pano","seda"])rows.push(["Flete "+gLabel(g).toLowerCase(),pctE(transport(p,g))+"% del valor"]);
   rows.push(["Lo cobran",km<=30?"los campesinos (acarreo)":"campesinos y arrieros burgueses"]);
   const val=!hub?"—":hub.id===p.id?"Centro de comercio":"→ "+hub.name+" <span class='e2sub'>"+km+" km</span>";
   return "<div class='prow' data-tiph=\""+ta(tipRows("Comercio",rows))+"\" style='cursor:help'><span>🛤 Comercio</span><b>"+val+"</b></div>";

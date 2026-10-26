@@ -51,7 +51,7 @@ const dbg={
     const p=S.provs.find(q=>q.name&&q.name.toLowerCase()===String(name).toLowerCase());
     if(!p){console.warn("No encuentro la provincia:",name);return}
     if(p.wasteland){console.log(`${p.name}: impracticable.`);return}
-    const fc=storeCap(p,"comida"),c$=(p.store&&p.store.comida)||0,fill=fc>0?c$/fc:0,jobs=buildJobs(p);
+    const fc=storeCap(p,"grano"),c$=(p.store&&p.store.grano)||0,fill=fc>0?c$/fc:0,jobs=buildJobs(p);
     console.log(`%c${p.name}${p.capital?" ★":""}  (${NATIONS[p.owner]?NATIONS[p.owner].name:"—"})`,"font-weight:bold");
     console.table({
       Población:fmt(p.pop), Terreno:p.terrain, Moral:Math.round(p.morale)+"%",

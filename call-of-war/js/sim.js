@@ -157,7 +157,7 @@ function spawnArmy(nation,prov,units){
   return a;
 }
 function tryRoad(a,b){
-  const cost={dinero:800,materiales:1200};
+  const cost={dinero:800,madera:1200};
   if(S.provs[a].owner!==S.player||S.provs[b].owner!==S.player)return;
   const key=roadKey(a,b), lvl=S.roads.get(key)||0;
   if(lvl>=3)return;                                   // ya al nivel máximo
