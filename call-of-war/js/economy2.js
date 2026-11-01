@@ -804,15 +804,20 @@ function positoPass(){
     seen.add(k); (urg[p.owner]||(urg[p.owner]=[])).push({p,score:hungry?-1:gm});
   }
   for(const n in urg){const N=S.nations[n],P=positoMonth(N),cap=positoCap(N);
+    // por qué no se socorre (granero urgente y día): tope gastado, la plaza no tiene el grano, la corona no tiene el dinero
+    const W=N.e2.posWhy||(N.e2.posWhy={hecho:0,tope:0,plaza:0,dinero:0});
     for(const u of urg[n].sort((a,b)=>a.score-b.score)){
-      if(P.spent>=cap)break;
       // compra POR TRAMOS: cuánto cuesta un mes más de grano, y tanto tiempo como deje lo que queda del tope (de una
       // semana a la siega); el coste es casi lineal en el tiempo, y si se pasa por poco se recorta un 10%
       const gm=Math.max(0,u.p._gm||0), q1=reliefQuote(+n,u.p,gm+1); if(!q1||q1.falta<=0||!(q1.total>0))continue;
-      let m=Math.min((cap-P.spent)/q1.total,12); if(m<POSITO_MIN)continue;
+      if(q1.compra>q1.enPlaza+1e-9){W.plaza++;continue}   // en la plaza no hay ni un mes de grano
+      if(P.spent>=cap){W.tope++;continue}
+      let m=Math.min((cap-P.spent)/q1.total,12); if(m<POSITO_MIN){W.tope++;continue}
       let q=reliefQuote(+n,u.p,gm+m); if(q&&q.ok&&P.spent+q.total>cap){m*=0.9;q=reliefQuote(+n,u.p,gm+m)}
-      if(m<POSITO_MIN||!q||!q.ok||q.falta<=0||P.spent+q.total>cap)continue;
-      reliefSend(+n,u.p,gm+m); P.spent+=q.total; P.n++; N.e2.posTot=(N.e2.posTot||0)+1; N.e2.posSpent=(N.e2.posSpent||0)+q.total;
+      if(q&&!q.ok&&q.compra>q.enPlaza+1e-9){W.plaza++;continue}
+      if(q&&!q.ok&&q.falta>0){W.dinero++;continue}
+      if(m<POSITO_MIN||!q||!q.ok||q.falta<=0||P.spent+q.total>cap){W.tope++;continue}
+      reliefSend(+n,u.p,gm+m); P.spent+=q.total; P.n++; W.hecho++; N.e2.posTot=(N.e2.posTot||0)+1; N.e2.posSpent=(N.e2.posSpent||0)+q.total;
     }}
 }
 function granaryKey(p){return (p.duchy>=0?"d"+p.duchy:"p"+p.id)+"|"+p.owner}
