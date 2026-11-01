@@ -3,7 +3,7 @@ import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, 
 import { S } from "./state.js";
 import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildJobs, buildMax, buildSlots, canAfford, costFor, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationProvCount, nationStrength, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, resetTsyLedger, tsyAvail, tsyMonthBal, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, provProdMul, YR_TICKS, manorOf, MANOR_RENT, bOwnerOf } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
-import { GOODS2, LABEL2, REF2, NEED2, WANT2, BLD2, PRICE_SCALE, CROWN_STOCK, specialty2, obsolete2, siteOK2, transport, buildingProfit2, buildingOutput2, upkeepScale, granaryOf, foodGrowth, positoCap, positoMonth, POSITO_MONTHS, reliefQuote, landYield, landCap, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX } from "./economy2.js";
+import { GOODS2, LABEL2, REF2, NEED2, WANT2, BLD2, PRICE_SCALE, CROWN_STOCK, specialty2, obsolete2, siteOK2, transport, buildingProfit2, buildingOutput2, upkeepScale, granaryOf, foodGrowth, positoCap, positoMonth, positoQuote, POSITO_MONTHS, landYield, landCap, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX } from "./economy2.js";
 import { calOf, MONTHS_ES, monthsToHarvest, harvestMonth } from "./economy.js";
 import { canvas, clampPan, repaintProvince } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
@@ -1216,7 +1216,7 @@ window.granFocus=function(pid){const p=S.provs[pid];if(!p)return;
 window.granRelief=function(pid){window.reliefSendProv(pid);window.refreshGranView()};
 window.setGranMode=function(m){S.granMode=m;window.refreshGranView()};
 // Leyenda: la escala de 4 estados y la LISTA de los ducados propios que no llegan a la siega (o con hambre), del que
-// antes se vacía al que después, cada uno con su botón de socorro y el total (reliefQuote, la misma cifra que la ficha).
+// antes se vacía al que después, cada uno con su botón de socorro del Pósito (positoQuote, la misma cifra que la ficha).
 window.refreshGranLegend=function(){
   const el=document.getElementById("granLegend"); if(!el)return;
   if(!S.granView||S.player<0){el.style.display="none";return}
@@ -1238,15 +1238,15 @@ window.refreshGranLegend=function(){
   const rows=[...G.values()].sort((a,b)=>(b.st-a.st)||((a.gm-a.mth)-(b.gm-b.mth)));
   const scale=GRAN_LBL.map((l,i)=>"<span style='white-space:nowrap'><i style='display:inline-block;width:9px;height:9px;border-radius:2px;background:"+GRAN_CSS[i]+";vertical-align:middle'></i> "+l+"</span>").join(" &nbsp;");
   let list="";
-  for(const r of rows.slice(0,GRAN_ROWS)){const p=S.provs[r.pid],q=reliefQuote(S.player,p);
+  for(const r of rows.slice(0,GRAN_ROWS)){const p=S.provs[r.pid],pq=positoQuote(S.player,p);
     const dn=p.duchy>=0&&S.duchies[p.duchy]?S.duchies[p.duchy].name.replace(/^Ducado de /,""):p.name;
     const ic="<i class='sw' style='background:"+GRAN_CSS[r.st]+"'></i>",m=r.gm<1?"&lt;1":Math.floor(r.gm);
     list+="<div class='prow' style='gap:6px'><span style='cursor:pointer' onclick='granFocus("+r.pid+")' data-tip=\""+ta("Siega en "+MONTHS_ES[r.hm])+"\">"+
       ic+dn+"</span><b>"+barE(Math.min(100,Math.round(100*r.gm/12)),34)+" "+m+" m "+
-      (q&&q.falta>0?"<button class='bbtn' "+(q.ok?"":"disabled")+" onclick='granRelief("+r.pid+")' data-tip=\""+ta(q.ok?"Socorro hasta la siega (desglose en la ficha)":q.why)+"\">"+nfE(q.total)+" "+COIN()+"</button>":"")+"</b></div>";}
+      (pq?"<button class='bbtn' "+(pq.ok?"":"disabled")+" onclick='granRelief("+r.pid+")' data-tip=\""+ta(pq.ok?"Pósito: "+Math.round(pq.days)+" días de grano (desglose en la ficha)":pq.why)+"\">"+nfE(pq.q.total)+" "+COIN()+"</button>":"")+"</b></div>";}
   if(rows.length>GRAN_ROWS)list+="<div class='prow'><span class='dim'>+"+(rows.length-GRAN_ROWS)+" más</span></div>";
   if(!rows.length)list="<div class='prow'><span class='dim'>Todos llegan a la siega</span></div>";
-  el.innerHTML="<b style='font-size:12px'>"+ph("granero")+" Graneros</b>"+iInfo("Cada ducado de tu reino según si su grano llega a la próxima siega. La lista: los que no llegan, del que antes se vacía; pulsa el nombre para ir y el importe para socorrerlo hasta la siega (grano del almacén de la corona y lo que falte comprado en la plaza, más el flete).")+
+  el.innerHTML="<b style='font-size:12px'>"+ph("granero")+" Graneros</b>"+iInfo("Cada ducado de tu reino según si su grano llega a la próxima siega. La lista: los que no llegan, del que antes se vacía; pulsa el nombre para ir y el importe para que el Pósito lo socorra ya, con lo que le queda del tope del mes (grano del almacén de la corona y lo que falte comprado en la plaza, más el flete).")+
     chips+"<div style='font-size:10px;margin:4px 0 6px'>"+scale+"</div>"+list;
   el.style.display="block";
 };
@@ -1782,18 +1782,19 @@ function landRow2(p){
   return "<div class='prow' data-tiph=\""+ta(tip)+"\" style='cursor:help'><span>"+ph("tierra")+" Tierra</span><b>"+
     barE(pc,64,x>1?"#c0563e":x>LAND_FULL?"#c98a3a":"#6fae5a")+" "+pc+"% &nbsp;"+state+"</b></div>";
 }
-// SOCORRO: solo en ducados propios que no llegan a la siega (o con hambre). Un clic llena el granero hasta la siega; el
-// botón enseña el total antes de pulsar y el tooltip el desglose (almacén, compra, flete). Todo sale de reliefQuote.
+// SOCORRO: solo en ducados propios que no llegan a la siega (o con hambre). Es el Pósito actuando YA: compra tantos días
+// de grano como deje lo que le queda del tope del mes. El botón enseña días y total; el tooltip, el desglose y el tope.
 function reliefRow2(p,g,hm){
   if(p.owner!==S.player||!(g.short||p.famine||(p._grainNeed||0)>0))return "";
-  const q=reliefQuote(S.player,p); if(!q||q.falta<=0)return "";
-  const dn=p.duchy>=0&&S.duchies&&S.duchies[p.duchy]?S.duchies[p.duchy].name:p.name;
-  const tip=tipBox("Socorro",[{cols:["Concepto","Cantidad","Ducados"],trows:[["Falta",nfE(q.falta),""],
+  const r=positoQuote(S.player,p); if(!r)return "";
+  const q=r.q, dn=p.duchy>=0&&S.duchies&&S.duchies[p.duchy]?S.duchies[p.duchy].name:p.name;
+  const tip=tipBox("Socorro",[{cols:["Concepto","Cantidad","Ducados"],trows:[["Grano",nfE(q.falta),""],
       ...(q.almacen>=0.5?[["Almacén",nfE(q.almacen),""]]:[]),...(q.compra>=0.5?[["Compra",nfE(q.compra),nfE(q.compra*q.price)]]:[]),
       ["Flete",Math.round(q.km)+" km",nfE(q.flete)]],ttot:["Total","",nfE(q.total)]},
-    ...(q.why?[{rows:[["Bloqueo",q.why,"#d08080"]]}]:[])],dn+", hasta "+hm);
-  return "<div class='prow' data-tiph=\""+ta(tip)+"\"><span></span><b><button class='bbtn' "+(q.ok?"":"disabled")+
-    " onclick='reliefSendProv("+p.id+")'>"+ph("socorro")+" Socorro "+hm+" <span class='"+(q.ok?"":"neg")+"'>"+nfE(q.total)+"</span> "+COIN()+"</button></b></div>";
+    {cols:["Pósito","Ducados"],trows:[["Tope",nfE(r.cap)],["Queda",nfE(r.left)]]},
+    ...(r.ok?[]:[{rows:[["Bloqueo",r.why,"#d08080"]]}])],dn+(r.ok?", "+Math.round(r.days)+" días":""));
+  return "<div class='prow' data-tiph=\""+ta(tip)+"\"><span></span><b><button class='bbtn' "+(r.ok?"":"disabled")+
+    " onclick='reliefSendProv("+p.id+")'>"+ph("socorro")+" Socorro "+(r.ok?Math.round(r.days)+" d <span>"+nfE(q.total)+"</span> "+COIN():"<span class='neg'>"+r.why+"</span>")+"</button></b></div>";
 }
 function tradeRow2(p){ // su centro de comercio y lo que cuesta llevar allí cada bien (flete)
   const hub=(p.hubOf!=null&&p.hubOf>=0)?S.provs[p.hubOf]:null, km=Math.round(p.hubKm||0);

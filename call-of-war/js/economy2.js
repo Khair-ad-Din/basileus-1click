@@ -781,9 +781,10 @@ function moneyStock(){let m=0,pl=0;for(let n=0;n<NPLAY;n++){const N=S.nations[n]
 // Clave del granero: el ducado y su dueño (un ducado partido por una conquista tiene dos graneros); una provincia sin
 // ducado es su propio granero.
 // ============================== EL PÓSITO (design/grano-ducado.md §Anclas, paso 5) ==============================
-// El socorro AUTOMÁTICO de la corona: cada día socorre los graneros propios que no llegan a la siega y ya están cerca de
-// vaciarse (o pasan hambre), del más urgente al menos, hasta gastar en el mes un tope = % del ingreso mensual de la corona.
-// Es el mismo socorro que el botón de la ficha (reliefQuote/reliefSend: mismo precio, mismo flete, mismos libros).
+// El ÚNICO socorro de grano de la corona: cada día socorre los graneros propios que no llegan a la siega y ya están cerca
+// de vaciarse (o pasan hambre), del más urgente al menos, hasta gastar en el mes un tope = % del ingreso mensual de la
+// corona. El botón "Socorro" de la ficha (y de la lista de Graneros) es el mismo Pósito actuando YA sobre ese ducado, sin
+// esperar a que esté cerca de vaciarse: misma compra, mismo tope (positoQuote/positoSend).
 // El jugador fija el % en Hacienda (N.posito, 0 = apagado); la IA usa la misma palanca con POSITO_AI.
 const POSITO_AI=0.10;      // la corona IA dedica hasta el 10% de su ingreso mensual a socorrer graneros
 const POSITO_MIN=0.25;     // compra mínima: una semana de grano (menos no compensa el viaje)
@@ -802,22 +803,30 @@ function positoPass(){
     if(!(hungry||(p._gshort&&gm<=POSITO_MONTHS)))continue;
     seen.add(k); (urg[p.owner]||(urg[p.owner]=[])).push({p,score:hungry?-1:gm});
   }
-  for(const n in urg){const N=S.nations[n],P=positoMonth(N),cap=positoCap(N);
+  for(const n in urg){const N=S.nations[n];
     // por qué no se socorre (granero urgente y día): tope gastado, la plaza no tiene el grano, la corona no tiene el dinero
     const W=N.e2.posWhy||(N.e2.posWhy={hecho:0,tope:0,plaza:0,dinero:0});
-    for(const u of urg[n].sort((a,b)=>a.score-b.score)){
-      // compra POR TRAMOS: cuánto cuesta un mes más de grano, y tanto tiempo como deje lo que queda del tope (de una
-      // semana a la siega); el coste es casi lineal en el tiempo, y si se pasa por poco se recorta un 10%
-      const gm=Math.max(0,u.p._gm||0), q1=reliefQuote(+n,u.p,gm+1); if(!q1||q1.falta<=0||!(q1.total>0))continue;
-      if(q1.compra>q1.enPlaza+1e-9){W.plaza++;continue}   // en la plaza no hay ni un mes de grano
-      if(P.spent>=cap){W.tope++;continue}
-      let m=Math.min((cap-P.spent)/q1.total,12); if(m<POSITO_MIN){W.tope++;continue}
-      let q=reliefQuote(+n,u.p,gm+m); if(q&&q.ok&&P.spent+q.total>cap){m*=0.9;q=reliefQuote(+n,u.p,gm+m)}
-      if(q&&!q.ok&&q.compra>q.enPlaza+1e-9){W.plaza++;continue}
-      if(q&&!q.ok&&q.falta>0){W.dinero++;continue}
-      if(m<POSITO_MIN||!q||!q.ok||q.falta<=0||P.spent+q.total>cap){W.tope++;continue}
-      reliefSend(+n,u.p,gm+m); P.spent+=q.total; P.n++; W.hecho++; N.e2.posTot=(N.e2.posTot||0)+1; N.e2.posSpent=(N.e2.posSpent||0)+q.total;
-    }}
+    for(const u of urg[n].sort((a,b)=>a.score-b.score)){const r=positoSend(+n,u.p);if(r&&r.code)W[r.code]++}}
+}
+// Lo que el Pósito compraría HOY para el granero de p, POR TRAMOS: cuánto cuesta un mes más de grano y tanto tiempo como
+// deje lo que queda del tope del mes (de una semana a la siega; el coste es casi lineal en el tiempo, y si se pasa por
+// poco se recorta un 10%). code: hecho · tope (no queda tope, o el % está a 0) · plaza (no hay grano) · dinero.
+function positoQuote(n,p){
+  const N=S.nations[n]; if(!N||!N.e2||!p||!p.pops)return null;
+  const P=positoMonth(N), cap=positoCap(N), left=Math.max(0,cap-P.spent), gm=Math.max(0,p._gm||0), base={cap,left,spent:P.spent};
+  const q1=reliefQuote(n,p,gm+1); if(!q1||q1.falta<=0||!(q1.total>0))return null;
+  if(q1.compra>q1.enPlaza+1e-9)return {...base,q:q1,code:"plaza",why:"no hay grano en la plaza"};
+  let m=Math.min(left/q1.total,12); if(m<POSITO_MIN)return {...base,q:q1,code:"tope",why:cap>0?"sin tope este mes":"Pósito a 0%"};
+  let q=reliefQuote(n,p,gm+m); if(q&&q.ok&&q.total>left){m*=0.9;q=reliefQuote(n,p,gm+m)}
+  if(q&&!q.ok)return {...base,q,code:q.compra>q.enPlaza+1e-9?"plaza":"dinero",why:q.why};
+  if(m<POSITO_MIN||!q||q.falta<=0||q.total>left)return {...base,q:q1,code:"tope",why:"sin tope este mes"};
+  return {...base,q,m,days:m*30,horizon:gm+m,ok:true,code:"hecho"};
+}
+function positoSend(n,p){
+  const r=positoQuote(n,p); if(!r||!r.ok)return r;
+  const N=S.nations[n],P=positoMonth(N); reliefSend(n,p,r.horizon);
+  P.spent+=r.q.total; P.n++; N.e2.posTot=(N.e2.posTot||0)+1; N.e2.posSpent=(N.e2.posSpent||0)+r.q.total;
+  return r;
 }
 function granaryKey(p){return (p.duchy>=0?"d"+p.duchy:"p"+p.id)+"|"+p.owner}
 // Pone en común el grano de las provincias de cada ducado (lo reparte según sus campesinos), vende el SOBRANTE a la plaza
@@ -876,15 +885,13 @@ function priceWhy(N,g){
   return {D:D*30,P:P*30,stock,ratio:D>1e-12&&P>1e-12?D/P:null,stockF,r,clamped,target,now,next,inDays:d===0?MARKET_DAYS:MARKET_DAYS-d,step:PRICE_STEP};
 }
 // ============================== SOCORRO DE GRANO (design/grano-ducado.md, ancla 1+2) ==============================
-// Una sola acción: la corona llena el granero de un ducado HASTA SU PRÓXIMA SIEGA (con la reserva de GRAIN_RESERVE, así
-// que el granero no revende lo que le llega). Primero saca grano de su ALMACÉN (solo paga el flete), sin tocar los
-// RELIEF_ARMY_MONTHS meses que come su ejército; lo que falte lo COMPRA en la plaza del reino a precio + flete. No compra a
-// medias. reliefQuote es la ÚNICA fuente del precio: tooltip, botón, (futuro) mapa, pósito automático, IA y aliados.
+// La compra en sí, que hace el Pósito: llena el granero de un ducado hasta dentro de `horizon` meses (o hasta su próxima
+// siega con la reserva de GRAIN_RESERVE, si el horizonte pasa de la siega: así no revende lo que le llega). Primero saca
+// grano de su ALMACÉN (solo paga el flete), sin tocar los RELIEF_ARMY_MONTHS meses que come su ejército; lo que falte lo
+// COMPRA en la plaza del reino a precio + flete. reliefQuote es la ÚNICA fuente del precio.
 const RELIEF_ARMY_MONTHS=3;
 function granaryMembers(p){const k=granaryKey(p),ps=[];
   for(const q of S.provs)if(q.owner===p.owner&&!q.wasteland&&q.pops&&q.store&&q.store.grano!=null&&granaryKey(q)===k)ps.push(q);return ps}
-// horizon (meses, opcional): en vez de llenar el granero hasta la siega, solo hasta dentro de tantos meses (el Pósito
-// compra por meses lo que su tope le deja; el botón de la ficha llena siempre hasta la siega, sin compras a medias).
 function reliefQuote(payer,p,horizon){
   const N=S.nations[payer]; if(!N||!p||!p.pops)return null;
   const ps=granaryMembers(p); let st=0,need=0,needFull=0,c=0;
@@ -955,4 +962,4 @@ function granaryOf(p){
 }
 
 export { economyTick2, siteOK2, seedEstates2, upkeepScale, seedOwner2, seedWealth2, GOODS2, LABEL2, REF2, NEED2, WANT2, TIERS, BLD2, ESTATE_BUILDS2, buildingProfit2, buildingOutput2,
-  transport, tradeCost2, moneyStock, sinkAdd, ARTISAN_IN, ctrOut, ctrIn, granaryOf, foodGrowth, positoCap, positoMonth, POSITO_MONTHS, reserveOf, landYield, landCap, landOcc, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX, GRAIN_RESERVE, reliefQuote, reliefSend, isMarketDay, MARKET_DAYS, PRICE_SCALE, JORNAL, MARGIN, CROWN_STOCK, CROWN_STOCK_WANT, crownStockOut, specialty2, obsolete2 };
+  transport, tradeCost2, moneyStock, sinkAdd, ARTISAN_IN, ctrOut, ctrIn, granaryOf, foodGrowth, positoCap, positoMonth, positoQuote, positoSend, POSITO_MONTHS, reserveOf, landYield, landCap, landOcc, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX, GRAIN_RESERVE, reliefQuote, reliefSend, isMarketDay, MARKET_DAYS, PRICE_SCALE, JORNAL, MARGIN, CROWN_STOCK, CROWN_STOCK_WANT, crownStockOut, specialty2, obsolete2 };
