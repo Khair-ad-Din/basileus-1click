@@ -7,7 +7,7 @@ import { aiOpenWar } from "./council.js";
 import { buildDuchies, hasRoad, roadLvl, isDuchyCap, kmBetween, roadKey } from "./mapgen.js";
 import { drawRoads, paintBorders, repaintProvince } from "./render.js";
 import { saveGame } from "./save.js";
-import { economyTick2, seedOwner2, seedWealth2, seedEstates2, siteOK2, BLD2, obsolete2 } from "./economy2.js";
+import { economyTick2, seedOwner2, seedWealth2, seedEstates2, siteOK2, BLD2, obsolete2, newObra } from "./economy2.js";
 // IA de obras y gestión de edificios de los ESTAMENTOS (y de la corona IA): vive en estates.js, sin DOM (la usa el arnés)
 import { estatesDaily, profitOf, pickCrownBuild } from "./estates.js";
 import { log, refreshBuildBar, refreshSide, refreshTop } from "./ui.js";
@@ -534,7 +534,7 @@ function hourTick(){
   for(const p of S.provs){
     if(p.buildQueue.length){
       const q=p.buildQueue[0];
-      if(--q.hoursLeft<=0){
+      if(q.prog>=1-1e-9){                       // la obra ha comprado todos sus tramos (economy2 obraPass)
         p.buildings[q.b]++;p.buildQueue.shift();
         if(q.owner){(p.bOwner||(p.bOwner={}))[q.b]=q.owner} // E2: fija el dueño (estamento) al completar la obra
         if(p.owner===S.player&&!q.owner)log(BUILDINGS[q.b].label+" nivel "+p.buildings[q.b]+" terminada en "+p.name+".");
@@ -815,8 +815,7 @@ function aiTurn(n){
     const p=owned[(S.rand()*owned.length)|0];
     if(p.buildQueue.length)continue;
     const b=pickCrownBuild(p); if(!b)continue;
-    pay(n,costFor(p,b),"Obras",BUILDINGS[b].label);
-    p.buildQueue.push({b,hoursLeft:timeFor(p,b)});
+    p.buildQueue.push(newObra(p,b));          // se paga por tramos semanales (economy2 obraPass)
   }
   // reclutar
   let troops=0;
@@ -1067,9 +1066,7 @@ function tryBuild(pid,b){
   const p=S.provs[pid];
   if(p.owner!==S.player||isOccupied(p)||buildBlock(p,b))return;
   if(obsolete2(b)||(BLD2[b]&&!siteOK2(p,b)))return;   // heredado de la v1 (no hace nada) o taller sin su materia prima
-  if(!canAfford(S.player,costFor(p,b)))return; // solvencia sobre el saldo comprometido (tesoro mensual)
-  pay(S.player,costFor(p,b),"Obras",BUILDINGS[b].label);
-  p.buildQueue.push({b,hoursLeft:timeFor(p,b)});
+  p.buildQueue.push(newObra(p,b));          // se paga por tramos semanales en la plaza (economy2 obraPass)
   refreshSide();refreshTop();refreshBuildBar();
 }
 // rally = provincia a la que la unidad marchará al terminar (auto-rally; p.ej. reunirse con un

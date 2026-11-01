@@ -440,7 +440,6 @@ function buildBlock(p,b){
   if(B.resReq&&p.resType!==B.resReq)return"Requiere yacimiento de "+B.resReq;
   if(usedSlots(p)>=buildSlots(p))return"Sin espacio ("+usedSlots(p)+"/"+buildSlots(p)+" edificios)";
   if(B.req)for(const r in B.req)if(lvlOf(p,r)<B.req[r])return"Requiere "+BUILDINGS[r].label+" "+B.req[r];
-  if(!canAfford(p.owner,costFor(p,b)))return"Sin recursos";
   return null;
 }
 function provProdMul(p){

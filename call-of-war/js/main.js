@@ -8,7 +8,7 @@ import { hex2rgb, provColor, paintAll, paintBorders, repaintProvince, roadCurve,
 import { canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, armyCount, armyFood, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, recruitable, resetTsyLedger } from "./economy.js";
 import { mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, rebuildProvinceData, seedCities, renameProvincesHistorical, ensureMarketTopology, kmBetween, roadKey, hasRoad, landPath, generateRoads, sprinkleTerrain } from "./mapgen.js";
 import { S } from "./state.js";
-import { positoSend } from "./economy2.js";
+import { positoSend, repairPay } from "./economy2.js";
 import "./debug.js"; // registra window.dbg (herramientas de observación por consola)
 /* ============================= RNG ============================= */
 
@@ -123,11 +123,7 @@ window.toggleBuilding=function(pid,b){
   if(!p.bOff)p.bOff={}; if(!p.bCond)p.bCond={};
   if(p.bOff[b]){ // REACTIVAR: repara la parte degradada (coste de creación prorrateado)
     const cond=p.bCond[b]!=null?p.bCond[b]:1, frac=Math.max(0,1-cond);
-    if(frac>0.001){
-      const base=costFor(p,b),cost={}; for(const k in base)cost[k]=Math.round(base[k]*frac);
-      if(!canAfford(S.player,cost)){log("No puedes pagar la reparación de "+BUILDINGS[b].label+" en "+p.name+".");return}
-      pay(S.player,cost,"Reparaciones",BUILDINGS[b].label);
-    }
+    if(frac>0.001&&!repairPay(p,b,"corona")){log("No puedes pagar la reparación de "+BUILDINGS[b].label+" en "+p.name+".");return}
     delete p.bOff[b]; p.bCond[b]=1;
     log(BUILDINGS[b].label+" reactivada en "+p.name+(frac>0.001?" (reparada)":"")+".");
   } else { // DESHABILITAR

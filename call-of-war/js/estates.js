@@ -4,7 +4,7 @@
 import { NPLAY, BUILDINGS } from "./config.js";
 import { S } from "./state.js";
 import { BKEYS, sinkAdd, lvlOf, bOwnerOf, buildMax, usedSlots, buildSlots, freeLabor, buildJobs, JOBS_PER_LEVEL, costFor, timeFor, canAfford, pay, recFlow, isOccupied, ESTATES_BUILD, bOff, buildBlock } from "./economy.js";
-import { ESTATE_BUILDS2, buildingProfit2, buildingOutput2, upkeepScale, siteOK2, crownStockOut, isMarketDay } from "./economy2.js";
+import { ESTATE_BUILDS2, buildingProfit2, buildingOutput2, upkeepScale, siteOK2, crownStockOut, isMarketDay, obraCost, newObra, obraFull, repairPay } from "./economy2.js";
 // La IA de obras usa la rentabilidad y la producción de la economía (economy2.js, design/economia-v2.md)
 const profitOf=(p,b,l,o)=>buildingProfit2(p,b,l,o);
 const outputOf=(p,b,l)=>buildingOutput2(p,b,l);
@@ -16,11 +16,11 @@ function sink2(v,cat="Obras y reparaciones"){sinkAdd(cat,v)}
  * riqueza (compra los materiales a precio nominal). Compiten por el mismo hueco de obra que el rey (una
  * obra por provincia). Clero → iglesias + viñedos; Nobleza → industria BASE + militar; Burgués →
  * industria de LUJO + comercio/infraestructura. El dueño se fija al completar la obra (hourTick). */
-// precio nominal de los insumos de obra (ducados/unidad) para que el estamento valore el coste y lo pague de su bolsillo
-const BUILD_MAT_PRICE={dinero:1,madera:1,piedra:1,hierro:2,grano:0.8,pano:2.2,bebida:2.2,sal:1.6,seda:5,especias:4,caballos:2};
 const INVEST_MONTHS=12; // v2: un estamento invierte solo lo que le sobra tras asegurarse un año de su cesta
-const ESTATE_BUILD_KEEP=4; // colchón: solo construyen si su riqueza supera KEEP× el coste (invierten el excedente, no el principal)
-function estateCostDinero(cost){let t=0;for(const k in cost)t+=cost[k]*(BUILD_MAT_PRICE[k]||1);return t}
+// colchón para EMPEZAR una obra: la obra se paga por tramos semanales (economy2 obraPass, la misma regla para corona y
+// estamentos), pero solo se encarga si el dueño tiene en caja esta parte de su coste total al precio de hoy
+const OBRA_KEEP=0.5;
+const obraTotal=(p,b)=>obraCost(p,b).total;
 // IA de ajuste del mercado: deshabilita las FÁBRICAS que pierden dinero (sobreoferta / insumo caro) y reactiva
 // (reparando) las que vuelven a ser rentables. Histéresis (deadband) para no oscilar. Solo fábricas de producción.
 const BLDG_LOSS=-120, BLDG_GAIN=100; // umbrales mensuales en ducados: tolera pérdidas pequeñas (no apagar toda una industria por poco); apaga solo lo claramente ruinoso; reactiva sobre +100/mes
@@ -35,12 +35,8 @@ const MANAGE_SHARE=0.25;
 // act: cierra · reabre · invierte; why: "pierde"/"gana" (rentabilidad, prof = ducados/mes) o "presupuesto" (no le llega).
 const BUD_LOG_MAX=40;
 function logBud(N,x){const L=N.budLog||(N.budLog=[]);L.push(Object.assign({h:S.hour},x));if(L.length>BUD_LOG_MAX)L.splice(0,L.length-BUD_LOG_MAX)}
-function reopen(p,b,o,N){                                            // reactivar, reparando la parte degradada
-  const cond=(p.bCond&&p.bCond[b]!=null)?p.bCond[b]:1, frac=Math.max(0,1-cond);
-  if(o==="corona"){const c={},base=costFor(p,b);for(const k in base)c[k]=Math.round(base[k]*frac);
-    if(canAfford(p.owner,c)){pay(p.owner,c,"Reparaciones",BUILDINGS[b].label);delete p.bOff[b];p.bCond[b]=1;}}   // (pay apunta el sumidero)
-  else{const rep=estateCostDinero(costFor(p,b))*frac;
-    if((N.sWealth[o]||0)>=rep){if(rep>0){N.sWealth[o]-=rep;recFlow(p.owner,o,"Construcción",-rep);sink2(rep);}delete p.bOff[b];p.bCond[b]=1;}}
+function reopen(p,b,o,N){                                            // reactivar, reparando la parte degradada (economy2 repairPay)
+  if(repairPay(p,b,o)){delete p.bOff[b];p.bCond[b]=1}
 }
 function manageWorkshops(){
   const groups=new Map();                                            // "nación|taller" → abiertos, cerrados y candidatos
@@ -80,6 +76,7 @@ function needMore(n,g){
 function pickEstateBuild(p,e,N){ // el edificio del repertorio del estamento MÁS RENTABLE que aún HAGA FALTA aquí
   let best=null,bestScore=-Infinity;
   if(usedSlots(p)>=buildSlots(p))return null;              // sin hueco (se miraba por candidato; no cambia dentro)
+  if(obraFull(p.owner))return null;                        // el cupo de obras del reino ya está lleno (economy2 obraFull)
   for(const b of ESTATE_BUILDS2[e]){
     if(lvlOf(p,b)>0&&bOwnerOf(p,b)!==e)continue;          // ya existe y es de otro (o de la corona) → no lo toco
     if(lvlOf(p,b)>=buildMax(p,b))continue;
@@ -92,8 +89,7 @@ function pickEstateBuild(p,e,N){ // el edificio del repertorio del estamento MÁ
     const fx=B.fx,economic=fx.prodAdd||fx.goldAdd||fx.prodMul; // productivos: solo donde se pueda dotar
     if(economic&&freeLabor(p)<buildJobs(p)+JOBS_PER_LEVEL)continue;
     // solo invierten el EXCEDENTE: guardan un colchón (KEEP× el coste) para seguir comiendo y no arruinarse
-    if(N.sWealth[e]<estateCostDinero(costFor(p,b))*ESTATE_BUILD_KEEP)continue;
-    if(N.e2&&N.e2.basket&&N.sWealth[e]<estateCostDinero(costFor(p,b))*ESTATE_BUILD_KEEP+INVEST_MONTHS*(N.e2.basket[e]||0))continue; // v2: primero su año de cesta
+    if(N.sWealth[e]<obraTotal(p,b)*OBRA_KEEP+(N.e2&&N.e2.basket?INVEST_MONTHS*(N.e2.basket[e]||0):0))continue; // v2: primero su año de cesta
     // PREVISIÓN DE DEMANDA: ¿la capacidad (construida + EN OBRA) del bien ya cubre la demanda del reino? entonces NO hace
     // falta otra fábrica (aunque el precio siga alto por el lag de obra). Así la IA calcula cuántas hacen falta y no se pasa.
     const outG=outputOf(p,b,1).g; // el bien que de verdad vende (cervecería → bebida)
@@ -113,7 +109,7 @@ function pickEstateBuild(p,e,N){ // el edificio del repertorio del estamento MÁ
 }
 /* ---- Obras de la CORONA IA (v2): la MISMA lógica que los estamentos ----
  * Mismos filtros (sitio de la materia, hueco, dotación, requisitos), mismo colchón (solo invierte si su tesoro supera
- * ESTATE_BUILD_KEEP× el coste), misma previsión de demanda para lo que VENDE y misma rentabilidad (buildingProfit2 con
+ * OBRA_KEEP del coste de la obra), misma previsión de demanda para lo que VENDE y misma rentabilidad (buildingProfit2 con
  * owner "corona": lo que va a su almacén vale solo si le hace falta). Los servicios (cuartel, fortaleza, templo…) solo
  * si puede mantenerlos holgado, como un estamento. Antes era una lista fija de prioridades (mercado, gremio, granja…). */
 const CROWN_BUILDS2=["cuartel","fortaleza","templo","puerto","almacen","gremio","granja","aserradero","cantera","mina",
@@ -121,6 +117,7 @@ const CROWN_BUILDS2=["cuartel","fortaleza","templo","puerto","almacen","gremio",
 function pickCrownBuild(p){
   const n=p.owner,N=S.nations[n]; if(!N)return null;
   const treas=N.res.dinero||0, up=ownerUpkeepMonth(n,"corona"), inc=(N.e2&&N.e2.inc&&N.e2.inc.corona)||0;
+  if(obraFull(n))return null;                              // el cupo de obras del reino ya está lleno
   let best=null,bestScore=-Infinity;
   for(const b of CROWN_BUILDS2){
     if(!BUILDINGS[b])continue;
@@ -129,7 +126,7 @@ function pickCrownBuild(p){
     if(!siteOK2(p,b))continue;                            // el taller va donde está su materia
     const B=BUILDINGS[b],fx=B.fx||{},economic=fx.prodAdd||fx.goldAdd||fx.prodMul;
     if(economic&&freeLabor(p)<buildJobs(p)+JOBS_PER_LEVEL)continue;
-    if(treas<(costFor(p,b).dinero||0)*ESTATE_BUILD_KEEP)continue; // mismo colchón que un estamento
+    if(treas<obraTotal(p,b)*OBRA_KEEP)continue;          // mismo colchón que un estamento
     let score;
     if(B.inputs||fx.prodAdd){
       if(!crownStockOut(p,b,1)){const g=buildingOutput2(p,b,1).g;   // lo que VENDE: ¿hace falta más?
@@ -166,10 +163,9 @@ function estateBuild(){
       if(!(p.pops[e]>0))continue;                        // sin presencia, no construye aquí
       const b=pickEstateBuild(p,e,N);
       if(!b)continue;
-      const bcost=estateCostDinero(costFor(p,b));
-      N.sWealth[e]-=bcost;recFlow(p.owner,e,"Construcción",-bcost);sink2(bcost);      // paga la obra de su riqueza
-      p.buildQueue.push({b,hoursLeft:timeFor(p,b),owner:e});
-      logBud(N,{o:e,b,p:p.id,act:"invierte",cost:bcost});
+      const ob=newObra(p,b,e);                             // la paga por tramos semanales en la plaza (economy2 obraPass)
+      p.buildQueue.push(ob);
+      logBud(N,{o:e,b,p:p.id,act:"invierte",cost:obraTotal(p,b)});
       const o=outputOf(p,b,1),x=o.g&&_need[p.owner]&&_need[p.owner][o.g];if(x)x.sup+=o.q; // suma la capacidad recién encolada → las demás provincias ya la cuentan (no todas construyen lo mismo a la vez)
       break;                                             // una obra por provincia
     }
@@ -225,11 +221,7 @@ function budgetManage(){
     } else if(e.closed.length){                          // le sobra: reabre el servicio cerrado más barato si su margen lo cubre holgado
       let x=null;for(const c of e.closed)if(!c.prod&&(!x||c.up<x.up))x=c;
       if(x&&margin-x.up>REOPEN_SHARE*inc&&purse>BUDGET_MONTHS*(e.up+x.up)){
-        const cond=(x.p.bCond&&x.p.bCond[x.b]!=null)?x.p.bCond[x.b]:1, frac=Math.max(0,1-cond);
-        if(e.o==="corona"){const c={},base=costFor(x.p,x.b);for(const k in base)c[k]=Math.round(base[k]*frac);
-          if(!canAfford(e.n,c))continue; pay(e.n,c,"Reparaciones",BUILDINGS[x.b].label);}   // (pay apunta el sumidero)
-        else{const rep=estateCostDinero(costFor(x.p,x.b))*frac; if(N.sWealth[e.o]<rep)continue;
-          if(rep>0){N.sWealth[e.o]-=rep;recFlow(e.n,e.o,"Construcción",-rep);sink2(rep)}}
+        if(!repairPay(x.p,x.b,e.o))continue;
         delete x.p.bOff[x.b]; x.p.bCond[x.b]=1;
         logBud(N,{o:e.o,b:x.b,p:x.p.id,act:"reabre",why:"presupuesto"})
       }
@@ -245,5 +237,5 @@ function estatesDaily(){
   budgetManage();
 }
 
-export { estatesDaily, estateBuild, pickCrownBuild, budgetManage, manageWorkshops, pickEstateBuild, estateCostDinero, profitOf, outputOf,
-  BUILD_MAT_PRICE, BUDGET_MONTHS };
+export { estatesDaily, estateBuild, pickCrownBuild, budgetManage, manageWorkshops, pickEstateBuild, profitOf, outputOf,
+  BUDGET_MONTHS };

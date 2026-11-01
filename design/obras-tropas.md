@@ -11,7 +11,42 @@ cronista en el scratchpad de la sesión f9e3a418 (no versionado); aquí queda lo
    adelante motín o desbandada).
 5. Costes recalibrados desde cero.
 
-## Dictamen del consejero (pendiente de aprobación de Sergio)
+## HOJA DE RUTA (aprobada por Sergio 2026-11-01: "el core es el que es, luego es tema ajustes")
+Cada fase: implementar, `tools/verify-v2.mjs` (invariante del dinero), `tools/verify/ui-reglas.mjs`, captura en el juego
+real, commit temático. Las cifras se calibran al final con /simular (fase 7).
+- [x] **F1. Regla de obra + tramos semanales.** HECHA 2026-11-02 (ver notas de la F1 abajo). `obraCost(b,nivel)` (V × (1+0,5·nivel), 50/10/40 con plantilla);
+  la obra en `buildQueue` compra cada día de mercado su tramo (jornal + bienes) en la plaza, con el orden y tope de la
+  decisión 10; tramo no servido = la obra no avanza. Jornal a campesinos/burgueses de la provincia (decisión 7). Igual
+  para corona y estamentos: se borran BUILD_MAT_PRICE y el pago de golpe. Duraciones nuevas (decisión 2). Tarjetas:
+  coste en ducados al precio de hoy + desglose en tooltip; progreso de la obra con "espera material" si se para.
+  Notas de la F1 (cambios frente al dictamen, por lo que mostró la medición):
+  - Las obras compran su tramo CADA DÍA (no de golpe el día de mercado) y ANTES que los insumos y el consumo: el 25% es
+    un CUPO garantizado. Comprando después, la plaza nunca tenía madera (la demanda doblaba la oferta) ni hierro (los
+    artesanos se lo llevan entero) y ninguna obra avanzaba (929 encargadas, 0 terminadas en 2 años).
+  - SATURACIÓN (N.e2.obraSat): la IA no empieza obras con el cupo del reino lleno; el jugador sí (ve cómo se alarga).
+  - Madera y piedra base ×2 (BASE2): con las de antes el mundo no levantaba ni 40 obras al año; ×3 hundía el precio al
+    suelo. Medido a 2 años con IA: 161 obras terminadas, madera ×1,1, piedra ×1,05. Provisional hasta la F7.
+  - "Espera material" solo si la obra va a menos de la mitad de su ritmo. Reparar = 50% de una obra nueva por la parte
+    perdida, de golpe (jornal a la provincia, materiales al sumidero) hasta la F3.
+  - La IA de la corona solo construye en el juego real (aiTurn de sim.js), no en el arnés verify-v2 --ia.
+- [ ] **F2. Fin del almacén.** Los edificios de la corona venden a la plaza (fuera CROWN_STOCK, crownStockOut,
+  CROWN_STOCK_WANT); START_STOCK solo dinero (lo demás a ducados); el socorro sin "almacén"; fuera la sección "Almacén de
+  la corona" de la UI y los bienes de la barra superior.
+- [ ] **F3. Mantenimiento de edificios + barra.** 0,3% de V/nivel/mes comprado en la plaza repartido en 4 semanas
+  (50/10/40), sin escalado por población; barra de estado de edificios (decisión 8) sobre bCond; efecto
+  ×(0,5+0,5·estado) en producción, defensa y moral.
+- [ ] **F4. Tropas.** Reclutamiento = enganche + equipo (tabla); armerías ×5; soldada por hombre (SOLDADA_K) a los pops
+  de origen; reposición 1%/mes; comida del ejército comprada en la plaza con prioridad de hambre; forrajeo como requisa
+  con tope 40% y pago en tierra propia; fuera a.supply; barra de tropas (decisión 9): moral, fuerza, deserción,
+  desbandada.
+- [ ] **F5. Flete de materiales pesados** (madera, piedra, hierro) con reliefFlete.
+- [ ] **F6. Pasada de UX** (/ux): barras de estado, tooltips de coste y de mantenimiento, desglose de la soldada en
+  Tesorería.
+- [ ] **F7. Calibración en GitHub** (/simular): coste 1,0 vs 1,5 años; SOLDADA_K 1,0 vs 0,6; armerías ×5 vs ×3; vigilar
+  riqueza de estamentos, precio de madera y piedra (¿más aserraderos/canteras?) y peso del ejército (15-30% del ingreso).
+- Después: consejo de LEALTAD de estamentos + negociación de palancas (con lo aparcado abajo).
+
+## Dictamen del consejero (APROBADO por Sergio 2026-11-01)
 
 ### 1. Regla de coste de obra
 `coste(b, nivel) = V_b × (1 + 0,5·nivel)`, reparto fijo 50% jornal, 10% herramientas, 40% materiales según plantilla;

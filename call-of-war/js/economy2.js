@@ -14,7 +14,7 @@ import { NPLAY, BUILDINGS, UNITS, STRATA, TERRAINS } from "./config.js";
 import { S } from "./state.js";
 import { kmBetween, pxToLonLat, ensureMarketTopology } from "./mapgen.js";
 import { isEmbargoed, atWarPair } from "./diplomacy.js";
-import { BKEYS, calOf, harvestMonth, monthsToHarvest, ledger, sinkAdd, canAfford, isOccupied, effLvl, lvlOf, bOwnerOf, manorOf, taxRateOf, alcabalaOf, almojOf, harvestMul, terrMul, DIEZMO, terrCatMul, staffing, storeCap, armyFood, soldCap, provProdMul, ensureMarket, recFlow, recBuy, recCrown, YR_TICKS, TRADE_KM, TRADE_SEA, TRADE_WAR, TRADE_BULK, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN, PROMO_RATE, targetBurgFrac, monthKeyOf } from "./economy.js";
+import { BKEYS, calOf, harvestMonth, monthsToHarvest, ledger, sinkAdd, canAfford, isOccupied, effLvl, lvlOf, bOwnerOf, manorOf, taxRateOf, alcabalaOf, almojOf, harvestMul, terrMul, DIEZMO, terrCatMul, staffing, storeCap, armyFood, soldCap, provProdMul, ensureMarket, recFlow, recBuy, recCrown, YR_TICKS, TRADE_KM, TRADE_SEA, TRADE_WAR, TRADE_BULK, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN, PROMO_RATE, targetBurgFrac, monthKeyOf, buildSpeedBonus } from "./economy.js";
 
 // ============================== CONSTANTES (todo lo tunable está aquí) ==============================
 const PRICE_SCALE=8;     // palanca GLOBAL de precios: iguala el dinero del comercio a la escala de costes de la v1
@@ -96,10 +96,13 @@ function landBirth(p){const x=landOcc(p);
 const LAND_VALVE=0.10;
 function landPush(p){const x=landOcc(p);return x<=LAND_FULL?0:LAND_VALVE*Math.min(1,(x-LAND_FULL)/(1-LAND_FULL))}
 function foodGrowth(months){return months<=1?0.3:months<=12?0.3+0.7*(months-1)/11:Math.min(1.8,1+0.8*(months-12)/6)}
+// Madera y piedra ×2 (2026-11-02, obras sin almacén: design/obras-tropas.md): con 0,02 y 0,004 la demanda de madera ya
+// doblaba la oferta y, al comprar las obras en la plaza, el mundo entero no levantaba ni 40 obras al año; ×3 la hundía
+// al suelo de precio. Provisional hasta la calibración (F7).
 // Lo que produce TODA provincia según su terreno (la categoría "mar" solo rinde en la COSTA: sal marina y pesca de bajura).
 // Revisado 2026-09-27 con el informe regional (--regiones): sal y pescado faltaban en todo el Mediterráneo y el Este,
 // los caballos solo salían en la estepa y el Norte no tenía cerveza. Bebida = vino/cerveza/hidromiel caseros.
-const BASE2={madera:[0.02,"bosque"], piedra:[0.004,"extractivo"], hierro:[0.01,"extractivo"],
+const BASE2={madera:[0.04,"bosque"], piedra:[0.008,"extractivo"], hierro:[0.01,"extractivo"],
              carne:[0.012,"carne"], bebida:[0.012,"cereal"], lienzo:[0.002,"cultivo"], lana:[0.012,"carne"],
              sal:[0.006,"mar"], pescado:[0.006,"mar"], caballos:[0.0005,"carne"]};
 // Ciudades-puerto de especias y ciudades sederas (su resType es de ciudad): el mercader las trae / el taller las teje,
@@ -317,6 +320,65 @@ function weeklyPrice(N){
   wk.d={};wk.s={};wk.days=0;
 }
 
+// ============================== OBRAS (design/obras-tropas.md, decisiones 1, 2, 7 y 10) ==============================
+// UNA regla para toda obra, sea de la corona o de un estamento: coste = V del edificio × (1 + 0,5 × nivel actual), del
+// que la mitad es JORNAL (lo cobran los campesinos y burgueses de la provincia), un 10% HERRAMIENTAS y un 40% MATERIALES
+// según la plantilla del edificio (de madera, de piedra o de hierro). Las unidades salen a precio de referencia; se pagan
+// al precio del día. V ≈ un año de lo que produce el edificio (antes una granja se amortizaba en un mes).
+// La obra no se paga de golpe: compra su TRAMO cada día en la plaza (obraPass), tras el grano del hambre y antes que los
+// insumos y el consumo, con un CUPO de como mucho el 25% de la oferta de cada bien; lo que no consigue la
+// deja esperando (y cuenta como demanda: sube el precio y llama a los contratos de importación).
+const OBRA_V_PROD=12000;  // todo edificio que vende a la plaza
+const OBRA_V={cantera:15000, mina:15000, minaPlata:24000, minaOro:36000, mercado:15000, gremio:20000, templo:6000,
+  cuartel:12000, campo:10000, almacen:8000, puerto:20000, fabrica:30000, fortaleza:60000,
+  catedral:90000, universidad:40000, lonja:45000, ciudadela:120000};
+const OBRA_JORNAL=0.5, OBRA_HERR=0.1, OBRA_MAT=0.4;
+const OBRA_TPL={madera:{madera:0.7,piedra:0.2,hierro:0.1}, piedra:{piedra:0.7,madera:0.2,hierro:0.1},
+  hierro:{madera:0.5,hierro:0.35,piedra:0.15}};
+const OBRA_TPL_OF={templo:"piedra",mercado:"piedra",salina:"piedra",fortaleza:"piedra",catedral:"piedra",
+  universidad:"piedra",lonja:"piedra",ciudadela:"piedra",
+  mina:"hierro",minaPlata:"hierro",minaOro:"hierro",cantera:"hierro",herreria:"hierro",armeria:"hierro",aceria:"hierro",
+  fabrica:"hierro",gremio:"hierro",cuartel:"hierro"};
+const OBRA_CANTERO={campesino:0.55,burgues:0.45}, OBRA_PEON={campesino:0.7,burgues:0.3}; // reparto del jornal
+// Duración (meses, al nivel 1): la de config salvo estas; mínimo 3 meses lo que produce y 12 los servicios
+const OBRA_MESES={templo:12, fabrica:18, fortaleza:60, lonja:72, universidad:96, ciudadela:96, catedral:144};
+const OBRA_MIN_PROD=3, OBRA_MIN_SERV=12;
+const CAPITAL_SHARE=0.25; // las obras de un reino se llevan como mucho esta parte de la oferta de cada bien
+function obraProduce(b){const B=BUILDINGS[b];return !!(BLD2[b]||(B.fx&&(B.fx.prodAdd||B.fx.goldAdd)))}
+// Coste de la PRÓXIMA obra de b en p: {V, jornal, bienes:{g:unidades}, semanas, mat (bienes al precio de hoy), total}
+function obraCost(p,b){
+  const B=BUILDINGS[b], lvl=lvlOf(p,b), V=(OBRA_V[b]||OBRA_V_PROD)*(B.unique?1:1+0.5*lvl);
+  const tpl=OBRA_TPL[OBRA_TPL_OF[b]||"madera"], bienes={};
+  for(const g in tpl)bienes[g]=V*OBRA_MAT*tpl[g]/ref(g);
+  bienes.herramientas=V*OBRA_HERR/ref("herramientas");
+  const meses=(OBRA_MESES[b]||Math.max(obraProduce(b)?OBRA_MIN_PROD:OBRA_MIN_SERV,(B.time||0)/730))*(B.unique?1:1+0.35*lvl)*(1-buildSpeedBonus(p));
+  const N=S.nations[p.owner]; let mat=0;
+  for(const g in bienes)mat+=bienes[g]*((N&&N.mktPrice&&N.mktPrice[g])||ref(g));
+  return {V, jornal:V*OBRA_JORNAL, bienes, semanas:Math.max(1,Math.round(meses*730/168)), mat, total:V*OBRA_JORNAL+mat};
+}
+// La obra que entra en la cola: su coste se fija al encargarla (el nivel de ese momento). Suma al momento su parte del
+// cupo del reino (N.e2.obraSat), para que el mismo día no se encarguen cientos.
+function newObra(p,b,owner){const c=obraCost(p,b);const q={b,prog:0,sem:c.semanas,jornal:c.jornal,bienes:c.bienes};if(owner)q.owner=owner;
+  const N=S.nations[p.owner];if(N&&N.e2)N.e2.obraSat=(N.e2.obraSat||0)+obraLoad(N,c.bienes,c.semanas);return q}
+// SATURACIÓN del cupo de obras de un reino: lo que piden al día sus obras ÷ el cupo (CAPITAL_SHARE de la oferta del día),
+// en el bien más apretado. ≥ 1: las obras en curso ya se reparten todo el cupo y una más solo las retrasaría a todas. La
+// IA (corona y estamentos) no empieza obras con el cupo lleno; el jugador puede, y ve cómo se alarga.
+const OBRA_SAT_MAX=1;
+function obraLoad(N,bienes,sem){const fc=N.e2&&N.e2.fc;if(!fc)return 0;let m=0;
+  for(const g in bienes){const cap=CAPITAL_SHARE*(fc.s[g]||0);const d=bienes[g]/(sem*7);m=Math.max(m,cap>0?d/cap:(d>0?Infinity:0))}return m}
+function obraFull(n){const N=S.nations[n];return !!(N&&N.e2&&(N.e2.obraSat||0)>=OBRA_SAT_MAX)}
+// REPARAR un edificio cerrado (bOff) que se ha degradado: la mitad de una obra nueva por la parte perdida. Por ahora se
+// paga de golpe: el jornal a la provincia y los materiales salen de la economía (sumidero). F3 lo revisa.
+function repairCost(p,b){const cond=(p.bCond&&p.bCond[b]!=null)?p.bCond[b]:1;return Math.max(0,1-cond)*0.5*obraCost(p,b).total}
+function repairPay(p,b,who){
+  const n=p.owner,N=S.nations[n],c=repairCost(p,b); if(!N)return false;
+  const purse=who==="corona"?(N.res.dinero||0):(N.sWealth[who]||0); if(purse<c)return false;
+  if(c>0){const B=BUILDINGS[b], j=c*OBRA_JORNAL/(OBRA_JORNAL+OBRA_HERR+OBRA_MAT), sp=OBRA_TPL_OF[b]==="piedra"?OBRA_CANTERO:OBRA_PEON;
+    if(who==="corona"){N.res.dinero-=c;recCrown(n,"Reparaciones",B.label,-c)}else{N.sWealth[who]-=c;recFlow(n,who,"Construcción",-c)}
+    for(const e in sp){const v=j*sp[e];N.sWealth[e]+=v;recFlow(n,e,"Jornales de obra",v);pmJor(p,e,v)}
+    sinkAdd("Reparaciones",c-j)}
+  return true;
+}
 // ============================== helpers ==============================
 // MANTENIMIENTO DE LOS SERVICIOS según la GENTE a la que sirven. Un cuartel, un templo o un almacén rinden en
 // proporción a la población de su provincia (+25% de leva es un % de SUS hombres), así que deben COSTAR en proporción
@@ -370,6 +432,8 @@ function pushHarvest(list,p,g,q,sh,N){
 // corona. Invariante: Σ pay + lost = Σ val (lo comprueba el arnés). La ficha de provincia lo lee (ui.js).
 function pm(p){return p._m||(p._m={prod:{},val:{},pay:{},lost:0,bld:{},stock:{}})}
 function pmProd(p,g,q){if(q>0){const m=pm(p);m.prod[g]=(m.prod[g]||0)+q}}
+// jornales de obra y reparación que cobran los de la provincia: aparte de pay (no son el valor de lo que produce)
+function pmJor(p,who,v){if(!v)return;const m=pm(p),j=m.jor||(m.jor={});j[who]=(j[who]||0)+v}
 function pmPay(p,who,cat,v){if(!v)return;const m=pm(p),w=m.pay[who]||(m.pay[who]={});w[cat]=(w[cat]||0)+v}
 function pmClose(dt){ // al cambiar de mes de calendario, el libro en curso pasa a ser el del mes cerrado.
   // Se mira el mes del tick ANTERIOR: así el primer día del mes nuevo cae en el mes que cierra, igual que en el libro
@@ -467,6 +531,7 @@ function economyTick2(dt=24,doArb=true){
   const factNeed=Array.from({length:NPLAY},()=>({}));         // insumos pedidos: owner → {bien: q}
   const grainReq=Array.from({length:NPLAY},()=>[]);           // provincias con la despensa vacía: {p,q}
   const upMonth=Array.from({length:NPLAY},()=>({}));          // mantenimiento en dinero por estamento, al mes
+  const obras=Array.from({length:NPLAY},()=>[]);              // provincias con una obra en curso
   const pay=(n,who,amt,cat,sub)=>{ // abona a corona (tesoro) o a un estamento (su riqueza); sub = detalle del libro de la corona
     if(!amt)return; const N=S.nations[n]; if(!N)return;
     if(who==="corona"){N.res.dinero+=amt;recCrown(n,cat,sub,amt)}else{N.sWealth[who]+=amt;recFlow(n,who,cat,amt)}
@@ -478,6 +543,7 @@ function economyTick2(dt=24,doArb=true){
     const n=p.owner; if(n>=NPLAY||p.wasteland||!p.pops)continue;
     const N=S.nations[n]; if(!N||!N.alive)continue;
     for(const k of STRATA)strata[n][k]+=p.pops[k]||0;
+    if(p.buildQueue&&p.buildQueue.length)obras[n].push(p);
     const c=p.pops.campesino||0, mor=(p.morale||0)/100;
     // GRANO: la provincia SIEGA una vez al año, en su mes, y lo cosechado entra en el granero (p.store.comida, que se
     // pone en común con su ducado después de esta pasada: granaryPass). Sus campesinos comen de él cada día.
@@ -624,11 +690,15 @@ function economyTick2(dt=24,doArb=true){
       r.got=buy("campesino","grano",can); r.p._grainGot=r.got; glDem(GL,"grano","socorro",r.q,r.got);
       const fr=r.got*price.grano*t; if(fr>0){const cs=cartShare(r.p);W.campesino-=fr;recFlow(n,"campesino","Compras",-fr);
         pay(n,"campesino",fr*cs,"Transporte");if(cs<1)pay(n,"burgues",fr*(1-cs),"Transporte")}}
-    // 2) talleres: su materia prima (es capital de trabajo, va antes que el consumo de sus dueños)
+    // 2) OBRAS: su tramo del día con un CUPO de como mucho CAPITAL_SHARE de la oferta (obraPass). Va antes que los insumos
+    // y el consumo porque el cupo es una garantía, no lo que sobre: en un bien que falta (madera, y el hierro que los
+    // artesanos se llevan entero) ninguna obra avanzaba nunca, y bastaba que faltara el 10% de hierro para pararla toda
+    if(obras[n].length)obraPass(n,N,obras[n],price,alc,GL,bought[n],gapStock,dt);else N.e2.obraSat=0;
+    // 3) talleres: su materia prima (es capital de trabajo, va antes que el consumo de sus dueños)
     const coverIn={};
     for(const o in factNeed[n])for(const g in factNeed[n][o]){const need=factNeed[n][o][g];const q=buy(o,g,need,true);glDem(GL,g,"talleres",need,q); // la materia prima se servía a crédito al taller: el pedido entero atrae al mercader
       const ci=coverIn[g]||(coverIn[g]={need:0,got:0});ci.need+=need;ci.got+=q}
-    // 3) élites por orden de bolsillo  4) campesino
+    // 4) élites por orden de bolsillo  5) campesino
     for(const e of BUY_ORDER)for(const g in want[e]){got[e][g]=buy(e,g,want[e][g]);glDem(GL,g,e,want[e][g],got[e][g])}
     for(const g in want.campesino){got.campesino[g]=buy("campesino",g,want.campesino[g]);glDem(GL,g,"campesino",want.campesino[g],got.campesino[g])}
     // cobertura de insumos (la leen los talleres el próximo tick)
@@ -738,6 +808,40 @@ function economyTick2(dt=24,doArb=true){
         A.mktInfo[g].exp+=q/dt*730; B.mktInfo[g].imp+=q/dt*730; {const X=glG(glOf(A),g);X.exp+=q;(X.ok||(X.ok={}))[b]=1} glG(glOf(B),g).imp+=q;
         A.e2.wk.d[g]=(A.e2.wk.d[g]||0)+q; B.e2.wk.s[g]=(B.e2.wk.s[g]||0)+q}   // para el precio de la próxima semana
     }
+  }
+}
+// EL TRAMO DE LAS OBRAS de un reino, cada día (tras el grano del hambre, antes que los insumos de los talleres y el
+// consumo: el cupo es una garantía). Cada obra pide 1/semanas de su jornal y de sus bienes por semana, repartido en los días. Por bien,
+// las obras del reino se llevan como mucho CAPITAL_SHARE de la oferta del día (y lo que haya en la plaza), a prorrata; cada obra avanza en la proporción del bien que menos consiguió y de su dinero. El dueño
+// paga: los bienes como cualquier compra (comisión al burgués, alcabala salvo la corona, el resto a la plaza) y el
+// jornal a los campesinos y burgueses de la provincia. Lo que no se consigue cuenta como demanda (precio y contratos).
+function obraPass(n,N,ps,price,alc,GL,bought,gapStock,dt){
+  const fc=N.e2.fc||{s:{}}, want={}, list=[];
+  for(const p of ps){const q=p.buildQueue[0];
+    if(q.prog==null){const c=obraCost(p,q.b);q.prog=0;q.sem=c.semanas;q.jornal=c.jornal;q.bienes=c.bienes}  // obra encargada antes de esta regla
+    const k=dt/168/q.sem, t={p,q,who:q.owner||"corona",b:{},j:q.jornal*k,k};
+    for(const g in q.bienes){const v=q.bienes[g]*k;t.b[g]=v;want[g]=(want[g]||0)+v}
+    list.push(t)}
+  const r={};let sat=0;
+  for(const g in want){const quota=CAPITAL_SHARE*(fc.s[g]||0)*dt/24, cap=Math.min(N.mkt[g]||0,quota);r[g]=want[g]>0?Math.min(1,cap/want[g]):1;
+    sat=Math.max(sat,quota>0?want[g]/quota:(want[g]>0?Infinity:0))}
+  N.e2.obraSat=sat;
+  for(const t of list){
+    let f=1,why=null;for(const g in t.b)if(r[g]<f){f=r[g];why="material"}
+    const pr=g=>price[g]*(t.who==="corona"?1-alc:1);       // la corona no se paga su propia alcabala
+    let goods=0;for(const g in t.b)goods+=t.b[g]*pr(g);
+    const purse=t.who==="corona"?Math.max(0,N.res.dinero):Math.max(0,N.sWealth[t.who]||0), need=f*(t.j+goods);
+    if(need>purse){f*=need>0?purse/need:0;why="dinero"}
+    for(const g in t.b){const want0=t.b[g],q=want0*f;gapStock[g]=(gapStock[g]||0)+(want0-q);glDem(GL,g,"obras",want0,q);if(q<=0)continue;
+      const mv=q*price[g];N.mkt[g]-=q;bought[g]=(bought[g]||0)+q;
+      N.sWealth.burgues+=mv*MARGIN;recFlow(n,"burgues","Comisión de la plaza",mv*MARGIN);addInc(N,"burgues",mv*MARGIN);
+      if(t.who!=="corona"){N.res.dinero+=mv*alc;recCrown(n,"Alcabala",LABEL2[g],mv*alc);addInc(N,"corona",mv*alc);N.alcabalaRate+=mv*alc/24}
+      N.e2.plaza+=mv*(1-MARGIN-alc)}
+    const paid=f*(t.j+goods), lab=BUILDINGS[t.q.b].label;
+    if(paid>0){if(t.who==="corona"){N.res.dinero-=paid;recCrown(n,"Obras",lab,-paid)}else{N.sWealth[t.who]-=paid;recFlow(n,t.who,"Construcción",-paid)}
+      const sp=OBRA_TPL_OF[t.q.b]==="piedra"?OBRA_CANTERO:OBRA_PEON;
+      for(const e in sp){const v=f*t.j*sp[e];N.sWealth[e]+=v;recFlow(n,e,"Jornales de obra",v);addInc(N,e,v);pmJor(t.p,e,v)}}
+    t.q.prog+=f*t.k; t.q.wait=f<0.5?why:null;   // el aviso, solo si va a menos de la mitad de su ritmo
   }
 }
 // Unidades/día que un reino tiene CONTRATADAS para exportar de un bien (su plaza las guarda además de su demanda).
@@ -962,4 +1066,4 @@ function granaryOf(p){
 }
 
 export { economyTick2, siteOK2, seedEstates2, upkeepScale, seedOwner2, seedWealth2, GOODS2, LABEL2, REF2, NEED2, WANT2, TIERS, BLD2, ESTATE_BUILDS2, buildingProfit2, buildingOutput2,
-  transport, tradeCost2, moneyStock, sinkAdd, ARTISAN_IN, ctrOut, ctrIn, granaryOf, foodGrowth, positoCap, positoMonth, positoQuote, positoSend, POSITO_MONTHS, reserveOf, landYield, landCap, landOcc, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX, GRAIN_RESERVE, reliefQuote, reliefSend, isMarketDay, MARKET_DAYS, PRICE_SCALE, JORNAL, MARGIN, CROWN_STOCK, CROWN_STOCK_WANT, crownStockOut, specialty2, obsolete2 };
+  transport, tradeCost2, moneyStock, sinkAdd, ARTISAN_IN, ctrOut, ctrIn, granaryOf, foodGrowth, obraCost, newObra, obraFull, repairCost, repairPay, positoCap, positoMonth, positoQuote, positoSend, POSITO_MONTHS, reserveOf, landYield, landCap, landOcc, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX, GRAIN_RESERVE, reliefQuote, reliefSend, isMarketDay, MARKET_DAYS, PRICE_SCALE, JORNAL, MARGIN, CROWN_STOCK, CROWN_STOCK_WANT, crownStockOut, specialty2, obsolete2 };

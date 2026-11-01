@@ -3,7 +3,7 @@ import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, 
 import { S } from "./state.js";
 import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildJobs, buildMax, buildSlots, canAfford, costFor, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationProvCount, nationStrength, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, resetTsyLedger, tsyAvail, tsyMonthBal, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, provProdMul, YR_TICKS, manorOf, MANOR_RENT, bOwnerOf } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
-import { GOODS2, LABEL2, REF2, NEED2, WANT2, BLD2, PRICE_SCALE, CROWN_STOCK, specialty2, obsolete2, siteOK2, transport, buildingProfit2, buildingOutput2, upkeepScale, granaryOf, foodGrowth, positoCap, positoMonth, positoQuote, POSITO_MONTHS, landYield, landCap, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX } from "./economy2.js";
+import { GOODS2, LABEL2, REF2, NEED2, WANT2, BLD2, PRICE_SCALE, CROWN_STOCK, specialty2, obsolete2, siteOK2, transport, buildingProfit2, buildingOutput2, upkeepScale, granaryOf, foodGrowth, obraCost, repairCost, positoCap, positoMonth, positoQuote, POSITO_MONTHS, landYield, landCap, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX } from "./economy2.js";
 import { calOf, MONTHS_ES, monthsToHarvest, harvestMonth } from "./economy.js";
 import { canvas, clampPan, repaintProvince } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
@@ -142,6 +142,15 @@ function costStr(cost,mano){
   return parts.join(", ");
 }
 function n1(v){return (Math.round(v*10)/10).toString().replace(/\.0$/,"")}
+// COSTE DE UNA OBRA (economy2 obraCost): el total en ducados al precio de hoy; el tooltip, el desglose (jornal y cada bien
+// a su precio) y el plazo. Se paga por tramos semanales, así que no se exige tenerlo entero en caja.
+function obraLine(p,b){
+  const c=obraCost(p,b), N=S.nations[p.owner], rows=[["Jornal","",nfE(c.jornal)]];
+  for(const g in c.bienes){const pr=(N&&N.mktPrice&&N.mktPrice[g])||REF2[g]*PRICE_SCALE;rows.push([resImg(g)+LABEL2[g],nfE(c.bienes[g]),nfE(c.bienes[g]*pr)])}
+  const tip=tipBox("Obra",[{cols:["Partida","Cantidad","Ducados"],trows:rows,ttot:["Total","",nfE(c.total)]},
+    {cols:["Pago","Valor"],trows:[["Tramo","semanal"],["Por semana",nfE(c.total/c.semanas)],["Semanas",c.semanas]]}],BUILDINGS[b].label);
+  return "<span data-tiph=\""+ta(tip)+"\">"+COIN()+fmt(c.total)+"</span>";
+}
 function costLine(c,owner){
   return Object.keys(c).map(k=>{
     const no=owner!=null&&tsyAvail(owner,k)<c[k];
@@ -273,10 +282,11 @@ function buildTilesHTML(p){
       // pie anclado abajo (misma posición en TODAS las tarjetas): mantenimiento · coste · tiempo/estado
       const upStr=B.up?"<div class='up'>"+uiIcon('mantenimiento')+" "+Object.keys(B.up).map(k=>resImg(k)+n1(B.up[k])).join(" ")+"/año</div>":"";
       let foot;
-      if(inQ){const q=p.buildQueue.find(q=>q.b===b);foot="<div class='ftime' style='color:var(--title)'>"+ph('obra')+" En obra"+VSEP+fmtDur(q.hoursLeft)+"</div>";}
+      if(inQ){const q=p.buildQueue.find(q=>q.b===b),pc=Math.min(100,Math.floor(100*(q.prog||0))),left=Math.max(0,(1-(q.prog||0))*(q.sem||0)*168);
+        foot="<div class='ftime' style='color:var(--title)'>"+ph('obra')+" En obra "+pc+"%"+VSEP+(q.wait?"<span class='neg'>"+(q.wait==="dinero"?"Sin dinero":"Espera material")+"</span>":fmtDur(left))+"</div>";}
       else if(maxed)foot="<div class='ftime pos'>"+(B.unique?"<i class='ck'></i> Construida":"Nivel máximo")+"</div>";
-      else foot="<div class='cost'>"+costLine(costFor(p,b),S.player)+"</div>"+
-          "<div class='ftime'>"+(block?ph('bloqueado')+" "+block:ph('tiempo')+" "+fmtDur(timeFor(p,b)))+"</div>";
+      else foot="<div class='cost'>"+obraLine(p,b)+"</div>"+
+          "<div class='ftime'>"+(block?ph('bloqueado')+" "+block:ph('tiempo')+" "+fmtDur(obraCost(p,b).semanas*168))+"</div>";
       // beneficios (producción viva + efectos, cada uno en su línea) y empleos en su propia fila
       const jb=jobsOf(b);
       const jobsHtml=jb>0?"<div class='jobs2'>"+uiIcon('poblacion')+" "+fmtPop(jb)+" empleos/niv</div>":"";
@@ -294,7 +304,7 @@ function buildTilesHTML(p){
             profTxt+"<span style='color:#9aa3ad;white-space:nowrap'>"+ph(own2)+(off?" cerrado":"")+"</span></div>";
         } else if(off){
           const cond=(p.bCond&&p.bCond[b]!=null)?p.bCond[b]:1;
-          let rep=0;const base=costFor(p,b);for(const k in base)rep+=base[k]*(1-cond);rep=Math.round(rep);
+          const rep=Math.round(repairCost(p,b));
           ctrl="<div style='"+bs+"background:#3a2a22' onclick='event.stopPropagation();toggleBuilding("+p.id+",\""+b+"\")' title='Reactivar (repara la parte degradada)'>"+
             "<span style='flex:1;height:5px;background:#241a14;border-radius:3px;overflow:hidden;display:inline-block'><i style='display:block;height:100%;background:#c98a3a;width:"+Math.round(cond*100)+"%'></i></span>"+
             "<span style='color:#e0a860;white-space:nowrap'>"+ph('reactivar')+" Reactivar"+(cond<0.995?VSEP+rep+COIN():"")+"</span></div>";

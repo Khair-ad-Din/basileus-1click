@@ -11,7 +11,7 @@
 //      la Tesorería o la ficha de provincia estarían mintiendo.
 //   node tools/verify-v2.mjs [años=5] [--ia] [--nac Nación] [--regiones] [--dump ruta.json]
 import fs from "fs"; import path from "path"; import { fileURLToPath, pathToFileURL } from "url";
-const base=path.join(path.dirname(fileURLToPath(import.meta.url)),"..","call-of-war");
+const base=process.env.COW||path.join(path.dirname(fileURLToPath(import.meta.url)),"..","call-of-war"); // COW = otra copia (variantes)
 function loadGlobal(file,name){let t=fs.readFileSync(path.join(base,file),"utf8").replace(/\r\n/g,"\n");
   t=t.replace(new RegExp("^const\\s+"+name+"\\s*=","m"),"globalThis."+name+"=");(0,eval)(t);}
 loadGlobal("mapdata.js","MAPDATA");loadGlobal("places.js","PLACES");
@@ -79,7 +79,7 @@ function checkBooks(pechoBefore){ // tras un cierre de mes del libro provincial
     if(p.owner===S.player&&m.pay.corona&&m.pay.corona.Pecho)pv+=m.pay.corona.Pecho}
   const cr=pechoBefore-pechoAt; worstPecho=Math.max(worstPecho,Math.abs(cr-pv)/(Math.abs(cr)+1)); monthsChecked++;
 }
-let nan=false,worstInv=0;
+let nan=false,worstInv=0; const OB={done:0,by:{}};
 const treas0=new Map();
 for(let y=0;y<YEARS;y++){
   for(const n of alive())treas0.set(n,S.nations[n].res.dinero);
@@ -88,8 +88,8 @@ for(let y=0;y<YEARS;y++){
   for(let d=0;d<365;d++){S.hour+=24;const pb=pechoCrown();tick();
     if(S.pmKey!==pmKey0){if(pmKey0!=null)checkBooks(pb);pmKey0=S.pmKey;pechoAt=pb}
     if(AI){es.estatesDaily();for(let h=0;h<24;h++)ec.degradeBuildings();
-      for(const p of S.provs)if(p.buildQueue.length){const q=p.buildQueue[0];q.hoursLeft-=24;
-        if(q.hoursLeft<=0){p.buildings[q.b]++;p.buildQueue.shift();if(q.owner)(p.bOwner||(p.bOwner={}))[q.b]=q.owner}}}}
+      for(const p of S.provs)if(p.buildQueue.length){const q=p.buildQueue[0];   // la obra termina al comprar todos sus tramos (economy2 obraPass)
+        if(q.prog>=1-1e-9){OB.done++;OB.by[q.owner||"corona"]=(OB.by[q.owner||"corona"]||0)+1;p.buildings[q.b]++;p.buildQueue.shift();if(q.owner)(p.bOwner||(p.bOwner={}))[q.b]=q.owner}}}}
   for(const n of alive()){const N=S.nations[n];for(const k in N.res)if(!isFinite(N.res[k]))nan=true;for(const k in N.sWealth)if(!isFinite(N.sWealth[k]))nan=true}
   const iv=inv(); const rel=Math.abs(iv-inv0)/(Math.abs(inv0)+1); worstInv=Math.max(worstInv,rel);
   // resumen mundial del año
@@ -99,6 +99,8 @@ for(let y=0;y<YEARS;y++){
   const extra=` · vendido/producido ${pct(st.soldV/Math.max(1,st.prodV))} · neto campesino por ducado vendido ${(st.campNet/Math.max(1,st.grossV)).toFixed(2)} · jornales ${fmt(st.jornal)}/año · invariante Δrel ${rel.toExponential(1)}`;
   console.log(`año ${y+1}: población ${fmt(pop)} · dinero en manos ${fmt(money)}${extra}`);
 }
+if(AI){const w={};let n=0;for(const p of S.provs)if(p.buildQueue.length){n++;const k=p.buildQueue[0].wait||"avanza";w[k]=(w[k]||0)+1}
+  console.log(`obras: ${OB.done} terminadas (${Object.entries(OB.by).map(([k,v])=>k+" "+v).join(", ")}) · en curso ${n}: ${Object.entries(w).map(([k,v])=>k+" "+v).join(", ")}`)}
 console.log(`\nNaN: ${nan?"⚠ SÍ":"✅ no"} · invariante del dinero: ${worstInv<1e-6?"✅":"⚠"} peor Δrel ${worstInv.toExponential(2)}`);
 console.log(`libros de cuentas (${monthsChecked} meses, ${names[S.player]}): provincia Σcobros+flete=Σvalor ${worstProvBook<1e-9?"✅":"⚠"} peor ${worstProvBook.toExponential(2)} · pecho provincias = pecho Tesorería ${worstPecho<1e-9?"✅":"⚠"} peor ${worstPecho.toExponential(2)}`);
 {const l=L();console.log(`grifos/sumideros acumulados: minas ${fmt(l.mint)} · rescates ${fmt(l.rescue)} · sumidero ${fmt(l.sink)}`);
