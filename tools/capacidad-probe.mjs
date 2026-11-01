@@ -82,7 +82,9 @@ console.log(`\n[${TAG}] ${YEARS} años. Por región y ${DEC} años: x (campesino
 for(const r of RN){if(!rows[0].r[r].K)continue;console.log(`\n${r}  (pobl. → final: ${fmt(rows[0].r[r].pop)} → ${fmt(rows[rows.length-1].r[r].pop)})`);
   for(const s of rows){const q=s.r[r];console.log(`  ${String(1444+s.y).padEnd(5)} x ${q.x.toFixed(2)} · >0,9 ${(100*q.hi).toFixed(0).padStart(3)}% · hambre ${String(q.fam).padStart(4)} · muertos ${fmt(q.dead).padStart(7)} · grano ×${q.pr.toFixed(2)} · techo ${String(q.cap).padStart(4)} · renta ${fmt(q.rent)}`)}}
 let pop=0;for(const p of LP)pop+=p.pop||0;console.log(`\npoblación total final ${fmt(pop)}`);
-{let n=0,d=0,k=0;for(const N of S.nations){if(N&&N.e2&&N.e2.posTot){n+=N.e2.posTot;d+=N.e2.posSpent||0;k++}}console.log(`pósito: ${n} socorros en ${k} reinos, ${fmt(d)} ducados`)}
+{let n=0,d=0,k=0;for(const N of S.nations){if(N&&N.e2&&N.e2.posTot){n+=N.e2.posTot;d+=N.e2.posSpent||0;k++}}console.log(`pósito: ${n} socorros en ${k} reinos, ${fmt(d)} ducados`);
+  const W={hecho:0,tope:0,plaza:0,dinero:0};for(const N of S.nations)if(N&&N.e2&&N.e2.posWhy)for(const r in W)W[r]+=N.e2.posWhy[r]||0;
+  const T=W.hecho+W.tope+W.plaza+W.dinero||1;console.log(`pósito, graneros urgentes (granero-día): ${T} · socorrido ${W.hecho} (${(100*W.hecho/T).toFixed(1)}%) · sin tope ${W.tope} (${(100*W.tope/T).toFixed(1)}%) · sin grano en la plaza ${W.plaza} (${(100*W.plaza/T).toFixed(1)}%) · sin dinero ${W.dinero} (${(100*W.dinero/T).toFixed(1)}%)`)}
 console.log(`\n[${TAG}] ADELANTADOS (${ADVN.map(n=>names[n]).join(", ")}; capacidad +10% cada 20 años) frente a ATRASADOS (el resto, capacidad fija):`);
 for(const k of ["adv","rest"]){console.log(k==="adv"?"  adelantados":"  atrasados");let prev=P0[k];
   for(const r of grp[k]){console.log(`    ${1444+r.y}  pobl. ${fmt(r.pop)} (${(100*(Math.pow(r.pop/prev,1/DEC)-1)).toFixed(2)}%/año) · x ${r.x.toFixed(2)} · burgueses ${(100*r.burg).toFixed(1)}% · hambre ${r.fam} · muertos ${fmt(r.dead)} (${(100*r.dead/r.pop/DEC).toFixed(2)}%/año)`);prev=r.pop}}

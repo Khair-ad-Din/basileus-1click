@@ -2,7 +2,8 @@
   "_doc": "Variantes de simulación (skill /simular: node tools/sim.mjs lanzar <nombre> [variantes]). Cada variante = cambios de texto EXACTOS sobre una copia de call-of-war: [archivo, texto actual, texto nuevo]; si un texto no aparece exactamente una vez, la variante falla. 'run' = las que se lanzan por defecto; 'years' = años. Deja siempre la de control ('actual', el código tal cual) para comparar en las mismas condiciones. Las rondas pasadas (B, C, D de la capacidad agraria) están en design/capacidad-agraria.md.",
   "run": [
     "posito",
-    "sin-posito"
+    "sin-posito",
+    "posito-30"
   ],
   "years": 80,
   "variants": {
@@ -17,6 +18,16 @@
           "js/economy2.js",
           "const POSITO_AI=0.10;",
           "const POSITO_AI=0;"
+        ]
+      ]
+    },
+    "posito-30": {
+      "desc": "el Pósito de la IA con el 30% del ingreso (el máximo del jugador)",
+      "edits": [
+        [
+          "js/economy2.js",
+          "const POSITO_AI=0.10;",
+          "const POSITO_AI=0.30;"
         ]
       ]
     }
