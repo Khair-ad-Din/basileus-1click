@@ -1286,7 +1286,9 @@ function refreshFiscal(){
   const taxTip=(label,kind,val,inc)=>{const base=val>0?inc/val:0;
     return tipBox(label.replace(/^\S+\s/,""),[{cols:["Concepto","Valor"],trows:[["Tipo",pct(val)+"%"],["Paga",TAX_WHO[kind]],["Rindió","+"+nf(inc)],...(base>0?[["Base",nf(base)],["Por punto","+"+nf(base/100)+" /mes"]]:[])]}],lab)};
   const slider2=(label,val,min,max,kind,info,inc)=>slider(label,val,min,max,kind,info,null,taxTip(label,kind,val,inc)).replace("</span></div>","</span></div><div style='font-size:11px;color:#8aa478'>+"+nf(inc)+" "+COIN()+" "+lab+"</div>");
-  let h="<div style='text-align:center;font-size:12px;color:#9aa3ad;margin-bottom:11px'>Ingresos de la corona "+lab+": <b style='color:var(--title)'>"+nf(cb.inc)+" "+COIN()+"</b></div>";
+  // la MISMA cifra que usan el Pósito y la IA (economy2: el último mes cerrado, llevado a 30 días)
+  const incM=(N.e2&&N.e2.inc&&N.e2.inc.corona)||0;
+  let h="<div style='text-align:center;font-size:12px;color:#9aa3ad;margin-bottom:11px'>Ingreso mensual: <b style='color:var(--title)'>"+nf(incM)+" "+COIN()+"</b></div>";
   h+=slider2(ph("pecho")+" Pecho",feud,2,20,"feudal","Lo paga el campesino sobre lo que vende de su cosecha en la plaza. Más pecho, menos le queda para sus comodidades.",got("Pecho"));
   h+=slider2(ph("alcabala")+" Alcabala",alc,0,30,"alcabala","Sobre cada venta en la plaza del reino: el comprador paga el precio y la corona se queda su parte, así que el que vende cobra menos.",got("Alcabala"));
   h+=positoSlider(slider,N,nf,pct);
@@ -1514,10 +1516,10 @@ function goodFlowHTML(N,g){
   let h="<table class='e2t' style='margin-top:4px'><tr><th>Flujo</th><th>Composición</th><th class='r'>Al mes</th></tr>"+
     "<tr><td>Oferta</td><td>"+stackBar(sp,170,supTip)+"</td><td class='r'>"+nfE(supT)+"</td></tr>"+
     "<tr><td>Demanda</td><td>"+stackBar(dp,170,demTip)+"</td><td class='r'>"+nfE(wantT+ex)+"</td></tr></table>";
-  const un=x.unsold*k, me=x.merma*k;
-  h+="<table class='e2t' style='margin-top:8px'><tr><th>"+(g==="grano"?"Devuelto":"Perdido")+"</th><th>Merma</th><th>Plaza</th></tr><tr>"+
+  const un=x.unsold*k;
+  h+="<table class='e2t' style='margin-top:8px'><tr><th>"+(g==="grano"?"Devuelto":"Perdido")+"</th><th>Plaza</th></tr><tr>"+
     "<td data-tip='"+(g==="grano"?"Vuelve al granero de su ducado":"Llega sin comprador y no se paga")+"'"+(un>=0.5?" class='"+(g==="grano"?"":"neg")+"'":"")+">"+nfE(un)+"</td>"+
-    "<td data-tip='Se estropea en la plaza'"+(me>=0.5?" class='neg'":"")+">"+nfE(me)+"</td><td>"+nfE(N.mkt[g]||0)+"</td></tr></table>";
+    "<td>"+nfE(N.mkt[g]||0)+"</td></tr></table>";
   return h;
 }
 function ctrBlockHTML(N,g){

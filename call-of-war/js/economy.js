@@ -401,8 +401,8 @@ function recCrown(n,cat,sub,amt){
 function pay(n,cost,cat,sub){for(const k in cost)S.nations[n].res[k]-=cost[k];
   if(cost.dinero){recCrown(n,cat||"Gastos varios",sub,-cost.dinero);sinkAdd(cat||"Gastos varios",cost.dinero)}} // obras, reclutamiento, caminos, reparaciones: el dinero sale de la economía
 // LIBRO DE GRIFOS Y SUMIDEROS (S.e2L): mint = acuñación, sink = dinero que sale de la economía (by: por concepto),
-// rescue = estamentos rescatados a 0, discard = valor de lo que la plaza tira. El arnés comprueba con él el invariante.
-function ledger(){return S.e2L||(S.e2L={mint:0,sink:0,rescue:0,discard:0})}
+// rescue = estamentos rescatados a 0. El arnés comprueba con él el invariante.
+function ledger(){return S.e2L||(S.e2L={mint:0,sink:0,rescue:0})}
 function sinkAdd(cat,v){if(!(v>0))return;const L=ledger();L.sink+=v;const b=L.by||(L.by={});b[cat]=(b[cat]||0)+v}
 function lvlOf(p,b){return p.buildings[b]||0}                          // nivel ESTRUCTURAL (existe, aunque esté deshabilitado)
 // ---- Ciclo de vida de edificios: DESHABILITAR / degradar / destruir / reparar ----

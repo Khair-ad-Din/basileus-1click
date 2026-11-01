@@ -271,7 +271,8 @@ const RESERVE_MONTHS=3;  // un estamento aparta tantos meses de mantenimiento an
 const DIEZMO_KIND=0.10;
 const MARGIN=0.10;       // comisión del comerciante (burgués) sobre cada compra en la plaza
 const JORNAL=0.20;       // de lo que cobra un taller, esta parte va como jornal a los campesinos de su provincia
-const CAP_MONTHS=2;      // la plaza guarda como mucho tantos meses de demanda; el resto se tira
+const CAP_MONTHS=2;      // la plaza solo PAGA lo que puede vender o guardar (hasta tantos meses de demanda); lo demás no lo
+                         // acepta y no se paga. Lo que ya compró no se tira nunca: si la demanda baja, deja de aceptar hasta venderlo
 // CONTRATOS DE COMERCIO (design/precios-cadencia.md §3): una vez al mes el mercader firma cuánto llevará cada día de un
 // reino a otro, con la PREVISIÓN de oferta y demanda (la que se puede pagar) y los precios de la semana; se entrega a
 // diario. Antes el mercader diario solo traía lo que al importador le FALTÓ AYER: lo traído se vendía y se abría un hueco
@@ -438,7 +439,7 @@ function buildingOutput2(p,b,lvlArg){ // unidades/MES del bien del edificio (la 
 // en un mes). Unidades acumuladas en el mes; cur.days dice cuántos días lleva.
 function glOf(N){const mk=monthKeyOf(S.hour),G=N.gl||(N.gl={k:mk,cur:{days:0,g:{}},prev:null});
   if(G.k!==mk){G.prev=G.cur;G.cur={days:0,g:{}};G.k=mk}return G}
-function glG(G,g){return G.cur.g[g]||(G.cur.g[g]={sup:{},dem:{},exp:0,imp:0,merma:0,unsold:0,cut:{}})}
+function glG(G,g){return G.cur.g[g]||(G.cur.g[g]={sup:{},dem:{},exp:0,imp:0,unsold:0,cut:{}})}
 function glDem(G,g,who,want,got){const d=glG(G,g).dem,x=d[who]||(d[who]=[0,0]);x[0]+=want;x[1]+=got}
 function economyTick2(dt=24,doArb=true){
   const f=dt/YR_TICKS, L=ledger();
@@ -446,10 +447,14 @@ function economyTick2(dt=24,doArb=true){
   ensureMarketTopology(); // centros de comercio (p.hubOf/hubKm → flete y portazgo). Antes solo se calculaban al abrir la vista
                           // de mapa "Centros": en partida el flete era 0 y el arnés (que sí los calcula) no medía lo mismo. Barato: solo si cambian fronteras.
   for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(!N)continue;ensure2(N);N.tollRate=0;N.alcabalaRate=0;N.almojRate=0;
-    // INGRESO MENSUAL de cada dueño (media de ~1 mes): lo que de verdad le entra. La gestión por presupuesto lo compara con
-    // su subsistencia + mantenimiento (no con la caja del día, que el consumo deja siempre rozando la reserva)
-    const it=N.e2.incTick, inc=N.e2.inc||(N.e2.inc={});
-    if(it&&N.e2.incDt){const k=Math.min(1,N.e2.incDt/720);for(const o of ["corona",...STRATA]){const v=(it[o]||0)/N.e2.incDt*730;inc[o]=inc[o]==null?v:inc[o]+(v-inc[o])*k}}
+    // INGRESO MENSUAL de cada dueño: lo que le entró el último MES DE CALENDARIO cerrado, llevado a 30 días (el primer mes
+    // de la partida es parcial); hasta que se cierra uno, la previsión del mes en curso. UNA sola cifra para todos: Hacienda,
+    // el Pósito, la gestión por presupuesto y la IA de obras (no la caja del día, que el consumo deja rozando la reserva).
+    const it=N.e2.incTick, mk=monthKeyOf(S.hour-dt), A=N.e2.incAcc||(N.e2.incAcc={k:mk,h:0,v:{}});
+    if(it&&N.e2.incDt){
+      if(A.k!==mk){if(A.h>0){const r=730/A.h,inc={};for(const o of ["corona",...STRATA])inc[o]=(A.v[o]||0)*r;N.e2.inc=inc;N.e2.incShut=true}A.k=mk;A.h=0;A.v={}}
+      A.h+=N.e2.incDt;for(const o of ["corona",...STRATA])A.v[o]=(A.v[o]||0)+(it[o]||0);
+      if(!N.e2.incShut){const r=730/A.h,inc=N.e2.inc||(N.e2.inc={});for(const o of ["corona",...STRATA])inc[o]=(A.v[o]||0)*r}}
     N.e2.incTick={};N.e2.incDt=dt}
   // 0. mano de obra movilizada (la leva deja huecos en los talleres)
   for(const p of S.provs)p.mob=0;
@@ -652,9 +657,6 @@ function economyTick2(dt=24,doArb=true){
     for(const e of STRATA){let m=0,sm=0;for(const g in base[e]){const v=base[e][g]*price[g];m+=v;if(TIER_OF[g]==="subs")sm+=v}
       N.e2.basket[e]=m/dt*730; N.e2.subsCost[e]=sm/dt*730}   // /mes: cesta completa y solo subsistencia
     N.prosp=N.e2.cov.burgues.vida;                             // el ascenso a burgués sigue a la vida diaria del burgués
-    // la plaza no guarda más de CAP_MONTHS de demanda: lo que pasa de ahí se va estropeando
-    for(const g of GOODS2){const capS=(demCap(g)/dt*730+ctrOut(N,g)*730/24)*CAP_MONTHS, s=N.mkt[g]||0;
-      if(s>capS){const x=(s-capS)*Math.min(1,dt/24/30),v=x*price[g];L.discard+=v;glG(GL,g).merma+=x;const db=L.dby||(L.dby={});db[g]=(db[g]||0)+v;N.mkt[g]=s-x}}  // MERMA: lo que sobra se estropea poco a poco (1/30 al día): da un mes para que los contratos o el mercado lo coloquen; tirarlo de golpe al renovarse los contratos tiraba lo ya pagado
     // demanda que se quedó sin cubrir POR FALTA DE MERCANCÍA: es lo único que un mercader puede venir a vender
     if(!N.e2.gap)N.e2.gap={};
     for(const g of GOODS2)N.e2.gap[g]=gapStock[g]||0;   // lo que se habría comprado (había dinero) pero no había mercancía
@@ -787,12 +789,9 @@ const POSITO_AI=0.10;      // la corona IA dedica hasta el 10% de su ingreso men
 const POSITO_MIN=0.25;     // compra mínima: una semana de grano (menos no compensa el viaje)
 const POSITO_MONTHS=2;     // actúa cuando al granero le quedan estos meses o menos (y no llega a la siega)
 function positoRate(N){return N.ai?POSITO_AI:(N.posito||0)}
-// el tope se fija al empezar el mes (el ingreso mensual de la corona en ese momento) y no se mueve hasta el siguiente;
-// el % sí se puede cambiar a mitad de mes
-const crownInc=N=>(N.e2&&N.e2.inc&&N.e2.inc.corona)||0;
-function positoMonth(N){const mk=monthKeyOf(S.hour),P=N.e2.pos||(N.e2.pos={k:mk,spent:0,n:0,base:crownInc(N)});
-  if(P.k!==mk){P.k=mk;P.spent=0;P.n=0;P.base=crownInc(N)}return P}
-function positoCap(N){const P=positoMonth(N);return Math.max(0,(P.base||0)*positoRate(N))}
+// tope = % del ingreso mensual de la corona (el del último mes cerrado: no se mueve dentro del mes)
+function positoMonth(N){const mk=monthKeyOf(S.hour),P=N.e2.pos||(N.e2.pos={k:mk,spent:0,n:0});if(P.k!==mk){P.k=mk;P.spent=0;P.n=0}return P}
+function positoCap(N){const inc=(N.e2&&N.e2.inc&&N.e2.inc.corona)||0;return Math.max(0,inc*positoRate(N))}
 function positoPass(){
   const urg={},seen=new Set();
   for(const p of S.provs){

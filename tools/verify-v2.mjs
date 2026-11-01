@@ -101,10 +101,9 @@ for(let y=0;y<YEARS;y++){
 }
 console.log(`\nNaN: ${nan?"⚠ SÍ":"✅ no"} · invariante del dinero: ${worstInv<1e-6?"✅":"⚠"} peor Δrel ${worstInv.toExponential(2)}`);
 console.log(`libros de cuentas (${monthsChecked} meses, ${names[S.player]}): provincia Σcobros+flete=Σvalor ${worstProvBook<1e-9?"✅":"⚠"} peor ${worstProvBook.toExponential(2)} · pecho provincias = pecho Tesorería ${worstPecho<1e-9?"✅":"⚠"} peor ${worstPecho.toExponential(2)}`);
-{const l=L();console.log(`grifos/sumideros acumulados: minas ${fmt(l.mint)} · rescates ${fmt(l.rescue)} · sumidero ${fmt(l.sink)} · tirado de la plaza (valor) ${fmt(l.discard)}`);
+{const l=L();console.log(`grifos/sumideros acumulados: minas ${fmt(l.mint)} · rescates ${fmt(l.rescue)} · sumidero ${fmt(l.sink)}`);
   console.log(`  sumidero por concepto: `+Object.entries(l.by||{}).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k} ${fmt(v)}`).join(" · ")+
-    ` · saldo de las plazas ${fmt(e2.moneyStock().pl)}`);
-  console.log(`  tirado por bien: `+Object.entries(l.dby||{}).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([k,v])=>`${e2.LABEL2[k]} ${fmt(v)}`).join(" · "))}
+    ` · saldo de las plazas ${fmt(e2.moneyStock().pl)}`);}
 
 // ---- por nación (último año) ----
 console.log(`\nNación            pobl.  corona Δ/mes   riqueza/hab: camp  burg  clero  nob`+"   cobertura (subs/vida/lujo): camp · burg · clero · nob");
