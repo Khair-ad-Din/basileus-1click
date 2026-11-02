@@ -82,7 +82,8 @@ else if(cmd==="resultados"){
   for(const d of fs.readdirSync(out).sort()){const dir=path.join(out,d);if(!fs.statSync(dir).isDirectory())continue;
     for(const f of fs.readdirSync(dir)){const t=fs.readFileSync(path.join(dir,f),"utf8"),i=t.indexOf("ADELANTADOS");
       console.log(`\n=== ${d} (${path.relative(root,path.join(dir,f))}) ===`);
-      console.log(i>=0?t.slice(t.lastIndexOf("\n",i)+1).trim():"(sin resumen: ¿falló? mira el texto completo)");
+      const k=t.split("\n").filter(l=>/^(año|  riqueza|mantenimiento|tropas|flete|obras|NaN|libros|Madera|Piedra|Hierro|Armas) /.test(l)); // sonda verify-v2
+      console.log(i>=0?t.slice(t.lastIndexOf("\n",i)+1).trim():k.length?k.join("\n"):"(sin resumen: ¿falló? mira el texto completo)");
       const pop=t.match(/población total final .*/);if(pop)console.log(pop[0])}}
 }
 else{console.log(fs.readFileSync(fileURLToPath(import.meta.url),"utf8").split("\n").slice(0,10).join("\n"));process.exit(cmd?1:0)}

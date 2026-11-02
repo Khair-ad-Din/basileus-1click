@@ -98,6 +98,10 @@ for(let y=0;y<YEARS;y++){
     if(N.e2&&N.e2.st)for(const k in st)st[k]+=N.e2.st[k]}
   const extra=` · vendido/producido ${pct(st.soldV/Math.max(1,st.prodV))} · neto campesino por ducado vendido ${(st.campNet/Math.max(1,st.grossV)).toFixed(2)} · jornales ${fmt(st.jornal)}/año · invariante Δrel ${rel.toExponential(1)}`;
   console.log(`año ${y+1}: población ${fmt(pop)} · dinero en manos ${fmt(money)}${extra}`);
+  {const W={corona:0};for(const e of STRATA)W[e]=0;const pr={madera:[],piedra:[],armas:[]};
+    for(const n of alive()){const N=S.nations[n];W.corona+=N.res.dinero||0;for(const e of STRATA)W[e]+=N.sWealth[e]||0;for(const g in pr)if(N.mktPrice&&N.mktPrice[g])pr[g].push(N.mktPrice[g]/(e2.REF2[g]*e2.PRICE_SCALE))}
+    const med=a=>{a.sort((x,y)=>x-y);return a.length?a[a.length>>1].toFixed(2):"—"};
+    console.log(`  riqueza: ${Object.entries(W).map(([k,v])=>k+" "+fmt(v)).join(" · ")} · precio/ref mediana: ${Object.entries(pr).map(([g,a])=>g+" ×"+med(a)).join(" ")}`)}
 }
 {const H={abiertas:0,"<0,6":0,"<0,9":0,cerradas:0},by={};let sc=0;   // F3: estado de las tenencias (barra de mantenimiento)
   for(const p of S.provs){if(p.owner>=NPLAY||!p.bOwn)continue;for(const b in p.bOwn)for(const o in p.bOwn[b]){const l=p.bOwn[b][o];
