@@ -1409,6 +1409,7 @@ const CROWN_CAT={
   "Caminos":["","Caminos que has mandado construir."],
   "Reparaciones":["","Edificios reabiertos y reparados."],
   "Socorro":["","Grano enviado a ducados que no llegaban a la siega: comprado en la plaza y su flete."],
+  "Mercedes":["","Cada mes, la sexta parte de lo que sobra tras la reserva (3 meses de ingreso, 6 en guerra) y las obras pendientes, para la nobleza y el clero según sus rentas."],
   "Gastos varios":["","Otros pagos de la corona."],
   "Otros":["","Movimientos del tesoro sin apunte en el libro."]
 };

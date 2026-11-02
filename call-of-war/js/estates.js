@@ -3,8 +3,8 @@
 // Movido tal cual desde sim.js (2026-09-26); lo nuevo es budgetManage (v2): cada dueño cuadra sus cuentas.
 import { NPLAY, BUILDINGS } from "./config.js";
 import { S } from "./state.js";
-import { BKEYS, sinkAdd, lvlOf, hLvl, hOff, hOwners, setOff, crownMay, buildMax, usedSlots, buildSlots, freeLabor, buildJobs, JOBS_PER_LEVEL, costFor, timeFor, canAfford, pay, recFlow, isOccupied, ESTATES_BUILD, buildBlock } from "./economy.js";
-import { ESTATE_BUILDS2, buildingProfit2, buildingOutput2, upkeepMonth2, siteOK2, isMarketDay, obraCost, newObra, obraFull, repairPay, obsolete2 } from "./economy2.js";
+import { BKEYS, sinkAdd, lvlOf, hLvl, hOff, hOwners, setOff, crownMay, buildMax, usedSlots, buildSlots, freeLabor, buildJobs, JOBS_PER_LEVEL, costFor, timeFor, canAfford, pay, recFlow, isOccupied, ESTATES_BUILD, buildBlock, armyCount, disbandUnit } from "./economy.js";
+import { ESTATE_BUILDS2, buildingProfit2, buildingOutput2, upkeepMonth2, siteOK2, isMarketDay, obraCost, newObra, obraFull, repairPay, obsolete2, obraProduce, recruitOrder, nationSoldada, soldadaMonth } from "./economy2.js";
 // La IA de obras usa la rentabilidad y la producción de la economía (economy2.js, design/economia-v2.md)
 const profitOf=(p,b,l)=>buildingProfit2(p,b,l);
 const outputOf=(p,b,l)=>buildingOutput2(p,b,l);
@@ -16,7 +16,8 @@ function sink2(v,cat="Obras y reparaciones"){sinkAdd(cat,v)}
  * riqueza (compra los materiales a precio nominal). Compiten por el mismo hueco de obra que el rey (una
  * obra por provincia). Clero → iglesias + viñedos; Nobleza → industria BASE + militar; Burgués →
  * industria de LUJO + comercio/infraestructura. El dueño se fija al completar la obra (hourTick). */
-const INVEST_MONTHS=12; // v2: un estamento invierte solo lo que le sobra tras asegurarse un año de su cesta
+const INVEST_MONTHS=4;  // v2: un estamento invierte lo que le sobra tras asegurarse 4 meses de su cesta (design/circulacion-dinero.md
+                        // decisión 2: con 12 no invertía nadie salvo los burgueses; primero invierte, el lujo extra llega pasado el año)
 // colchón para EMPEZAR una obra: la obra se paga por tramos semanales (economy2 obraPass, la misma regla para corona y
 // estamentos), pero solo se encarga si el dueño tiene en caja esta parte de su coste total al precio de hoy
 const OBRA_KEEP=0.5;
@@ -235,10 +236,58 @@ function budgetManage(){
 // Lo que los dueños hacen CADA DÍA: el presupuesto (cerrar lo que no pueden pagar) a diario; las obras y el
 // cierre/reapertura de talleres por rentabilidad, el DÍA DE MERCADO (semanal), con el precio ya fijado para la semana.
 // Lo llaman el juego (sim.js) y el arnés (tools/verify-v2.mjs): así se mide lo mismo que corre.
+// ---- IA de la CORONA (obras, reclutas y solvencia): la llama sim.js aiTurn cada 6 h y el arnés (verify-v2 --ia) ----
+// Como mucho CROWN_OBRAS_MAX obras de la corona a la vez y UNA de servicio (las que no producen): sin tope, la IA llenaba
+// el reino de campos de entrenamiento y almacenes (500+ en cola en el mundo), el cupo de obras se quedaba lleno en 184
+// de 189 reinos y los estamentos no podían empezar ni un taller en todo el año.
+const CROWN_OBRAS_MAX=3;  // obras de la corona IA a la vez (estamentos aparte)
+const AI_RECRUIT_MAX=4;   // reclutas a la vez de una corona IA
+const AI_ARMY_SHARE=0.25; // la IA no recluta si la soldada de su ejército pasaría de esta parte del ingreso de la corona
+function crownAI(n,owned){
+  const N=S.nations[n];
+  if(!owned)owned=S.provs.filter(p=>p.owner===n&&!isOccupied(p)); // no desarrollar lo ocupado
+  if(!owned.length)return;
+  // construir: la corona elige sus obras con la MISMA lógica que los estamentos (pickCrownBuild)
+  let co=0,cf=0;for(const p of owned)for(const q of p.buildQueue)if(!q.owner){co++;if(!obraProduce(q.b))cf++}
+  for(let t=0;t<2&&co<CROWN_OBRAS_MAX;t++){
+    const p=owned[(S.rand()*owned.length)|0];
+    if(p.buildQueue.length)continue;
+    const b=pickCrownBuild(p,cf<1); if(!b)continue;
+    p.buildQueue.push(newObra(p,b));          // se paga por tramos semanales (economy2 obraPass)
+    co++;if(!obraProduce(b))cf++;
+  }
+  // reclutar: mientras la soldada de todo el ejército quepa en el 25% del ingreso de la corona
+  let troops=0;
+  for(const a of S.armies)if(a.nation===n)troops+=armyCount(a);
+  const treasury=N.res.dinero, inc=(N.e2&&N.e2.inc&&N.e2.inc.corona)||0;
+  let sold=nationSoldada(n),pend=0,stuck=false;
+  for(const p of owned)for(const q of p.recruitQueue)if(q.nation===n){sold+=soldadaMonth(q.u);pend++;if(q.wait)stuck=true} // también la que está en recluta
+  // como las obras: no encarga otra mientras alguna espera material (la plaza no da para más) ni pasa de AI_RECRUIT_MAX
+  if(troops<6+owned.length&&treasury>800&&!stuck&&pend<AI_RECRUIT_MAX){
+    for(const p of owned){
+      if(p.recruitQueue.length||p.buildings.cuartel<1)continue;
+      let u="infanteria";
+      if(p.buildings.fabrica>=3&&S.rand()<0.3)u="blindadoMedio";
+      else if(p.buildings.fabrica>=1&&S.rand()<0.35)u="blindadoLigero";
+      else if(p.buildings.fabrica>=2&&S.rand()<0.3)u="artilleria";
+      if(sold+soldadaMonth(u)>AI_ARMY_SHARE*inc)continue;
+      if(recruitOrder(n,p,u))break;
+    }
+  }
+  // solvencia: si la soldada pasa del doble de su parte del ingreso y el tesoro no cubre un mes, licencia la unidad
+  // MÁS CARA de su ejército más grande (una a una, hasta volver a caber)
+  if(inc>0&&sold>2*AI_ARMY_SHARE*inc&&treasury<sold){
+    let big=null,bc=-1;for(const a of S.armies)if(a.nation===n){const c=armyCount(a);if(c>bc){bc=c;big=a}}
+    if(big){
+      let bu=null,bup=-1;for(const k in big.units){if(big.units[k]<1)continue;const up=soldadaMonth(k);if(up>bup){bup=up;bu=k}}
+      if(bu)disbandUnit(big,bu,1);
+    }
+  }
+}
 function estatesDaily(){
   if(isMarketDay())estateBuild();
   budgetManage();
 }
 
-export { estatesDaily, estateBuild, pickCrownBuild, budgetManage, manageWorkshops, pickEstateBuild, profitOf, outputOf,
+export { estatesDaily, estateBuild, pickCrownBuild, crownAI, budgetManage, manageWorkshops, pickEstateBuild, profitOf, outputOf,
   BUDGET_MONTHS };

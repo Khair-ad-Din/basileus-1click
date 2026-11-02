@@ -254,7 +254,9 @@ function seedWealth2(){
   const str=Array.from({length:NPLAY},()=>{const o={};for(const k of STRATA)o[k]=0;return o});
   for(const p of S.provs){if(p.owner>=NPLAY||p.wasteland||!p.pops)continue;for(const k of STRATA)str[p.owner][k]+=p.pops[k]||0}
   for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(!N)continue;ensure2(N);
-    for(const e of STRATA){let yr=0;for(const t of TIERS){const w=WANT2[e][t];if(w)for(const g in NEED2[t])yr+=NEED2[t][g]*w*ref(g)}
+    // con la MISMA cesta que mide su ahorro (N.e2.basket): el campesino come de su despensa, su grano no cuenta. Contado
+    // con el grano, sus "6 meses" eran 23 y el consumo extra por riqueza (WEALTH_BOOST) le vaciaba la caja.
+    for(const e of STRATA){let yr=0;for(const t of TIERS){const w=WANT2[e][t];if(w)for(const g in NEED2[t])if(!(e==="campesino"&&g==="grano"))yr+=NEED2[t][g]*w*ref(g)}
       N.sWealth[e]=yr*START_MONTHS2/12*str[n][e]}}
 }
 // Repertorio de obra de cada estamento en v2 (solo edificios que v2 entiende).
@@ -266,7 +268,7 @@ const ESTATE_BUILDS2={
 };
 
 // DINERO de cada venta a la plaza
-const WEALTH_BOOST=2;    // quien tiene más de un año de cesta ahorrado pide hasta el TRIPLE de vida diaria y lujo
+const WEALTH_BOOST=1;    // quien tiene más de un año de cesta ahorrado pide hasta el DOBLE de vida diaria y lujo
 const RESERVE_MONTHS=3;  // un estamento aparta tantos meses de mantenimiento antes de gastar en su cesta (= BUDGET_MONTHS)
 // DIEZMO EN ESPECIE: el clero se lleva la décima de TODA la cosecha a sus graneros y la vende en la plaza (así era en
 // 1444). Cobrarlo solo sobre lo que el campesino vendía (~20% de lo producido) dejaba al clero en la ruina.
@@ -551,6 +553,30 @@ function armyClose(){
     if(e<=0){const men=armyShed(a,1);S.armies.splice(i,1);if(S.selArmy===a)S.selArmy=null;S.armyEv.push({n:a.nation,kind:"desbanda",men,prov:a.prov})}
     else if(e<ARMY_DESERT_AT){const men=armyShed(a,ARMY_DESERT);S.armyEv.push({n:a.nation,kind:"deserta",men,prov:a.prov})}}
 }
+// MERCEDES (design/circulacion-dinero.md decisión 1): la corona guarda una RESERVA de meses de ingreso (más en guerra) y,
+// tras apartar lo que le falta por pagar de sus obras, reparte cada mes una parte de lo que le sobra en mercedes a la
+// nobleza y al clero, en proporción a sus rentas. En cada estamento se reparte por provincias según sus pops (libro de
+// la provincia, m.otr). Es una transferencia: no crea ni destruye dinero. Vale igual para el jugador y para la IA.
+const MERCED_RESERVE=3, MERCED_RESERVE_WAR=6, MERCED_RATE=1/6;
+function mercedesClose(){
+  const mk=monthKeyOf(S.hour); if(S.merK===mk)return; const first=S.merK==null; S.merK=mk; if(first)return;
+  const war=new Set();if(S.wars)for(const w of S.wars.values()){war.add(w.a);war.add(w.b)}
+  const pops=Array.from({length:NPLAY},()=>[]);
+  for(const p of S.provs)if(p.owner<NPLAY&&!p.wasteland&&p.pops)pops[p.owner].push(p);
+  for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(!N||!N.alive||!N.e2||!N.e2.inc)continue;
+    const due=mercedDue(n,war.has(n));if(!(due.v>0))continue;
+    for(const e of ["nobleza","clero"]){const v=due.v*due.sh[e];if(!(v>0))continue;
+      let tp=0;for(const p of pops[n])tp+=p.pops[e]||0;if(!(tp>0))continue;
+      N.res.dinero-=v;recCrown(n,"Mercedes",e==="nobleza"?"Nobleza":"Clero",-v);
+      N.sWealth[e]+=v;recFlow(n,e,"Mercedes",v);addInc(N,e,v);
+      for(const p of pops[n]){const x=p.pops[e]||0;if(x>0)pmOtr(p,e,"Mercedes",v*x/tp)}}}
+}
+// Lo que la corona n pagaría este mes en mercedes: {v, reserva, obras (lo que falta por pagar), sh: parte de cada estamento}
+function mercedDue(n,atWar){const N=S.nations[n],inc=(N.e2&&N.e2.inc&&N.e2.inc.corona)||0,pr=g=>(N.mktPrice&&N.mktPrice[g])||ref(g);
+  const reserva=(atWar?MERCED_RESERVE_WAR:MERCED_RESERVE)*Math.max(0,inc);let obras=0;
+  for(const p of S.provs)if(p.owner===n)for(const q of p.buildQueue)if(!q.owner){let c=q.jornal||0;for(const g in q.bienes)c+=q.bienes[g]*pr(g);obras+=(1-(q.prog||0))*c}
+  const ri=N.e2.inc||{},rn=Math.max(0,ri.nobleza||0),rc=Math.max(0,ri.clero||0),t=rn+rc,sh=t>0?{nobleza:rn/t,clero:rc/t}:{nobleza:0.5,clero:0.5};
+  return {v:Math.max(0,(N.res.dinero||0)-reserva-obras)*MERCED_RATE,reserva,obras,sh}}
 function armyShed(a,frac){ // una parte de la tropa se va a casa: sus hombres vuelven a la soldadesca de su provincia
   let men=0;
   if(a.src)for(const pid in a.src){const back=a.src[pid]*frac;a.src[pid]-=back;men+=back;
@@ -669,6 +695,7 @@ function economyTick2(dt=24,doArb=true){
   pmClose(dt);            // libro de cada provincia: cierra el mes si ha cambiado
   upkeepClose();          // barra de estado de los edificios: cierra el mes del mantenimiento si ha cambiado
   armyClose();            // barra de las tropas: cierra el mes de la soldada, la comida y la reposición
+  mercedesClose();        // mercedes de la corona a la nobleza y al clero con lo que sobra de su reserva
   ensureMarketTopology(); // centros de comercio (p.hubOf/hubKm → flete y portazgo). Antes solo se calculaban al abrir la vista
                           // de mapa "Centros": en partida el flete era 0 y el arnés (que sí los calcula) no medía lo mismo. Barato: solo si cambian fronteras.
   for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(!N)continue;ensure2(N);N.tollRate=0;N.alcabalaRate=0;N.almojRate=0;
@@ -1240,4 +1267,4 @@ function granaryOf(p){
 }
 
 export { economyTick2, siteOK2, seedEstates2, upkeepMonth2, upkeepDue, seedOwner2, seedWealth2, GOODS2, LABEL2, REF2, NEED2, WANT2, TIERS, BLD2, ESTATE_BUILDS2, buildingProfit2, buildingOutput2,
-  transport, tradeCost2, moneyStock, sinkAdd, ARTISAN_IN, ctrOut, ctrIn, granaryOf, foodGrowth, obraCost, newObra, obraFull, obraProduce, repairCost, repairPay, positoCap, positoMonth, positoQuote, positoSend, POSITO_MONTHS, reserveOf, landYield, landCap, landOcc, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX, GRAIN_RESERVE, reliefQuote, reliefSend, isMarketDay, MARKET_DAYS, PRICE_SCALE, JORNAL, MARGIN, costQuote, costOK, costPay, specialty2, obsolete2, heavyFlete, unitCost, recruitOK, recruitOrder, armySoldada, nationSoldada, soldadaMonth, SOLDADA_K, REPOSICION };
+  transport, tradeCost2, moneyStock, sinkAdd, ARTISAN_IN, ctrOut, ctrIn, granaryOf, foodGrowth, obraCost, newObra, obraFull, obraProduce, repairCost, repairPay, positoCap, positoMonth, positoQuote, positoSend, POSITO_MONTHS, reserveOf, landYield, landCap, landOcc, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX, GRAIN_RESERVE, reliefQuote, reliefSend, isMarketDay, MARKET_DAYS, PRICE_SCALE, JORNAL, MARGIN, costQuote, costOK, costPay, specialty2, obsolete2, heavyFlete, unitCost, recruitOK, recruitOrder, armySoldada, nationSoldada, soldadaMonth, SOLDADA_K, REPOSICION, mercedDue, MERCED_RESERVE, MERCED_RESERVE_WAR };

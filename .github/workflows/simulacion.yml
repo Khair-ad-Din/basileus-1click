@@ -48,7 +48,7 @@ jobs:
           F="out_${{ matrix.variant }}.txt"
           { echo "### Variante ${{ matrix.variant }}"; echo '```'
             if grep -q ADELANTADOS "$F"; then sed -n '/ADELANTADOS/,$p' "$F"; grep "población total" "$F"
-            else grep -E '^(año|  riqueza|mantenimiento|tropas|flete|obras|NaN|libros|Madera|Piedra|Hierro|Armas)[ :]' "$F"; fi
+            else grep -E '^(año|  riqueza|mantenimiento|tropas|flete|mercedes|obras|NaN|libros|Madera|Piedra|Hierro|Armas)[ :]' "$F"; fi
             echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()

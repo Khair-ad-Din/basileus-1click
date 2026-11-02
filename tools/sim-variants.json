@@ -1,10 +1,11 @@
 {
   "_doc": "Variantes de simulación (skill /simular: node tools/sim.mjs lanzar <nombre> [variantes]). Cada variante = cambios de texto EXACTOS sobre una copia de call-of-war: [archivo, texto actual, texto nuevo]; si un texto no aparece exactamente una vez, la variante falla. 'run' = las que se lanzan por defecto; 'years' = años. Deja siempre la de control ('actual', el código tal cual) para comparar en las mismas condiciones. Las rondas pasadas (B, C, D de la capacidad agraria) están en design/capacidad-agraria.md.",
   "run": [
-    "f7-control",
-    "f7-obra15",
-    "f7-soldada06",
-    "f7-armas3"
+    "cd-antes",
+    "cd-siembra",
+    "cd-inv4",
+    "cd-todo",
+    "cd-res6"
   ],
   "years": 10,
   "variants": {
@@ -87,6 +88,105 @@
           "js/economy2.js",
           "const ARMS_MUL=5;",
           "const ARMS_MUL=3;"
+        ]
+      ]
+    },
+    "cd-antes": {
+      "desc": "circulación: como antes (siembra con grano, invierte con 12 meses, lujo ×3, sin mercedes)",
+      "probe": {
+        "file": "verify-v2.mjs",
+        "args": [
+          "--ia"
+        ]
+      },
+      "edits": [
+        [
+          "js/economy2.js",
+          "for(const g in NEED2[t])if(!(e===\"campesino\"&&g===\"grano\"))yr+=",
+          "for(const g in NEED2[t])yr+="
+        ],
+        [
+          "js/estates.js",
+          "const INVEST_MONTHS=4; ",
+          "const INVEST_MONTHS=12;"
+        ],
+        [
+          "js/economy2.js",
+          "const WEALTH_BOOST=1;",
+          "const WEALTH_BOOST=2;"
+        ],
+        [
+          "js/economy2.js",
+          "MERCED_RATE=1/6;",
+          "MERCED_RATE=0;"
+        ]
+      ]
+    },
+    "cd-siembra": {
+      "desc": "circulación: solo la siembra corregida (decisión 0)",
+      "probe": {
+        "file": "verify-v2.mjs",
+        "args": [
+          "--ia"
+        ]
+      },
+      "edits": [
+        [
+          "js/estates.js",
+          "const INVEST_MONTHS=4; ",
+          "const INVEST_MONTHS=12;"
+        ],
+        [
+          "js/economy2.js",
+          "const WEALTH_BOOST=1;",
+          "const WEALTH_BOOST=2;"
+        ],
+        [
+          "js/economy2.js",
+          "MERCED_RATE=1/6;",
+          "MERCED_RATE=0;"
+        ]
+      ]
+    },
+    "cd-inv4": {
+      "desc": "circulación: siembra + invierten con 4 meses + lujo ×2, sin mercedes (decisiones 0 y 2)",
+      "probe": {
+        "file": "verify-v2.mjs",
+        "args": [
+          "--ia"
+        ]
+      },
+      "edits": [
+        [
+          "js/economy2.js",
+          "MERCED_RATE=1/6;",
+          "MERCED_RATE=0;"
+        ]
+      ]
+    },
+    "cd-todo": {
+      "desc": "circulación: el código tal cual (decisiones 0, 2 y 1: mercedes con reserva de 3 meses)",
+      "probe": {
+        "file": "verify-v2.mjs",
+        "args": [
+          "--ia"
+        ]
+      },
+      "edits": []
+    },
+    "cd-res6": {
+      "desc": "circulación: todo, con reserva de 6 meses",
+      "probe": {
+        "file": "verify-v2.mjs",
+        "args": [
+          "--ia"
+        ]
+      },
+      "edits": [
+        [
+          "js/economy2.js",
+          "const MERCED_RESERVE=3,",
+          "const MERCED_RESERVE=6,"
         ]
       ]
     }

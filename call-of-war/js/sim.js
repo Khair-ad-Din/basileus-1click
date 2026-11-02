@@ -1,7 +1,7 @@
 // sim.js
 import { BUILDINGS, GARR_CITADEL, GARR_FORT, GARR_MIN, GOLD_PER_WS, LEVY_RAISE_HOURS, NATIONS, NEUTRAL, NPLAY, RES_BUILDING, SIEGE_BASE_H, START_STOCK, TERRAINS, UNITS, WAR_LOCK_HOURS, WS_BATTLE, WS_DUCHY_BASE, WS_DUCHY_PER, isSea, EMBARK_HOURS } from "./config.js";
 import { S } from "./state.js";
-import { fxKeys, armyAtk, armyCount, armyDef, armyHp, armySpd, addLevel, syncOwn, crownMay, effPow, buildBlock, buildJobs, buildMax, buildSlots, canAfford, canStaffIndustry, costFor, ESTATES_BUILD, foodFill, storeCap, SUBS_BASICS, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor, usedSlots, tsyTick, recFlow, recCrown, specialistCap, jobsOf, degradeBuildings } from "./economy.js";
+import { fxKeys, armyAtk, armyCount, armyDef, armyHp, armySpd, addLevel, syncOwn, crownMay, effPow, buildBlock, buildJobs, buildMax, buildSlots, canAfford, canStaffIndustry, costFor, ESTATES_BUILD, foodFill, storeCap, SUBS_BASICS, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor, usedSlots, disbandUnit, tsyTick, recFlow, recCrown, specialistCap, jobsOf, degradeBuildings } from "./economy.js";
 import { relTick, getRel, THRESH, conquestFanout, insult, fabricateClaim, hasClaim, duchyOwner, sameLeague, hasPact, nationNeighbors, rivalsOf, isRival, sharedRivals, MAX_RIVALS, canPact, formPact, leagueOf, canApplyLeague, applyToLeague, createLeague, leaveLeague, resolveApplication, MAX_LEAGUE } from "./diplomacy.js";
 import { aiOpenWar } from "./council.js";
 import { buildDuchies, hasRoad, roadLvl, isDuchyCap, kmBetween, roadKey } from "./mapgen.js";
@@ -9,7 +9,7 @@ import { drawRoads, paintBorders, repaintProvince } from "./render.js";
 import { saveGame } from "./save.js";
 import { economyTick2, seedOwner2, seedWealth2, seedEstates2, siteOK2, BLD2, obsolete2, newObra, obraProduce, costOK, costPay, recruitOK, recruitOrder, nationSoldada, soldadaMonth } from "./economy2.js";
 // IA de obras y gestión de edificios de los ESTAMENTOS (y de la corona IA): vive en estates.js, sin DOM (la usa el arnés)
-import { estatesDaily, profitOf, pickCrownBuild } from "./estates.js";
+import { estatesDaily, profitOf, pickCrownBuild, crownAI } from "./estates.js";
 import { log, refreshBuildBar, refreshSide, refreshTop } from "./ui.js";
 
 // El núcleo económico/demográfico del tick vive en economy.js (economyTick), sin DOM, para
@@ -811,52 +811,12 @@ function aiDiplomacy(n){
   let best=-1,bm=-1;for(const m of partners){if(hasPact(n,m))continue;const mm=mightOf(m);if(mm>bm){bm=mm;best=m;}}
   if(best>=0&&canPact(n,best,"alliance").ok)formPact(n,best,"alliance");
 }
-const CROWN_OBRAS_MAX=3;  // obras de la corona IA a la vez (estamentos aparte)
-const AI_RECRUIT_MAX=4;   // reclutas a la vez de una corona IA
-const AI_ARMY_SHARE=0.25; // la IA no recluta si la soldada de su ejército pasaría de esta parte del ingreso de la corona
 function aiTurn(n){
   const N=S.nations[n];
   const owned=S.provs.filter(p=>p.owner===n&&!isOccupied(p)); // no desarrollar lo ocupado
   if(!owned.length)return;
-  // construir: la corona elige sus obras con la MISMA lógica que los estamentos (estates.js pickCrownBuild)
-  // Como mucho CROWN_OBRAS_MAX obras de la corona a la vez y UNA de servicio (las que no producen): sin tope, la IA llenaba
-  // el reino de campos de entrenamiento y almacenes (500+ en cola en el mundo), el cupo de obras se quedaba lleno en 184
-  // de 189 reinos y los estamentos no podían empezar ni un taller en todo el año.
-  let co=0,cf=0;for(const p of owned)for(const q of p.buildQueue)if(!q.owner){co++;if(!obraProduce(q.b))cf++}
-  for(let t=0;t<2&&co<CROWN_OBRAS_MAX;t++){
-    const p=owned[(S.rand()*owned.length)|0];
-    if(p.buildQueue.length)continue;
-    const b=pickCrownBuild(p,cf<1); if(!b)continue;
-    p.buildQueue.push(newObra(p,b));          // se paga por tramos semanales (economy2 obraPass)
-    co++;if(!obraProduce(b))cf++;
-  }
-  // reclutar: mientras la soldada de todo el ejército quepa en el 25% del ingreso de la corona
-  let troops=0;
-  for(const a of S.armies)if(a.nation===n)troops+=armyCount(a);
-  const treasury=S.nations[n].res.dinero, inc=(N.e2&&N.e2.inc&&N.e2.inc.corona)||0;
-  let sold=nationSoldada(n),pend=0,stuck=false;
-  for(const p of owned)for(const q of p.recruitQueue)if(q.nation===n){sold+=soldadaMonth(q.u);pend++;if(q.wait)stuck=true} // también la que está en recluta
-  // como las obras: no encarga otra mientras alguna espera material (la plaza no da para más) ni pasa de AI_RECRUIT_MAX
-  if(troops<6+owned.length&&treasury>800&&!stuck&&pend<AI_RECRUIT_MAX){
-    for(const p of owned){
-      if(p.recruitQueue.length||p.buildings.cuartel<1)continue;
-      let u="infanteria";
-      if(p.buildings.fabrica>=3&&S.rand()<0.3)u="blindadoMedio";
-      else if(p.buildings.fabrica>=1&&S.rand()<0.35)u="blindadoLigero";
-      else if(p.buildings.fabrica>=2&&S.rand()<0.3)u="artilleria";
-      if(sold+soldadaMonth(u)>AI_ARMY_SHARE*inc)continue;
-      if(recruitOrder(n,p,u))break;
-    }
-  }
-  // solvencia: si la soldada pasa del doble de su parte del ingreso y el tesoro no cubre un mes, licencia la unidad
-  // MÁS CARA de su ejército más grande (una a una, hasta volver a caber)
-  if(inc>0&&sold>2*AI_ARMY_SHARE*inc&&treasury<sold){
-    let big=null,bc=-1;for(const a of S.armies)if(a.nation===n){const c=armyCount(a);if(c>bc){bc=c;big=a}}
-    if(big){
-      let bu=null,bup=-1;for(const k in big.units){if(big.units[k]<1)continue;const up=soldadaMonth(k);if(up>bup){bup=up;bu=k}}
-      if(bu)disbandUnit(big,bu,1);
-    }
-  }
+  crownAI(n,owned);   // obras, reclutas y solvencia de la corona IA (estates.js, sin DOM: también la corre el arnés)
+  const treasury=S.nations[n].res.dinero;
   // diplomacia autónoma (Fase 7b): reevaluar rivales y, de los rivales comunes, formar alianzas/ligas
   if(S.hour>=WAR_LOCK_HOURS){
     if(S.rand()<RIVAL_EVAL_CHANCE)aiPickRivals(n);
@@ -1096,28 +1056,6 @@ function tryRecruit(pid,u,rally){
   if(!recruitOrder(S.player,p,u,{rally}))return false;
   refreshSide();refreshTop();
   return true;
-}
-// Licenciar `n` unidades de un tipo: desmoviliza (NO mata población), devuelve la soldadesca a las
-// provincias de origen (baja el mantenimiento y recupera mano de obra). Devuelve cuántas licenció.
-function disbandUnit(army,type,n){
-  if(!army||!army.units[type])return 0;
-  n=Math.min(n,Math.floor(army.units[type]+1e-6));
-  if(n<=0)return 0;
-  const freed=n*(UNITS[type].mano||0);
-  let tot=0;for(const pid in army.src)tot+=army.src[pid];
-  if(tot>0&&freed>0)for(const pid in army.src){
-    const back=freed*(army.src[pid]/tot);
-    army.src[pid]=Math.max(0,army.src[pid]-back);
-    const P=S.provs[pid];
-    if(P&&!P.wasteland)P.sold=Math.min(soldCap(P),(P.sold||0)+back); // la gente vuelve a casa
-  }
-  army.units[type]-=n;
-  if(army.units[type]<0.05)delete army.units[type];
-  if(armyCount(army)<0.05){
-    const i=S.armies.indexOf(army);
-    if(i>=0){if(S.selArmy===army)S.selArmy=null;S.armies.splice(i,1)}
-  }
-  return n;
 }
 // Levanta `n` levas ALREDEDOR de un ejército: BFS por anillos sobre territorio propio no ocupado,
 // repartiendo en round-robin entre las provincias capaces (soldadesca + recursos); si no hay cerca,
