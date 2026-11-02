@@ -1,7 +1,7 @@
 // sim.js
 import { BUILDINGS, GARR_CITADEL, GARR_FORT, GARR_MIN, GOLD_PER_WS, LEVY_RAISE_HOURS, NATIONS, NEUTRAL, NPLAY, RES_BUILDING, SIEGE_BASE_H, START_STOCK, TERRAINS, UNITS, WAR_LOCK_HOURS, WS_BATTLE, WS_DUCHY_BASE, WS_DUCHY_PER, isSea, EMBARK_HOURS } from "./config.js";
 import { S } from "./state.js";
-import { fxKeys, armyAtk, armyCount, armyDef, armyHp, armySpd, bOwnerOf, buildBlock, buildJobs, buildMax, buildSlots, canAfford, canStaffIndustry, costFor, ESTATES_BUILD, foodFill, storeCap, SUBS_BASICS, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor, usedSlots, tsyTick, recFlow, recCrown, specialistCap, jobsOf, degradeBuildings } from "./economy.js";
+import { fxKeys, armyAtk, armyCount, armyDef, armyHp, armySpd, addLevel, syncOwn, crownMay, buildBlock, buildJobs, buildMax, buildSlots, canAfford, canStaffIndustry, costFor, ESTATES_BUILD, foodFill, storeCap, SUBS_BASICS, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor, usedSlots, tsyTick, recFlow, recCrown, specialistCap, jobsOf, degradeBuildings } from "./economy.js";
 import { relTick, getRel, THRESH, conquestFanout, insult, fabricateClaim, hasClaim, duchyOwner, sameLeague, hasPact, nationNeighbors, rivalsOf, isRival, sharedRivals, MAX_RIVALS, canPact, formPact, leagueOf, canApplyLeague, applyToLeague, createLeague, leaveLeague, resolveApplication, MAX_LEAGUE } from "./diplomacy.js";
 import { aiOpenWar } from "./council.js";
 import { buildDuchies, hasRoad, roadLvl, isDuchyCap, kmBetween, roadKey } from "./mapgen.js";
@@ -17,7 +17,7 @@ import { log, refreshBuildBar, refreshSide, refreshTop } from "./ui.js";
 
 function seedEstateBld(p,b,estate){ // E2: siembra 1 nivel de b propiedad de estate, si cabe y no existe ya
   if(lvlOf(p,b)>=1||usedSlots(p)>=buildSlots(p))return;
-  p.buildings[b]=(p.buildings[b]||0)+1;(p.bOwner||(p.bOwner={}))[b]=estate;
+  addLevel(p,b,estate);
 }
 // OVERRIDE de capital: reinos cuya ciudad-capital histórica NO cae en su ducado-capital de EU4 (o la
 // supera en pop una vecina), así que el ajuste por ducado no basta. Se fijan por NOMBRE. Ampliable.
@@ -30,15 +30,16 @@ function setupNations(){
   // una FÁBRICA del bien de la provincia (su resType) para que la economía building-driven no
   // arranque en déficit general: cada provincia produce de serie su propio recurso.
   for(const p of S.provs)if(!p.wasteland){
+    syncOwn(p);                                               // lo que trae el mapa sin dueño, de la corona
     // fábrica del resType SOLO donde la provincia pueda dotarla (los núcleos poblados); las provincias
     // demasiado pequeñas quedan agrícolas y no arruinan a los reinos extensos con fábricas ociosas.
     if(p.owner<NPLAY){
-      p.sold=soldCap(p);p.bOwner=p.bOwner||{};
+      p.sold=soldCap(p);
       // fábrica de la CORONA del resType, sembrada a NIVEL 2 (Paso 2): más producción de arranque para que el
       // mundo no empiece con oferta ≈0. Nivel 2 solo si la provincia puede dotar dos niveles; si no, nivel 1.
       const b=obsolete2(RES_BUILDING[p.resType])?null:RES_BUILDING[p.resType]; // sin los talleres heredados de la v1 que ya no producen
-      if(b&&canStaffIndustry(p,b)){const B=BUILDINGS[b];p.buildings[b]=(specialistCap(p)>=2*jobsOf(b)&&(B.unique?1:(B.max||3)>=2))?2:1;
-        const o=seedOwner2(b);if(o!=="corona")p.bOwner[b]=o} // cada taller a su dueño histórico (su producción se VENDE)
+      if(b&&canStaffIndustry(p,b)){const B=BUILDINGS[b],lv=(specialistCap(p)>=2*jobsOf(b)&&(B.unique?1:(B.max||3)>=2))?2:1;
+        if(lv>lvlOf(p,b))addLevel(p,b,seedOwner2(b),lv-lvlOf(p,b))} // cada taller a su dueño histórico (su producción se VENDE)
       // E2: base inicial por estamento (lever de nivelado). Urbano: el burgués tiene su comercio (INGRESO)
       // y el clero su templo (moral + COSTE); rural: la nobleza su cuartel (leva + COSTE). Todo tunable.
       seedEstates2(p,seedEstateBld);                        // cuartel en rural ≥2.000 hab., templo en ciudad ≥20.000 (economy2)
@@ -534,8 +535,7 @@ function hourTick(){
     if(p.buildQueue.length){
       const q=p.buildQueue[0];
       if(q.prog>=1-1e-9){                       // la obra ha comprado todos sus tramos (economy2 obraPass)
-        p.buildings[q.b]++;p.buildQueue.shift();
-        if(q.owner){(p.bOwner||(p.bOwner={}))[q.b]=q.owner} // E2: fija el dueño (estamento) al completar la obra
+        addLevel(p,q.b,q.owner||"corona");p.buildQueue.shift();   // el nivel nuevo es de quien pagó la obra
         if(p.owner===S.player&&!q.owner)log(BUILDINGS[q.b].label+" nivel "+p.buildings[q.b]+" terminada en "+p.name+".");
       }
     }
@@ -1065,6 +1065,7 @@ function tryBuild(pid,b){
   const p=S.provs[pid];
   if(p.owner!==S.player||isOccupied(p)||buildBlock(p,b))return;
   if(obsolete2(b)||(BLD2[b]&&!siteOK2(p,b)))return;   // heredado de la v1 (no hace nada) o taller sin su materia prima
+  if(!crownMay(S.player,b))return;                    // lo levantan los estamentos (economy crownMay)
   p.buildQueue.push(newObra(p,b));          // se paga por tramos semanales en la plaza (economy2 obraPass)
   refreshSide();refreshTop();refreshBuildBar();
 }

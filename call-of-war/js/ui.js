@@ -1,7 +1,7 @@
 // ui.js
 import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, RES_DESC, RES_KEYS, RES_LABEL, RES_SHORT, RES_STRAT, RES_TRADE, TERRAINS, UNITS, WAR_LOCK_HOURS, terrainFx, STRATA, STRATA_INFO, RES_ART, RES_CAT } from "./config.js";
 import { S } from "./state.js";
-import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildJobs, buildMax, buildSlots, canAfford, costFor, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationProvCount, nationStrength, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, resetTsyLedger, tsyAvail, tsyMonthBal, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, provProdMul, YR_TICKS, manorOf, MANOR_RENT, bOwnerOf } from "./economy.js";
+import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildJobs, buildMax, buildSlots, canAfford, costFor, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationProvCount, nationStrength, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, resetTsyLedger, tsyAvail, tsyMonthBal, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, provProdMul, YR_TICKS, manorOf, MANOR_RENT, hLvl, hOff, hCond, hOwners, effLvl, mainOwner, crownMay } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
 import { GOODS2, LABEL2, REF2, NEED2, WANT2, BLD2, PRICE_SCALE, costQuote, specialty2, obsolete2, siteOK2, transport, buildingProfit2, buildingOutput2, upkeepScale, granaryOf, foodGrowth, obraCost, repairCost, positoCap, positoMonth, positoQuote, POSITO_MONTHS, landYield, landCap, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX } from "./economy2.js";
 import { calOf, MONTHS_ES, monthsToHarvest, harvestMonth } from "./economy.js";
@@ -270,6 +270,14 @@ function refreshProvPanel(){
   s+="</div>";
   panel.innerHTML=s;panel.className="show";panel.style.display="block";
 }
+// DUEÑOS de los niveles de un edificio (tenencias): un sello por dueño con sus niveles; el tooltip, la tabla con su estado
+function ownersRow(p,b,bs){
+  const os=hOwners(p,b).sort((x,y)=>hLvl(p,b,y)-hLvl(p,b,x));
+  const trows=os.map(o=>[whoIcon(o,p.owner)+" "+whoLabel(o),hLvl(p,b,o),hOff(p,b,o)?{v:"Cerrado",c:"#d08080"}:"Abierto"]);
+  const tip=tipBox("Dueños",[{cols:["Dueño","Niveles","Estado"],trows}],BUILDINGS[b].label);
+  return "<div style='"+bs+"background:#262b31;cursor:help' data-tiph=\""+ta(tip)+"\"><span style='display:flex;gap:8px'>"+
+    os.map(o=>"<span style='white-space:nowrap"+(hOff(p,b,o)?";opacity:.55":"")+"'>"+whoIcon(o,p.owner)+" "+hLvl(p,b,o)+"</span>").join("")+"</span></div>";
+}
 // tarjetas de construcción (una por categoría filtrada); las pinta la ventana de Construir
 function buildTilesHTML(p){
   const showAll=S.buildFilter==="all";
@@ -282,7 +290,7 @@ function buildTilesHTML(p){
       if(B.resReq&&p.resType!==B.resReq)continue; // mina de plata/oro: solo donde hay yacimiento
       const lvl=lvlOf(p,b),max=buildMax(p,b),inQ=p.buildQueue.some(q=>q.b===b);
       if(!lvl&&obsolete2(b))continue; // heredado de la v1 (bien que ya no existe u oro "de la nada"): no se ofrece
-      const block=inQ?null:(buildBlock(p,b)||siteBlock2(p,b));
+      const block=inQ?null:(buildBlock(p,b)||siteBlock2(p,b)||(crownMay(S.player,b)?null:"Solo estamentos"));
       const maxed=lvl>=max;
       let cls="btile";
       if(inQ)cls+=" building";else if(maxed)cls+=" done";else if(block)cls+=" locked";
@@ -299,25 +307,24 @@ function buildTilesHTML(p){
       const jb=jobsOf(b);
       const jobsHtml=jb>0?"<div class='jobs2'>"+uiIcon('poblacion')+" "+fmtPop(jb)+" empleos/niv</div>":"";
       const onclick=(!inQ&&!maxed&&!block)?" onclick='tryBuild("+p.id+",\""+b+"\")'":"";
-      // ---- ciclo de vida (solo edificios YA construidos): rentabilidad + deshabilitar/reactivar + barra de condición ----
-      const off=lvl>0&&!!(p.bOff&&p.bOff[b]);
+      // ---- ciclo de vida (solo edificios YA construidos): dueños de sus niveles + la tenencia de la corona (rentabilidad,
+      // deshabilitar/reactivar, barra de condición). Los niveles de un estamento los gestiona su dueño.
+      const off=lvl>0&&effLvl(p,b)===0;
       let ctrl="";
       if(lvl>0){
-        const prof=(BLD2[b]||(B.fx&&B.fx.prodAdd))?bldEcon2(p,b,lvl).profit:null;
+        const cl=hLvl(p,b,"corona"), coff=hOff(p,b,"corona");
+        const prof=cl>0&&(BLD2[b]||(B.fx&&B.fx.prodAdd))?bldEcon2(p,b,cl).profit:null;
         const profTxt=prof!=null?"<span class='"+(prof>=0?"pos":"neg")+"' style='font-weight:bold'>"+(prof>=0?"+":"−")+fmt(Math.abs(prof))+COIN()+"/mes</span>":"<span></span>";
         const bs="display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:11px;margin-top:5px;padding:3px 7px;border-radius:5px;cursor:pointer;";
-        const own2=bOwnerOf(p,b);
-        if(own2!=="corona"){ // v2: el taller de un estamento lo gestiona su dueño (lo cierra si no le rinde)
-          ctrl="<div style='"+bs+"background:#262b31' data-tip=\""+ta("De "+STRATA_INFO[own2].label.toLowerCase()+": lo gestiona su dueño"+(off?" (ahora cerrado)":""))+"\">"+
-            profTxt+"<span style='color:#9aa3ad;white-space:nowrap'>"+ph(own2)+(off?" cerrado":"")+"</span></div>";
-        } else if(off){
-          const cond=(p.bCond&&p.bCond[b]!=null)?p.bCond[b]:1;
-          const rep=Math.round(repairCost(p,b));
-          ctrl="<div style='"+bs+"background:#3a2a22' onclick='event.stopPropagation();toggleBuilding("+p.id+",\""+b+"\")' title='Reactivar (repara la parte degradada)'>"+
+        if(hOwners(p,b).some(o=>o!=="corona"))ctrl+=ownersRow(p,b,bs);
+        if(cl&&coff){
+          const cond=hCond(p,b,"corona");
+          const rep=Math.round(repairCost(p,b,"corona"));
+          ctrl+="<div style='"+bs+"background:#3a2a22' onclick='event.stopPropagation();toggleBuilding("+p.id+",\""+b+"\")' title='Reactivar (repara la parte degradada)'>"+
             "<span style='flex:1;height:5px;background:#241a14;border-radius:3px;overflow:hidden;display:inline-block'><i style='display:block;height:100%;background:#c98a3a;width:"+Math.round(cond*100)+"%'></i></span>"+
             "<span style='color:#e0a860;white-space:nowrap'>"+ph('reactivar')+" Reactivar"+(cond<0.995?VSEP+rep+COIN():"")+"</span></div>";
-        } else {
-          ctrl="<div style='"+bs+"background:#262b31' onclick='event.stopPropagation();toggleBuilding("+p.id+",\""+b+"\")' title='Deshabilitar: libera dotación y deja de producir'>"+
+        } else if(cl){
+          ctrl+="<div style='"+bs+"background:#262b31' onclick='event.stopPropagation();toggleBuilding("+p.id+",\""+b+"\")' title='Deshabilitar: libera dotación y deja de producir'>"+
             profTxt+"<span style='color:#9aa3ad;white-space:nowrap'>"+ph('pausa')+" Off</span></div>";
         }
       }
@@ -1583,8 +1590,8 @@ function renderMktGood2(body,N,g){
 function estateOwned(e){ // edificios del estamento en el reino: {b:{lv,off}}
   const o={};
   for(const p of S.provs){if(p.owner!==S.player||p.wasteland)continue;
-    for(const b in p.buildings){const lv=p.buildings[b]||0;if(!lv)continue;if(((p.bOwner&&p.bOwner[b])||"corona")!==e)continue;
-      const x=o[b]||(o[b]={lv:0,off:0});x.lv+=lv;if(p.bOff&&p.bOff[b])x.off+=lv}}
+    for(const b in p.buildings){const lv=hLvl(p,b,e);if(!lv)continue;
+      const x=o[b]||(o[b]={lv:0,off:0});x.lv+=lv;if(hOff(p,b,e))x.off+=lv}}
   return o;
 }
 function covCell(N,e,t,cnt){
@@ -1691,7 +1698,7 @@ function estateBar(p,w){ // los cuatro estamentos apilados (ancho = su parte de 
 // ---------- Tarjetas de Construir (v2): lo que da un edificio a SU dueño ----------
 function siteBlock2(p,b){return BLD2[b]&&!siteOK2(p,b)?"Sin materia prima aquí":null}
 function bldEcon2(p,b,lvl){ // {o, stock:[{k,q}] | out:{g,q}, ins, noSite, profit (🪙/mes)} para lvl niveles
-  const B=BUILDINGS[b],fx=B.fx||{},o=lvlOf(p,b)>0?bOwnerOf(p,b):"corona",D=BLD2[b];
+  const B=BUILDINGS[b],fx=B.fx||{},o=mainOwner(p,b)||"corona",D=BLD2[b];
   const up=B.up&&B.up.dinero?B.up.dinero/12*lvl*MONTH_TICKS*upkeepScale(p,b):0;
   if(D&&!siteOK2(p,b))return {o,noSite:true,profit:-up};
   return {o,out:D?buildingOutput2(p,b,lvl):null,ins:(D&&D.in)||null,profit:buildingProfit2(p,b,lvl)};
@@ -1821,7 +1828,7 @@ function goodsByValue(m){return Object.keys(m.prod).filter(g=>m.prod[g]>=0.5).so
 // De cada 100 ducados que paga el comprador por este bien, quién se lleva qué (economy2 saleSplit). Un bien sale "de
 // taller" si en la provincia hay un taller que lo hace o es oficio de los artesanos; si no, es cosecha del campo.
 function saleKind(p,g){
-  for(const b in p.buildings)if((p.buildings[b]||0)>0&&BLD2[b]&&BLD2[b].out===g)return ["taller",bOwnerOf(p,b)];
+  for(const b in p.buildings)if((p.buildings[b]||0)>0&&BLD2[b]&&BLD2[b].out===g)return ["taller",mainOwner(p,b)];
   if(ARTISAN_MIX[g]!=null||g==="armas")return ["taller","burgues"];
   return ["campo",null];
 }
@@ -1878,8 +1885,8 @@ function provEcoWinHTML(p){ // ventana Economía: el mismo libro que la Tesorer�
   // talleres de la provincia: dueño, lo que sacan y si están cerrados
   const bs=Object.keys(p.buildings).filter(x=>(p.buildings[x]||0)>0&&(BLD2[x]||(BUILDINGS[x].fx&&BUILDINGS[x].fx.prodAdd)));
   if(bs.length){h+="<div class='tbook' style='margin-top:8px'><div class='tsec'>Talleres</div>";
-    for(const x of bs){const o=bOwnerOf(p,x),off=p.bOff&&p.bOff[x],q=b.m.bld[x]||0,D=BLD2[x];
-      h+="<div class='trow'"+(off?" style='opacity:.6'":"")+"><span>"+BUILDINGS[x].label+" ×"+p.buildings[x]+" <span data-tip=\""+ta(whoLabel(o))+"\">"+whoIcon(o,p.owner)+"</span></span><b>"+
+    for(const x of bs)for(const o of hOwners(p,x)){const off=hOff(p,x,o),q=b.m.bld[x+"@"+o]||0,D=BLD2[x];
+      h+="<div class='trow'"+(off?" style='opacity:.6'":"")+"><span>"+BUILDINGS[x].label+" ×"+hLvl(p,x,o)+" <span data-tip=\""+ta(whoLabel(o))+"\">"+whoIcon(o,p.owner)+"</span></span><b>"+
         (off?"<span class='neg'>cerrado</span>":q>=0.5&&D?"<i class='arw r'></i> "+resImg(D.out)+" "+nfE(q):"<span class='e2sub'>—</span>")+"</b></div>"}
     h+="</div>"}
   return h;

@@ -14,7 +14,7 @@ import { NPLAY, BUILDINGS, UNITS, STRATA, TERRAINS } from "./config.js";
 import { S } from "./state.js";
 import { kmBetween, pxToLonLat, ensureMarketTopology } from "./mapgen.js";
 import { isEmbargoed, atWarPair } from "./diplomacy.js";
-import { BKEYS, calOf, harvestMonth, monthsToHarvest, ledger, sinkAdd, canAfford, isOccupied, effLvl, lvlOf, bOwnerOf, manorOf, taxRateOf, alcabalaOf, almojOf, harvestMul, terrMul, DIEZMO, terrCatMul, staffing, storeCap, armyFood, soldCap, provProdMul, ensureMarket, recFlow, recBuy, recCrown, YR_TICKS, TRADE_KM, TRADE_SEA, TRADE_WAR, TRADE_BULK, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN, PROMO_RATE, targetBurgFrac, monthKeyOf, buildSpeedBonus } from "./economy.js";
+import { BKEYS, calOf, harvestMonth, monthsToHarvest, ledger, sinkAdd, canAfford, isOccupied, lvlOf, hOff, hCond, manorOf, taxRateOf, alcabalaOf, almojOf, harvestMul, terrMul, DIEZMO, terrCatMul, staffing, storeCap, armyFood, soldCap, provProdMul, ensureMarket, recFlow, recBuy, recCrown, YR_TICKS, TRADE_KM, TRADE_SEA, TRADE_WAR, TRADE_BULK, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN, PROMO_RATE, targetBurgFrac, monthKeyOf, buildSpeedBonus } from "./economy.js";
 
 // ============================== CONSTANTES (todo lo tunable está aquí) ==============================
 const PRICE_SCALE=8;     // palanca GLOBAL de precios: iguala el dinero del comercio a la escala de costes de la v1
@@ -364,11 +364,11 @@ const OBRA_SAT_MAX=1;
 function obraLoad(N,bienes,sem){const fc=N.e2&&N.e2.fc;if(!fc)return 0;let m=0;
   for(const g in bienes){const cap=CAPITAL_SHARE*(fc.s[g]||0);const d=bienes[g]/(sem*7);m=Math.max(m,cap>0?d/cap:(d>0?Infinity:0))}return m}
 function obraFull(n){const N=S.nations[n];return !!(N&&N.e2&&(N.e2.obraSat||0)>=OBRA_SAT_MAX)}
-// REPARAR un edificio cerrado (bOff) que se ha degradado: la mitad de una obra nueva por la parte perdida. Por ahora se
-// paga de golpe: el jornal a la provincia y los materiales salen de la economía (sumidero). F3 lo revisa.
-function repairCost(p,b){const cond=(p.bCond&&p.bCond[b]!=null)?p.bCond[b]:1;return Math.max(0,1-cond)*0.5*obraCost(p,b).total}
+// REPARAR la tenencia cerrada de un dueño que se ha degradado: la mitad de una obra nueva por la parte perdida. Por
+// ahora se paga de golpe: el jornal a la provincia y los materiales salen de la economía (sumidero). F3 lo revisa.
+function repairCost(p,b,o){return Math.max(0,1-hCond(p,b,o))*0.5*obraCost(p,b).total}
 function repairPay(p,b,who){
-  const n=p.owner,N=S.nations[n],c=repairCost(p,b); if(!N)return false;
+  const n=p.owner,N=S.nations[n],c=repairCost(p,b,who); if(!N)return false;
   const purse=who==="corona"?(N.res.dinero||0):(N.sWealth[who]||0); if(purse<c)return false;
   if(c>0){const B=BUILDINGS[b], j=c*OBRA_JORNAL/(OBRA_JORNAL+OBRA_HERR+OBRA_MAT), sp=OBRA_TPL_OF[b]==="piedra"?OBRA_CANTERO:OBRA_PEON;
     if(who==="corona"){N.res.dinero-=c;recCrown(n,"Reparaciones",B.label,-c)}else{N.sWealth[who]-=c;recFlow(n,who,"Construcción",-c)}
@@ -563,8 +563,10 @@ function economyTick2(dt=24,doArb=true){
     // EDIFICIOS
     const st=staffing(p), mul=1+(provProdMul(p)-1)*st, terr=(TERRAINS[p.terrain]||{prod:1}).prod;
     for(const b of BKEYS){
-      const lvl=effLvl(p,b); if(!lvl)continue;
-      const B=BUILDINGS[b], fx=B.fx||{}, o=bOwnerOf(p,b);
+      const own=p.buildings[b]>0&&p.bOwn&&p.bOwn[b]; if(!own)continue;
+      const B=BUILDINGS[b], fx=B.fx||{};
+      for(const o in own){                                // cada dueño, por sus niveles abiertos
+      const lvl=hOff(p,b,o)?0:own[o]; if(!lvl)continue;
       // mantenimiento: el dinero → sumidero (los bienes de B.up, de la v1, no se cobran a nadie hasta que el mantenimiento
       // se compre en la plaza: design/obras-tropas.md F3)
       if(B.up&&B.up.dinero){const a=B.up.dinero/12*lvl*dt*upkeepScale(p,b);
@@ -575,8 +577,9 @@ function economyTick2(dt=24,doArb=true){
       const D=BLD2[b]; if(!D||!siteOK2(p,b))continue;   // un taller fuera del sitio de su materia no produce
       const y=bldYear(p,b,lvl); const cov=inputCov(N,b);
       const q=y.q*mul*f;
-      if(q*cov>0){deliv[n].push({p,g:D.out,q:q*cov,kind:"bld",owner:o});pmProd(p,D.out,q*cov);const m=pm(p);m.bld[b]=(m.bld[b]||0)+q*cov}
+      if(q*cov>0){deliv[n].push({p,g:D.out,q:q*cov,kind:"bld",owner:o});pmProd(p,D.out,q*cov);const m=pm(p),k=b+"@"+o;m.bld[k]=(m.bld[k]||0)+q*cov}
       if(D.in){const fn=factNeed[n][o]||(factNeed[n][o]={});for(const k in D.in)fn[k]=(fn[k]||0)+q*D.in[k]}
+      }
     }
   }
 

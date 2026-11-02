@@ -3,8 +3,8 @@
 // Movido tal cual desde sim.js (2026-09-26); lo nuevo es budgetManage (v2): cada dueño cuadra sus cuentas.
 import { NPLAY, BUILDINGS } from "./config.js";
 import { S } from "./state.js";
-import { BKEYS, sinkAdd, lvlOf, bOwnerOf, buildMax, usedSlots, buildSlots, freeLabor, buildJobs, JOBS_PER_LEVEL, costFor, timeFor, canAfford, pay, recFlow, isOccupied, ESTATES_BUILD, bOff, buildBlock } from "./economy.js";
-import { ESTATE_BUILDS2, buildingProfit2, buildingOutput2, upkeepScale, siteOK2, isMarketDay, obraCost, newObra, obraFull, repairPay } from "./economy2.js";
+import { BKEYS, sinkAdd, lvlOf, hLvl, hOff, hOwners, setOff, crownMay, buildMax, usedSlots, buildSlots, freeLabor, buildJobs, JOBS_PER_LEVEL, costFor, timeFor, canAfford, pay, recFlow, isOccupied, ESTATES_BUILD, buildBlock } from "./economy.js";
+import { ESTATE_BUILDS2, buildingProfit2, buildingOutput2, upkeepScale, siteOK2, isMarketDay, obraCost, newObra, obraFull, repairPay, obsolete2 } from "./economy2.js";
 // La IA de obras usa la rentabilidad y la producción de la economía (economy2.js, design/economia-v2.md)
 const profitOf=(p,b,l)=>buildingProfit2(p,b,l);
 const outputOf=(p,b,l)=>buildingOutput2(p,b,l);
@@ -35,8 +35,8 @@ const MANAGE_SHARE=0.25;
 // act: cierra · reabre · invierte; why: "pierde"/"gana" (rentabilidad, prof = ducados/mes) o "presupuesto" (no le llega).
 const BUD_LOG_MAX=40;
 function logBud(N,x){const L=N.budLog||(N.budLog=[]);L.push(Object.assign({h:S.hour},x));if(L.length>BUD_LOG_MAX)L.splice(0,L.length-BUD_LOG_MAX)}
-function reopen(p,b,o,N){                                            // reactivar, reparando la parte degradada (economy2 repairPay)
-  if(repairPay(p,b,o)){delete p.bOff[b];p.bCond[b]=1}
+function reopen(p,b,o){                                              // reactivar la tenencia, reparando la parte degradada (economy2 repairPay)
+  if(repairPay(p,b,o))setOff(p,b,o,false);
 }
 function manageWorkshops(){
   const groups=new Map();                                            // "nación|taller" → abiertos, cerrados y candidatos
@@ -45,22 +45,24 @@ function manageWorkshops(){
     const N=S.nations[p.owner]; if(!N||!N.sWealth)continue;
     for(const b of BKEYS){
       if(!(p.buildings[b]>0))continue;
-      const o=bOwnerOf(p,b); if(o==="corona"&&!N.ai)continue;       // el jugador gestiona su corona a mano
       const B=BUILDINGS[b],fx=B.fx; if(!(B.inputs||(fx&&fx.prodAdd)))continue; // solo FÁBRICAS de producción (la infra/multiplicadores no se auto-apaga)
-      const k=p.owner+"|"+b; let G=groups.get(k); if(!G){G={N,open:0,closed:0,lose:[],win:[]};groups.set(k,G)}
-      const prof=profitOf(p,b);
-      if(!bOff(p,b)){G.open++;if(prof<BLDG_LOSS)G.lose.push({p,b,o,prof})}
-      else{G.closed++;if(prof>BLDG_GAIN)G.win.push({p,b,o,prof})}
+      for(const o of hOwners(p,b)){                      // cada dueño decide sobre sus niveles
+        if(o==="corona"&&!N.ai)continue;                 // el jugador gestiona su corona a mano
+        const k=p.owner+"|"+b; let G=groups.get(k); if(!G){G={N,open:0,closed:0,lose:[],win:[]};groups.set(k,G)}
+        const prof=profitOf(p,b,hLvl(p,b,o));
+        if(!hOff(p,b,o)){G.open++;if(prof<BLDG_LOSS)G.lose.push({p,b,o,prof})}
+        else{G.closed++;if(prof>BLDG_GAIN)G.win.push({p,b,o,prof})}
+      }
     }
   }
   for(const G of groups.values()){
     G.lose.sort((x,y)=>x.prof-y.prof);
     const nc=Math.min(G.lose.length,Math.max(1,Math.ceil(G.open*MANAGE_SHARE)));
-    for(let i=0;i<nc;i++){const{p,b,o,prof}=G.lose[i];(p.bOff||(p.bOff={}))[b]=true;if(!p.bCond)p.bCond={};if(p.bCond[b]==null)p.bCond[b]=1;
+    for(let i=0;i<nc;i++){const{p,b,o,prof}=G.lose[i];setOff(p,b,o,true);
       logBud(G.N,{o,b,p:p.id,act:"cierra",why:"pierde",prof})}
     G.win.sort((x,y)=>y.prof-x.prof);
     const nr=Math.min(G.win.length,Math.max(1,Math.ceil(G.closed*MANAGE_SHARE)));
-    for(let i=0;i<nr;i++){const{p,b,o,prof}=G.win[i];reopen(p,b,o,G.N);if(!(p.bOff&&p.bOff[b]))logBud(G.N,{o,b,p:p.id,act:"reabre",why:"gana",prof})}
+    for(let i=0;i<nr;i++){const{p,b,o,prof}=G.win[i];reopen(p,b,o);if(!hOff(p,b,o))logBud(G.N,{o,b,p:p.id,act:"reabre",why:"gana",prof})}
   }
 }
 // ¿Hace falta MÁS capacidad de un bien en un reino? La OFERTA PREVISTA cuenta todo lo que llega a la plaza (campo,
@@ -78,7 +80,6 @@ function pickEstateBuild(p,e,N){ // el edificio del repertorio del estamento MÁ
   if(usedSlots(p)>=buildSlots(p))return null;              // sin hueco (se miraba por candidato; no cambia dentro)
   if(obraFull(p.owner))return null;                        // el cupo de obras del reino ya está lleno (economy2 obraFull)
   for(const b of ESTATE_BUILDS2[e]){
-    if(lvlOf(p,b)>0&&bOwnerOf(p,b)!==e)continue;          // ya existe y es de otro (o de la corona) → no lo toco
     if(lvlOf(p,b)>=buildMax(p,b))continue;
     const B=BUILDINGS[b];
     if(B.coastal&&!p.coastal)continue;
@@ -98,7 +99,7 @@ function pickEstateBuild(p,e,N){ // el edificio del repertorio del estamento MÁ
     // la infra sin ingreso directo (gremio/lonja/almacén/puerto), relleno de baja prioridad. Así, entre lo que hace falta,
     // la IA persigue lo más escaso/caro (p.ej. fustán) → completa las cadenas donde de verdad hacen falta.
     let score;
-    if(B.inputs||fx.prodAdd||fx.goldAdd){ score=profitOf(p,b,lvlOf(p,b)+1); if(score<=0)continue; }
+    if(B.inputs||fx.prodAdd||fx.goldAdd){ score=profitOf(p,b,hLvl(p,b,e)+1); if(score<=0)continue; }
     else{ // servicio sin ingreso (fortaleza, templo, catedral…): en v2 solo si puede MANTENERLO mucho tiempo (si no, lo cerraría enseguida)
       {const upM=(B.up&&B.up.dinero?B.up.dinero/12*730*upkeepScale(p,b):0), own=ownerUpkeepMonth(p.owner,e);
         if(N.sWealth[e]<REOPEN_MONTHS*(own+upM)||((N.budTr&&N.budTr[e]&&N.budTr[e].d)||0)<0)continue}
@@ -108,20 +109,17 @@ function pickEstateBuild(p,e,N){ // el edificio del repertorio del estamento MÁ
   return best;
 }
 /* ---- Obras de la CORONA IA (v2): la MISMA lógica que los estamentos ----
- * Mismos filtros (sitio de la materia, hueco, dotación, requisitos), mismo colchón (solo invierte si su tesoro supera
- * OBRA_KEEP del coste de la obra), misma previsión de demanda para lo que VENDE y misma rentabilidad (buildingProfit2 con
- * owner "corona": lo que va a su almacén vale solo si le hace falta). Los servicios (cuartel, fortaleza, templo…) solo
- * si puede mantenerlos holgado, como un estamento. Antes era una lista fija de prioridades (mercado, gremio, granja…). */
-const CROWN_BUILDS2=["cuartel","fortaleza","templo","puerto","almacen","gremio","granja","aserradero","cantera","mina",
-  "minaPlata","minaOro","yeguada","salina","pesqueria"];
+ * Solo lo que la corona PUEDE construir (economy crownMay: el núcleo histórico más lo que le abran leyes, cultura o
+ * tecnología). Mismos filtros (sitio de la materia, hueco, dotación, requisitos), mismo colchón (solo invierte si su
+ * tesoro supera OBRA_KEEP del coste de la obra), misma previsión de demanda para lo que VENDE y misma rentabilidad. Los
+ * servicios (castillo, puerto, universidad…) solo si puede mantenerlos holgado, como un estamento. */
 function pickCrownBuild(p){
   const n=p.owner,N=S.nations[n]; if(!N)return null;
   const treas=N.res.dinero||0, up=ownerUpkeepMonth(n,"corona"), inc=(N.e2&&N.e2.inc&&N.e2.inc.corona)||0;
   if(obraFull(n))return null;                              // el cupo de obras del reino ya está lleno
   let best=null,bestScore=-Infinity;
-  for(const b of CROWN_BUILDS2){
-    if(!BUILDINGS[b])continue;
-    if(lvlOf(p,b)>0&&bOwnerOf(p,b)!=="corona")continue;  // es de un estamento: no lo toco
+  for(const b of BKEYS){
+    if(!crownMay(n,b)||obsolete2(b))continue;
     if(buildBlock(p,b))continue;                          // máximo, obra en curso, costa, ciudad, yacimiento, hueco, requisitos, fondos
     if(!siteOK2(p,b))continue;                            // el taller va donde está su materia
     const B=BUILDINGS[b],fx=B.fx||{},economic=fx.prodAdd||fx.goldAdd||fx.prodMul;
@@ -131,7 +129,7 @@ function pickCrownBuild(p){
     if(B.inputs||fx.prodAdd){
       const g=buildingOutput2(p,b,1).g;                   // lo que VENDE: ¿hace falta más?
       if(g&&!needMore(n,g))continue;
-      score=buildingProfit2(p,b,lvlOf(p,b)+1); if(score<=0)continue;
+      score=buildingProfit2(p,b,hLvl(p,b,"corona")+1); if(score<=0)continue;
     }else{
       const upM=(B.up&&B.up.dinero?B.up.dinero/12*730*upkeepScale(p,b):0);
       if(treas<REOPEN_MONTHS*(up+upM)||inc-up-upM<0)continue;   // solo si puede mantenerlo holgado
@@ -147,7 +145,8 @@ function estateBuild(){
   const M=730/24, cl=Array.from({length:NPLAY},()=>({}));   // cl: capacidad de talleres CERRADOS y EN OBRA
   for(const p of S.provs){
     if(p.owner>=NPLAY||p.wasteland)continue; const n=p.owner;
-    for(const b of BKEYS){if(!(p.buildings[b]>0)||!bOff(p,b))continue;const o=outputOf(p,b);if(o.g)cl[n][o.g]=(cl[n][o.g]||0)+o.q;}
+    for(const b of BKEYS){if(!(p.buildings[b]>0)||!p.bOff)continue;let l=0;for(const o of hOwners(p,b))if(hOff(p,b,o))l+=hLvl(p,b,o);
+      if(l){const x=outputOf(p,b,l);if(x.g)cl[n][x.g]=(cl[n][x.g]||0)+x.q}}
     if(p.buildQueue)for(const q of p.buildQueue){const o=outputOf(p,q.b,1);if(o.g)cl[n][o.g]=(cl[n][o.g]||0)+o.q;}
   }
   _need=Array.from({length:NPLAY},()=>null);
@@ -187,10 +186,11 @@ const TREND_K=0.1;        // ritmo de la media de la variación diaria de la caj
 let _upC=null,_upH=-1;
 function ownerUpkeepMonth(n,o){ // (una pasada por día, cacheada)
   if(_upH!==S.hour||!_upC){_upH=S.hour;_upC=new Map();
-    for(const p of S.provs){if(p.owner>=NPLAY)continue;for(const b of BKEYS)if(p.buildings[b]>0&&!bOff(p,b)){const k=p.owner+"|"+bOwnerOf(p,b);_upC.set(k,(_upC.get(k)||0)+upkeepMonth(p,b))}}}
+    for(const p of S.provs){if(p.owner>=NPLAY)continue;for(const b of BKEYS)if(p.buildings[b]>0)for(const o of hOwners(p,b))if(!hOff(p,b,o)){
+      const k=p.owner+"|"+o;_upC.set(k,(_upC.get(k)||0)+upkeepMonth(p,b,hLvl(p,b,o)))}}}
   return _upC.get(n+"|"+o)||0;
 }
-function upkeepMonth(p,b){const u=BUILDINGS[b].up;return u&&u.dinero?u.dinero/12*(p.buildings[b]||0)*730*upkeepScale(p,b):0}
+function upkeepMonth(p,b,l){const u=BUILDINGS[b].up;return u&&u.dinero?u.dinero/12*l*730*upkeepScale(p,b):0}
 function purseOf(N,o){return o==="corona"?(N.res.dinero||0):(N.sWealth[o]||0)}
 function isProductive(b){const B=BUILDINGS[b];return !!(B.inputs||(B.fx&&(B.fx.prodAdd||B.fx.goldAdd)))}
 function budgetManage(){
@@ -198,11 +198,13 @@ function budgetManage(){
   for(const p of S.provs){
     if(p.owner>=NPLAY||p.wasteland)continue; const N=S.nations[p.owner]; if(!N||!N.alive||!N.sWealth)continue;
     for(const b of BKEYS){
-      if(!(p.buildings[b]>0))continue; const o=bOwnerOf(p,b);
-      if(o==="corona"&&!N.ai)continue;                   // la corona del jugador la gestiona él
-      const k=p.owner+"|"+o; let e=inv.get(k); if(!e){e={n:p.owner,o,up:0,open:[],closed:[]};inv.set(k,e)}
-      const prod=isProductive(b), up=upkeepMonth(p,b), val=prod?profitOf(p,b):-up;
-      if(bOff(p,b))e.closed.push({p,b,val,up,prod}); else{e.up+=up;e.open.push({p,b,val,up,prod})}
+      if(!(p.buildings[b]>0))continue;
+      for(const o of hOwners(p,b)){
+        if(o==="corona"&&!N.ai)continue;                 // la corona del jugador la gestiona él
+        const k=p.owner+"|"+o; let e=inv.get(k); if(!e){e={n:p.owner,o,up:0,open:[],closed:[]};inv.set(k,e)}
+        const l=hLvl(p,b,o), prod=isProductive(b), up=upkeepMonth(p,b,l), val=prod?profitOf(p,b,l):-up;
+        if(hOff(p,b,o))e.closed.push({p,b,val,up,prod}); else{e.up+=up;e.open.push({p,b,val,up,prod})}
+      }
     }
   }
   for(const e of inv.values()){
@@ -216,13 +218,13 @@ function budgetManage(){
     const broke=margin<0&&purse<BUDGET_MONTHS*e.up;
     if(broke&&e.open.length){                            // no le llega: cierra lo que menos le rinde
       let x=null;for(const c of e.open)if(!x||c.val<x.val)x=c;
-      if(x.val<0||purse<=0){(x.p.bOff||(x.p.bOff={}))[x.b]=true;if(!x.p.bCond)x.p.bCond={};if(x.p.bCond[x.b]==null)x.p.bCond[x.b]=1;
+      if(x.val<0||purse<=0){setOff(x.p,x.b,e.o,true);
         logBud(N,{o:e.o,b:x.b,p:x.p.id,act:"cierra",why:"presupuesto"})}
     } else if(e.closed.length){                          // le sobra: reabre el servicio cerrado más barato si su margen lo cubre holgado
       let x=null;for(const c of e.closed)if(!c.prod&&(!x||c.up<x.up))x=c;
       if(x&&margin-x.up>REOPEN_SHARE*inc&&purse>BUDGET_MONTHS*(e.up+x.up)){
         if(!repairPay(x.p,x.b,e.o))continue;
-        delete x.p.bOff[x.b]; x.p.bCond[x.b]=1;
+        setOff(x.p,x.b,e.o,false);
         logBud(N,{o:e.o,b:x.b,p:x.p.id,act:"reabre",why:"presupuesto"})
       }
     }

@@ -408,11 +408,27 @@ function lvlOf(p,b){return p.buildings[b]||0}                          // nivel 
 // ---- Ciclo de vida de edificios: DESHABILITAR / degradar / destruir / reparar ----
 // Un edificio deshabilitado no produce, no consume insumos, no exige dotación ni paga mantenimiento (libera
 // dotación para otros), pero se DEGRADA poco a poco; al llegar la condición a 0 se destruye (baja un nivel).
-// Reactivarlo cuesta reparar la parte degradada (coste de creación prorrateado). Estado en p.bOff / p.bCond.
+// Reactivarlo cuesta reparar la parte degradada. El estado va por TENENCIA (los niveles de un dueño en un edificio):
+// p.bOff["b@dueño"] (cerrada) y p.bCond["b@dueño"] (condición 0..1); cada dueño cierra y repara lo suyo.
 const BLDG_DEGRADE=1/(4*YR_TICKS);                                    // condición perdida por tick deshabilitado (~4 años de juego de 1→0)
-function bOff(p,b){return !!(p.bOff&&p.bOff[b])}                      // ¿edificio DESHABILITADO?
-function bCond(p,b){return (p.bCond&&p.bCond[b]!=null)?p.bCond[b]:1}  // condición 0..1 (1 = perfecto)
-function effLvl(p,b){return bOff(p,b)?0:(p.buildings[b]||0)}          // nivel OPERATIVO (0 si deshabilitado): lo usan producción/dotación/insumos/mantenimiento
+const hk=(b,o)=>b+"@"+o;
+function hLvl(p,b,o){const m=p.bOwn&&p.bOwn[b];return (m&&m[o])||0}             // niveles de b que son de o
+function hOff(p,b,o){return !!(p.bOff&&p.bOff[hk(b,o)])}                         // ¿la tenencia está CERRADA?
+function hCond(p,b,o){const c=p.bCond&&p.bCond[hk(b,o)];return c!=null?c:1}      // condición 0..1 (1 = perfecto)
+function hOwners(p,b){const m=p.bOwn&&p.bOwn[b];return m?Object.keys(m):[]}      // dueños de b en la provincia
+// nivel OPERATIVO de b (los niveles de las tenencias abiertas): lo usan dotación, productividad, defensa y moral
+function effLvl(p,b){const l=p.buildings[b]||0;if(!l||!p.bOff)return l;const m=p.bOwn&&p.bOwn[b];let s=l;
+  if(m)for(const o in m)if(p.bOff[hk(b,o)])s-=m[o];return s}
+function setOff(p,b,o,off){const k=hk(b,o);
+  if(off){(p.bOff||(p.bOff={}))[k]=true;const C=p.bCond||(p.bCond={});if(C[k]==null)C[k]=1}
+  else{if(p.bOff)delete p.bOff[k];if(p.bCond)delete p.bCond[k]}}
+function addLevel(p,b,o,n=1){const B=p.bOwn||(p.bOwn={}),m=B[b]||(B[b]={});m[o]=(m[o]||0)+n;p.buildings[b]=(p.buildings[b]||0)+n}
+function dropLevel(p,b,o){const m=p.bOwn&&p.bOwn[b];if(!m||!(m[o]>0))return;m[o]--;p.buildings[b]=Math.max(0,(p.buildings[b]||0)-1);
+  if(m[o]<=0){delete m[o];setOff(p,b,o,false);if(!Object.keys(m).length)delete p.bOwn[b]}}
+function mainOwner(p,b){const m=p.bOwn&&p.bOwn[b];let best=null;if(m)for(const o in m)if(!best||m[o]>m[best])best=o;return best}
+// los niveles que trae el mapa sin dueño (castillos, puertos…) son de la corona
+function syncOwn(p){for(const b in p.buildings){const l=p.buildings[b]||0,m=p.bOwn&&p.bOwn[b];let s=0;if(m)for(const o in m)s+=m[o];
+  if(l>s){p.buildings[b]=s;addLevel(p,b,"corona",l-s)}}}
 function costFor(p,b){
   const B=BUILDINGS[b],lvl=lvlOf(p,b),f=B.unique?1:(1+0.5*lvl),c={};
   for(const k in B.cost)c[k]=Math.round(B.cost[k]*f);
@@ -465,26 +481,26 @@ function moraleGrowth(p){   // crecimiento de moral/mes por los edificios de mor
   g+=CLERO_MORALE*stratFrac(p,"clero"); // Fase D: el clero legitima → moral extra donde abunda (catedrales)
   return g;
 }
-/* ---- Propiedad de los edificios por ESTAMENTO (E2) ----
- * Cada edificio de una provincia tiene un DUEÑO (corona/burgués/clero/nobleza), fijado al construir su
- * primer nivel (p.bOwner[b]). Los efectos de MORAL/PRODUCTIVIDAD van SIEMPRE a la provincia (da igual
- * quién lo construyó); el DINERO y los BIENES que produce, y su MANTENIMIENTO, van al DUEÑO. Los de la
- * corona rinden al tesoro (S.nations[n].res); los de un estamento, a sus reservas (sWealth/sRes). Por
- * defecto (sin p.bOwner) todo es de la corona → comportamiento retrocompatible. */
+/* ---- Propiedad de los edificios: TENENCIAS (design/obras-tropas.md F2b) ----
+ * Un edificio de una provincia reparte sus niveles entre dueños (p.bOwn[b] = {dueño: niveles}; p.buildings[b] es el
+ * total). Cualquiera, corona o estamento, puede ser dueño de cualquier edificio, y varios a la vez (una salina con dos
+ * niveles de la nobleza y uno de la corona). Los efectos de MORAL, PRODUCTIVIDAD y DEFENSA son de la provincia (todos
+ * los niveles abiertos); el DINERO, los BIENES y el MANTENIMIENTO, de cada dueño por sus niveles. */
 const ESTATES_BUILD=["burgues","clero","nobleza"]; // estamentos con capacidad de construir (el campesino no)
-function bOwnerOf(p,b){return (p.bOwner&&p.bOwner[b])||"corona"}
-function degradeBuildings(){ // 1 tick: los edificios DESHABILITADOS pierden condición; al llegar a 0 se destruyen (−1 nivel)
+// Lo que la CORONA puede CONSTRUIR: el núcleo histórico de 1444 (las regalías de los metales preciosos, el Estado
+// militar, la infraestructura real y la fundación de universidades). Lo demás lo levantan los estamentos, salvo que una
+// ley, la cultura o la tecnología del reino se lo abra a la corona (N.crownOpen[b] = true).
+const CROWN_CORE=new Set(["minaPlata","minaOro","fabrica","fortaleza","ciudadela","puerto","almacen","universidad","campo"]);
+function crownMay(n,b){const N=S.nations[n];return CROWN_CORE.has(b)||!!(N&&N.crownOpen&&N.crownOpen[b])}
+function degradeBuildings(){ // 1 tick: las tenencias CERRADAS pierden condición; al llegar a 0 se cae un nivel
   for(const p of S.provs){
     if(!p.bOff)continue;
-    for(const b in p.bOff){
-      if(!p.bOff[b]||!(p.buildings[b]>0))continue;
-      if(!p.bCond)p.bCond={};
-      const c=(p.bCond[b]!=null?p.bCond[b]:1)-BLDG_DEGRADE;
-      if(c<=0){
-        p.buildings[b]=Math.max(0,(p.buildings[b]||0)-1);                                   // se cae un nivel
-        if(p.buildings[b]<=0){delete p.bOff[b];delete p.bCond[b];if(p.bOwner)delete p.bOwner[b]} // destruido del todo
-        else p.bCond[b]=1;                                                                    // queda nivel: sigue deshabilitado, condición reiniciada
-      } else p.bCond[b]=c;
+    for(const k in p.bOff){
+      const i=k.lastIndexOf("@"),b=k.slice(0,i),o=k.slice(i+1);
+      if(!(hLvl(p,b,o)>0)){setOff(p,b,o,false);continue}
+      const c=hCond(p,b,o)-BLDG_DEGRADE;
+      if(c<=0){dropLevel(p,b,o);if(hLvl(p,b,o)>0)p.bCond[k]=1}   // se cae un nivel; si le queda alguno, sigue cerrada y reiniciada
+      else p.bCond[k]=c;
     }
   }
 }
@@ -544,5 +560,5 @@ function recruitTime(p,u){
 }
 
 export {
-  BKEYS, fxKeys, ledger, sinkAdd, calOf, harvestMonth, monthsToHarvest, MONTHS_ES, canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, isOccupied, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, recruitable, moraleGrowth, MORALE_MIN, MORALE_HOSTILE, SOLD_FRAC, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, specialistCap, buildJobs, freeLabor, staffing, jobsOf, buildSlots, usedSlots, structPPF, JOBS_PER_LEVEL, ensureMarket, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, manorOf, canStaffIndustry, bOwnerOf, ESTATES_BUILD, TRADE_BULK, TERRAIN_CAT, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, monthKeyOf, resetTsyLedger, tsyTick, tsyAvail, tsyMonthBal, recFlow, recCrown, bOff, bCond, effLvl, degradeBuildings, YR_TICKS, TRADE_KM, TRADE_SEA, TRADE_WAR, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN, PROMO_RATE, targetBurgFrac, recBuy
+  BKEYS, fxKeys, ledger, sinkAdd, calOf, harvestMonth, monthsToHarvest, MONTHS_ES, canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, isOccupied, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, recruitable, moraleGrowth, MORALE_MIN, MORALE_HOSTILE, SOLD_FRAC, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, specialistCap, buildJobs, freeLabor, staffing, jobsOf, buildSlots, usedSlots, structPPF, JOBS_PER_LEVEL, ensureMarket, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, manorOf, canStaffIndustry, hLvl, hOff, hCond, hOwners, setOff, addLevel, dropLevel, mainOwner, syncOwn, crownMay, CROWN_CORE, ESTATES_BUILD, TRADE_BULK, TERRAIN_CAT, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, monthKeyOf, resetTsyLedger, tsyTick, tsyAvail, tsyMonthBal, recFlow, recCrown, effLvl, degradeBuildings, YR_TICKS, TRADE_KM, TRADE_SEA, TRADE_WAR, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN, PROMO_RATE, targetBurgFrac, recBuy
 };

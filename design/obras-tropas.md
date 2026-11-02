@@ -37,7 +37,9 @@ real, commit temático. Las cifras se calibran al final con /simular (fase 7).
   Antes: Los edificios de la corona venden a la plaza (fuera CROWN_STOCK, crownStockOut,
   CROWN_STOCK_WANT); START_STOCK solo dinero (lo demás a ducados); el socorro sin "almacén"; fuera la sección "Almacén de
   la corona" de la UI y los bienes de la barra superior.
-- [ ] **F2b. Propiedad mixta + permiso de la corona** (Sergio 2026-11-02). La corona HEREDABA de la v1 poder construirlo
+- [x] **F2b. Propiedad mixta + permiso de la corona** (Sergio 2026-11-02). HECHA 2026-11-02: tenencias p.bOwn[b]={dueño:niveles},
+  cierre y condición por tenencia ("b@dueño"), CROWN_CORE + N.crownOpen[b] en economy crownMay; la tarjeta muestra los
+  dueños y bloquea "Solo estamentos"; probado en el juego (salina mixta nobleza+corona en Oleiros). Planteamiento: La corona HEREDABA de la v1 poder construirlo
   todo. Decisión: a nivel de MECÁNICA cualquiera (corona o estamento) puede ser dueño de cualquier edificio, y un mismo
   edificio puede tener NIVELES DE VARIOS DUEÑOS (p. ej. salina: 2 niveles de la nobleza + 1 de la corona); la UI muestra
   de quién es cada nivel. Lo que la corona PUEDE construir lo decide un permiso por reino (`crownMay(n,b)`) que más

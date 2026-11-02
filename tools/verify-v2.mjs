@@ -37,10 +37,10 @@ for(const p of S.provs){if(p.wasteland){p.owner=NEUTRAL;p.capital=false;p.urban=
 S.mktDirty=true;mg.ensureMarketTopology();
 S.nations=NATIONS.map((n,i)=>({idx:i,res:Object.fromEntries(RES_KEYS.map(k=>[k,START_STOCK[k]||0])),
   ai:true,capital:-1,alive:!n.neutral,startProvs:0,sWealth:{campesino:0,burgues:0,clero:0,nobleza:0},mkt:{},taxRate:0.08}));
-function seedEstateBld(p,b,e){if(ec.lvlOf(p,b)>=1||ec.usedSlots(p)>=ec.buildSlots(p))return;p.buildings[b]=(p.buildings[b]||0)+1;(p.bOwner||(p.bOwner={}))[b]=e}
+function seedEstateBld(p,b,e){if(ec.lvlOf(p,b)>=1||ec.usedSlots(p)>=ec.buildSlots(p))return;ec.addLevel(p,b,e)}
 for(const p of S.provs)if(!p.wasteland&&p.owner<NPLAY){
-  p.sold=ec.soldCap(p);p.bOwner=p.bOwner||{};const b=e2.obsolete2(RES_BUILDING[p.resType])?null:RES_BUILDING[p.resType];
-  if(b&&ec.canStaffIndustry(p,b)){const B=BUILDINGS[b];p.buildings[b]=(ec.specialistCap(p)>=2*ec.jobsOf(b)&&(B.unique?1:(B.max||3)>=2))?2:1;const o=e2.seedOwner2(b);if(o!=="corona")p.bOwner[b]=o}
+  ec.syncOwn(p);p.sold=ec.soldCap(p);const b=e2.obsolete2(RES_BUILDING[p.resType])?null:RES_BUILDING[p.resType];
+  if(b&&ec.canStaffIndustry(p,b)){const B=BUILDINGS[b];const lv=(ec.specialistCap(p)>=2*ec.jobsOf(b)&&(B.unique?1:(B.max||3)>=2))?2:1;if(lv>ec.lvlOf(p,b))ec.addLevel(p,b,e2.seedOwner2(b),lv-ec.lvlOf(p,b))}
   e2.seedEstates2(p,seedEstateBld);
   p.store={};for(const k of ec.SUBS_BASICS)p.store[k]=ec.storeCap(p,k)*0.6;}
 for(let n=0;n<NPLAY;n++){let cap=S.provs.find(p=>p.owner===n&&p.capital)||S.provs.find(p=>p.owner===n);
@@ -50,8 +50,8 @@ for(let n=0;n<NPLAY;n++){let cap=S.provs.find(p=>p.owner===n&&p.capital)||S.prov
 e2.seedWealth2();
 if(NAC){S.player=NATIONS.findIndex(x=>x.name===NAC);if(S.player<0){console.log("no existe "+NAC);process.exit(1)}}
 function census(){const c={};for(const p of S.provs){if(p.owner>=NPLAY||p.wasteland)continue;const n=p.owner;const C=c[n]||(c[n]={});
-  for(const b in p.buildings){const l=p.buildings[b]||0;if(!l)continue;const o=ec.bOwnerOf(p,b);const k=b+"@"+o;const x=C[k]||(C[k]={open:0,off:0});
-    if(ec.bOff(p,b))x.off+=l;else x.open+=l}}return c}
+  for(const b in p.buildings)for(const o of ec.hOwners(p,b)){const l=ec.hLvl(p,b,o);if(!l)continue;const k=b+"@"+o;const x=C[k]||(C[k]={open:0,off:0});
+    if(ec.hOff(p,b,o))x.off+=l;else x.open+=l}}return c}
 const census0=census();
 const tick=()=>e2.economyTick2(24,true);
 const names=NATIONS.map(n=>n.name);
@@ -89,7 +89,7 @@ for(let y=0;y<YEARS;y++){
     if(S.pmKey!==pmKey0){if(pmKey0!=null)checkBooks(pb);pmKey0=S.pmKey;pechoAt=pb}
     if(AI){es.estatesDaily();for(let h=0;h<24;h++)ec.degradeBuildings();
       for(const p of S.provs)if(p.buildQueue.length){const q=p.buildQueue[0];   // la obra termina al comprar todos sus tramos (economy2 obraPass)
-        if(q.prog>=1-1e-9){OB.done++;OB.by[q.owner||"corona"]=(OB.by[q.owner||"corona"]||0)+1;p.buildings[q.b]++;p.buildQueue.shift();if(q.owner)(p.bOwner||(p.bOwner={}))[q.b]=q.owner}}}}
+        if(q.prog>=1-1e-9){OB.done++;OB.by[q.owner||"corona"]=(OB.by[q.owner||"corona"]||0)+1;ec.addLevel(p,q.b,q.owner||"corona");p.buildQueue.shift()}}}}
   for(const n of alive()){const N=S.nations[n];for(const k in N.res)if(!isFinite(N.res[k]))nan=true;for(const k in N.sWealth)if(!isFinite(N.sWealth[k]))nan=true}
   const iv=inv(); const rel=Math.abs(iv-inv0)/(Math.abs(inv0)+1); worstInv=Math.max(worstInv,rel);
   // resumen mundial del año
@@ -144,7 +144,7 @@ if(args.includes("--dump")){const out=args[args.indexOf("--dump")+1];
   const rows=S.provs.filter(p=>p.owner<NPLAY&&!p.wasteland).map(p=>({id:p.id,n:p.owner,nat:names[p.owner],pop:Math.round(p.pop||0),
     urban:!!p.urban,capital:!!p.capital,terrain:p.terrain,resType:p.resType,hubKm:Math.round(p.hubKm||0),
     pops:p.pops?Object.fromEntries(Object.entries(p.pops).map(([k,v])=>[k,Math.round(v)])):null,
-    b:Object.fromEntries(Object.entries(p.buildings).filter(([k,v])=>v>0).map(([k,v])=>[k,{l:v,o:ec.bOwnerOf(p,k),off:ec.bOff(p,k)}]))}));
+    b:Object.fromEntries(Object.entries(p.buildings).filter(([k,v])=>v>0).map(([k,v])=>[k,{l:v,own:p.bOwn&&p.bOwn[k],off:ec.hOwners(p,k).filter(o=>ec.hOff(p,k,o))}]))}));
   fs.writeFileSync(out,JSON.stringify(rows));console.log(`volcado ${rows.length} provincias → ${out}`)}
 
 // --regiones: oferta vs demanda de cada bien por GRANDES REGIONES (por la capital de cada reino). Para cazar recursos

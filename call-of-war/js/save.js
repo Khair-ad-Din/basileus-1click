@@ -97,7 +97,7 @@ function saveGame(){
     const s={v:4,t:Date.now(),econV2:true,hour:S.hour,player:S.player,armyIdSeq:S.armyIdSeq,
       wars:[...S.wars],truces:[...S.truces],rel:[...S.rel],embargoes:[...S.embargoes],claims:[...S.claims],pacts:[...S.pacts],coalitions:[...S.coalitions],coalSeq:S.coalSeq,leagues:S.leagues,leagueSeq:S.leagueSeq,roads:[...S.roads],roadQueue:S.roadQueue,reports:S.reports,
       nations:S.nations.map(x=>({res:x.res,ai:x.ai,capital:x.capital,alive:x.alive,startProvs:x.startProvs,sWealth:x.sWealth,sRes:x.sRes,mkt:x.mkt,mktPrice:x.mktPrice,e2:x.e2,taxRate:x.taxRate,posito:x.posito,grainReserve:x.grainReserve,alcabala:x.alcabala,almojarifazgo:x.almojarifazgo,aggro:x.aggro,rivals:x.rivals})),
-      provs:S.provs.map(p=>[p.owner,Math.round(p.morale*10)/10,p.buildings,p.buildQueue,p.recruitQueue,Math.round(p.pop||0),Math.round(p.sold||0),roundStore(p.store),p.occupier==null?-1:p.occupier,p.siege||null,p.bOwner||null,roundProsp(p.prosp),p.bOff||null,roundProsp(p.bCond)]),
+      provs:S.provs.map(p=>[p.owner,Math.round(p.morale*10)/10,p.buildings,p.buildQueue,p.recruitQueue,Math.round(p.pop||0),Math.round(p.sold||0),roundStore(p.store),p.occupier==null?-1:p.occupier,p.siege||null,p.bOwn||null,roundProsp(p.prosp),p.bOff||null,roundProsp(p.bCond)]),
       armies:S.armies.map(a=>({id:a.id,nation:a.nation,prov:a.prov,units:a.units,src:a.src,path:a.path,legDone:a.legDone,legTotal:a.legTotal,supply:a.supply})),
       mapCheck:S.provs.length+"|"+S.provs[0].name};
     localStorage.setItem("basileus_save",JSON.stringify(s));
@@ -133,10 +133,10 @@ function continueGame(){
     if(d[7]!=null)p.store=(typeof d[7]==="object")?d[7]:{grano:d[7]};  // reservas locales por bien (v3: era un escalar de comida)
     p.occupier=d[8]!=null?d[8]:-1; // control militar (ocupación EU4)
     p.siege=d[9]||null;            // asedio en curso {by,need,prog}
-    p.bOwner=d[10]||{};            // E2: dueño de cada edificio por estamento (vacío = todo corona)
+    p.bOwn=d[10]||{};              // F2b: niveles de cada edificio por dueño (tenencias)
     p.prosp=d[11]||{};             // barras de prosperidad por canal (sobreconsumo sostenido)
-    p.bOff=d[12]||{};              // edificios DESHABILITADOS (ciclo de vida)
-    p.bCond=d[13]||{};             // condición 0..1 de los deshabilitados (degradación)
+    p.bOff=d[12]||{};              // tenencias CERRADAS ("edificio@dueño", ciclo de vida)
+    p.bCond=d[13]||{};             // condición 0..1 de las cerradas (degradación)
     seedStrata(p);                 // Fase A: re-derivar estratos con la población cargada
   });
   syncDuchyOcc(); // recomputar occBy de cada ducado a partir de la ocupación cargada

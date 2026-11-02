@@ -5,7 +5,7 @@ import { atWar, declareWar, makePeace, underTruce, spawnArmy, setupNations, tryR
 import { insult, giftGold, isEmbargoed, setEmbargo, fabricateClaim, getRel, THRESH, formPact, breakPact, hasPact, leagueOf, createLeague, applyToLeague, resolveApplication, proposeExpel, leaveLeague, refuseDefense, MAX_RIVALS, rivalsOf, canRival, addRival, removeRival } from "./diplomacy.js";
 import { openCouncil, councilToggle, councilConvene, launchCouncil, cancelCouncil, playerJoinDefense } from "./council.js";
 import { hex2rgb, provColor, paintAll, paintBorders, repaintProvince, roadCurve, drawRoads, fitCanvas, clampPan, armyPos, draw, drawArrow, drawEditorOverlay, NCOL, TCOL, WASTECOL, baseC, baseCtx, roadsC, canvas, baseData, clearSelOutline, bakeTerrainProvince } from "./render.js";
-import { canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, armyCount, armyFood, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, recruitable, resetTsyLedger } from "./economy.js";
+import { canAfford, pay, lvlOf, hLvl, hOff, hCond, setOff, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, armyCount, armyFood, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, recruitable, resetTsyLedger } from "./economy.js";
 import { mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, rebuildProvinceData, seedCities, renameProvincesHistorical, ensureMarketTopology, kmBetween, roadKey, hasRoad, landPath, generateRoads, sprinkleTerrain } from "./mapgen.js";
 import { S } from "./state.js";
 import { positoSend, repairPay } from "./economy2.js";
@@ -117,17 +117,15 @@ window.setBuildCat=function(k){S.buildFilter=k;refreshBuildBar()};
 
 window.tryBuild=tryBuild;window.tryRecruit=tryRecruit;
 // Ciclo de vida de edificios: deshabilitar (libera dotación, deja de producir/pagar) o reactivar (reparando la parte degradada)
-window.toggleBuilding=function(pid,b){
-  const p=S.provs[pid]; if(!p||p.owner!==S.player||!(p.buildings[b]>0))return;
-  if(p.bOwner&&p.bOwner[b]&&p.bOwner[b]!=="corona")return; // el taller de un estamento lo gestiona su dueño
-  if(!p.bOff)p.bOff={}; if(!p.bCond)p.bCond={};
-  if(p.bOff[b]){ // REACTIVAR: repara la parte degradada (coste de creación prorrateado)
-    const cond=p.bCond[b]!=null?p.bCond[b]:1, frac=Math.max(0,1-cond);
+window.toggleBuilding=function(pid,b){   // solo los niveles de la CORONA: los de un estamento los gestiona su dueño
+  const p=S.provs[pid]; if(!p||p.owner!==S.player||!(hLvl(p,b,"corona")>0))return;
+  if(hOff(p,b,"corona")){ // REACTIVAR: repara la parte degradada
+    const frac=Math.max(0,1-hCond(p,b,"corona"));
     if(frac>0.001&&!repairPay(p,b,"corona")){log("No puedes pagar la reparación de "+BUILDINGS[b].label+" en "+p.name+".");return}
-    delete p.bOff[b]; p.bCond[b]=1;
+    setOff(p,b,"corona",false);
     log(BUILDINGS[b].label+" reactivada en "+p.name+(frac>0.001?" (reparada)":"")+".");
   } else { // DESHABILITAR
-    p.bOff[b]=true; if(p.bCond[b]==null)p.bCond[b]=1;
+    setOff(p,b,"corona",true);
     log(BUILDINGS[b].label+" deshabilitada en "+p.name+": libera dotación y deja de producir; se degradará poco a poco.");
   }
   refreshBuildBar(); refreshTop();
