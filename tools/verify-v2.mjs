@@ -22,6 +22,7 @@ const S=st.S,{MW,MH,NEUTRAL,TERRAIN_KEYS,NPLAY,NATIONS,RES_KEYS,START_STOCK,UNIT
 const args=process.argv.slice(2); const YEARS=+(args.find(a=>/^\d+$/.test(a))||5);
 const NAC=args.includes("--nac")?args[args.indexOf("--nac")+1]:null; // desglose de flujos por estamento de esa nación
 const AI=args.includes("--ia"); // corre la IA real de obras + gestión por presupuesto + construcción + demolición (estates.js)
+                                // y la IA de la corona (crownAI: obras, reclutas, solvencia) de todos los reinos
 
 // ---- mundo ----
 const snap=OFFICIAL_MAP;S.rand=mg.mulberry32(193909);S.hour=0;S.armies=[];
@@ -79,7 +80,7 @@ function checkBooks(pechoBefore){ // tras un cierre de mes del libro provincial
     if(p.owner===S.player&&m.pay.corona&&m.pay.corona.Pecho)pv+=m.pay.corona.Pecho}
   const cr=pechoBefore-pechoAt; worstPecho=Math.max(worstPecho,Math.abs(cr-pv)/(Math.abs(cr)+1)); monthsChecked++;
 }
-let nan=false,worstInv=0; const OB={done:0,by:{}};
+let nan=false,worstInv=0; const OB={done:0,by:{}}, RC={done:0};
 const treas0=new Map();
 for(let y=0;y<YEARS;y++){
   for(const n of alive())treas0.set(n,S.nations[n].res.dinero);
@@ -88,6 +89,12 @@ for(let y=0;y<YEARS;y++){
   for(let d=0;d<365;d++){S.hour+=24;const pb=pechoCrown();tick();
     if(S.pmKey!==pmKey0){if(pmKey0!=null)checkBooks(pb);pmKey0=S.pmKey;pechoAt=pb}
     if(AI){es.estatesDaily();for(let h=0;h<24;h++)ec.degradeBuildings();
+      const own=Array.from({length:NPLAY},()=>[]);for(const p of S.provs)if(p.owner<NPLAY&&!ec.isOccupied(p))own[p.owner].push(p);
+      for(let k=0;k<4;k++)for(const n of alive())es.crownAI(n,own[n]);   // como sim.js aiTurn, cada 6 h
+      for(const p of S.provs)if(p.recruitQueue.length){const q=p.recruitQueue[0];   // la recluta termina al comprar su equipo (economy2 recruitPass)
+        if(q.prog>=1-1e-9){p.recruitQueue.shift();RC.done++;if(p.owner!==q.nation)continue;
+          let a=S.armies.find(x=>x.nation===q.nation&&x.prov===p.id);if(!a){a={id:S.armies.length+1000,nation:q.nation,prov:p.id,units:{},src:{},path:[],legDone:0,legTotal:0,cond:1};S.armies.push(a)}
+          a.units[q.u]=(a.units[q.u]||0)+1;a.src[p.id]=(a.src[p.id]||0)+(UNITS[q.u].mano||0)}}
       for(const p of S.provs)if(p.buildQueue.length){const q=p.buildQueue[0];   // la obra termina al comprar todos sus tramos (economy2 obraPass)
         if(q.prog>=1-1e-9){OB.done++;OB.by[q.owner||"corona"]=(OB.by[q.owner||"corona"]||0)+1;ec.addLevel(p,q.b,q.owner||"corona");p.buildQueue.shift()}}}}
   for(const n of alive()){const N=S.nations[n];for(const k in N.res)if(!isFinite(N.res[k]))nan=true;for(const k in N.sWealth)if(!isFinite(N.sWealth[k]))nan=true}
@@ -117,6 +124,10 @@ for(let y=0;y<YEARS;y++){
   fs.sort((x,y)=>x-y);const q=f=>(100*fs[Math.floor(f*(fs.length-1))]).toFixed(0)+"%";
   console.log(`flete (granja): sobre los materiales p10 ${q(0.1)} mediana ${q(0.5)} p90 ${q(0.9)} · sobre el total de la obra ${(100*ft/tt).toFixed(1)}%`)}
 if(AI){const w={};let n=0;for(const p of S.provs)if(p.buildQueue.length){n++;const k=p.buildQueue[0].wait||"avanza";w[k]=(w[k]||0)+1}
+  {let m=0;const k=[];for(const n of alive()){const N=S.nations[n],inc=N.e2&&N.e2.inc;if(!inc||!(inc.corona>0))continue;
+      const d=e2.mercedDue(n,false);m+=d.v;k.push((N.res.dinero||0)/inc.corona)}
+    k.sort((x,y)=>x-y);const q=f=>k.length?k[Math.floor(f*(k.length-1))].toFixed(1):"—";
+    console.log(`mercedes: tesoro en meses de ingreso p10 ${q(0.1)} mediana ${q(0.5)} p90 ${q(0.9)} · mercedes del mes ${fmt(m)} · reclutas terminadas ${RC.done}`)}
   console.log(`obras: ${OB.done} terminadas (${Object.entries(OB.by).map(([k,v])=>k+" "+v).join(", ")}) · en curso ${n}: ${Object.entries(w).map(([k,v])=>k+" "+v).join(", ")}`)}
 console.log(`\nNaN: ${nan?"⚠ SÍ":"✅ no"} · invariante del dinero: ${worstInv<1e-6?"✅":"⚠"} peor Δrel ${worstInv.toExponential(2)}`);
 console.log(`libros de cuentas (${monthsChecked} meses, ${names[S.player]}): provincia Σcobros+flete=Σvalor ${worstProvBook<1e-9?"✅":"⚠"} peor ${worstProvBook.toExponential(2)} · pecho provincias = pecho Tesorería ${worstPecho<1e-9?"✅":"⚠"} peor ${worstPecho.toExponential(2)}`);

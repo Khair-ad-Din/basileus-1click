@@ -524,6 +524,28 @@ function armyHp(a){let t=0;for(const k in a.units)t+=a.units[k]*UNITS[k].hp;retu
 function armySpd(a){let s=999;for(const k in a.units)if(a.units[k]>0.05)s=Math.min(s,UNITS[k].spd);return s===999?18:s}
 function nationStrength(n){let t=0;for(const a of S.armies)if(a.nation===n)t+=armyAtk(a)+armyDef(a);return t}
 function nationProvCount(n){let t=0;for(const p of S.provs)if(p.owner===n)t++;return t}
+// Licenciar `n` unidades de un tipo: desmoviliza (NO mata población), devuelve la soldadesca a las
+// provincias de origen (baja el mantenimiento y recupera mano de obra). Devuelve cuántas licenció.
+function disbandUnit(army,type,n){
+  if(!army||!army.units[type])return 0;
+  n=Math.min(n,Math.floor(army.units[type]+1e-6));
+  if(n<=0)return 0;
+  const freed=n*(UNITS[type].mano||0);
+  let tot=0;for(const pid in army.src)tot+=army.src[pid];
+  if(tot>0&&freed>0)for(const pid in army.src){
+    const back=freed*(army.src[pid]/tot);
+    army.src[pid]=Math.max(0,army.src[pid]-back);
+    const P=S.provs[pid];
+    if(P&&!P.wasteland)P.sold=Math.min(soldCap(P),(P.sold||0)+back); // la gente vuelve a casa
+  }
+  army.units[type]-=n;
+  if(army.units[type]<0.05)delete army.units[type];
+  if(armyCount(army)<0.05){
+    const i=S.armies.indexOf(army);
+    if(i>=0){if(S.selArmy===army)S.selArmy=null;S.armies.splice(i,1)}
+  }
+  return n;
+}
 // ¿la provincia p puede reclutar la unidad u (para el jugador)? Comprueba dueño/estado y los edificios
 // requeridos; la solvencia y la soldadesca se comprueban al reclutar. Usado por la UI, el mapa y el clic.
 function recruitable(p,u){
@@ -536,5 +558,5 @@ function recruitTime(p,u){
 }
 
 export {
-  BKEYS, fxKeys, ledger, sinkAdd, calOf, harvestMonth, monthsToHarvest, MONTHS_ES, canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, isOccupied, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyStr, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, recruitable, moraleGrowth, MORALE_MIN, MORALE_HOSTILE, SOLD_FRAC, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, specialistCap, buildJobs, freeLabor, staffing, jobsOf, buildSlots, usedSlots, structPPF, JOBS_PER_LEVEL, ensureMarket, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, manorOf, canStaffIndustry, hLvl, hOff, hCond, hOwners, setOff, addLevel, dropLevel, mainOwner, syncOwn, crownMay, CROWN_CORE, ESTATES_BUILD, TRADE_BULK, TERRAIN_CAT, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, monthKeyOf, resetTsyLedger, tsyTick, tsyAvail, tsyMonthBal, recFlow, recCrown, effLvl, effPow, degradeBuildings, YR_TICKS, TRADE_KM, TRADE_SEA, TRADE_WAR, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN, PROMO_RATE, targetBurgFrac, recBuy
+  BKEYS, fxKeys, ledger, sinkAdd, calOf, harvestMonth, monthsToHarvest, MONTHS_ES, canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, isOccupied, armyCount, disbandUnit, armyPops, armyFood, armyForage, troopDrainOn, armyStr, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, recruitable, moraleGrowth, MORALE_MIN, MORALE_HOSTILE, SOLD_FRAC, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, specialistCap, buildJobs, freeLabor, staffing, jobsOf, buildSlots, usedSlots, structPPF, JOBS_PER_LEVEL, ensureMarket, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, manorOf, canStaffIndustry, hLvl, hOff, hCond, hOwners, setOff, addLevel, dropLevel, mainOwner, syncOwn, crownMay, CROWN_CORE, ESTATES_BUILD, TRADE_BULK, TERRAIN_CAT, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, monthKeyOf, resetTsyLedger, tsyTick, tsyAvail, tsyMonthBal, recFlow, recCrown, effLvl, effPow, degradeBuildings, YR_TICKS, TRADE_KM, TRADE_SEA, TRADE_WAR, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN, PROMO_RATE, targetBurgFrac, recBuy
 };
