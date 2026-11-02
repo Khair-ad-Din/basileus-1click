@@ -3,7 +3,7 @@ import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, 
 import { S } from "./state.js";
 import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildJobs, buildMax, buildSlots, canAfford, costFor, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationProvCount, nationStrength, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, resetTsyLedger, tsyAvail, tsyMonthBal, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, provProdMul, YR_TICKS, manorOf, MANOR_RENT, hLvl, hOff, hCond, hOwners, effLvl, mainOwner, crownMay } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
-import { GOODS2, LABEL2, REF2, NEED2, WANT2, BLD2, PRICE_SCALE, costQuote, unitCost, recruitOK, soldadaMonth, armySoldada, REPOSICION, specialty2, obsolete2, siteOK2, transport, buildingProfit2, buildingOutput2, upkeepMonth2, upkeepDue, granaryOf, foodGrowth, obraCost, repairCost, positoCap, positoMonth, positoQuote, POSITO_MONTHS, landYield, landCap, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX } from "./economy2.js";
+import { GOODS2, LABEL2, REF2, NEED2, WANT2, BLD2, PRICE_SCALE, costQuote, heavyFlete, unitCost, recruitOK, soldadaMonth, armySoldada, REPOSICION, specialty2, obsolete2, siteOK2, transport, buildingProfit2, buildingOutput2, upkeepMonth2, upkeepDue, granaryOf, foodGrowth, obraCost, repairCost, positoCap, positoMonth, positoQuote, POSITO_MONTHS, landYield, landCap, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX } from "./economy2.js";
 import { calOf, MONTHS_ES, monthsToHarvest, harvestMonth } from "./economy.js";
 import { canvas, clampPan, repaintProvince } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
@@ -147,6 +147,7 @@ function n1(v){return (Math.round(v*10)/10).toString().replace(/\.0$/,"")}
 function obraLine(p,b){
   const c=obraCost(p,b), N=S.nations[p.owner], rows=[["Jornal","",nfE(c.jornal)]];
   for(const g in c.bienes){const pr=(N&&N.mktPrice&&N.mktPrice[g])||REF2[g]*PRICE_SCALE;rows.push([resImg(g)+LABEL2[g],nfE(c.bienes[g]),nfE(c.bienes[g]*pr)])}
+  if(c.flete>0.5)rows.push(["Flete","",nfE(c.flete)]);
   const tip=tipBox("Obra",[{cols:["Partida","Cantidad","Ducados"],trows:rows,ttot:["Total","",nfE(c.total)]},
     {cols:["Pago","Valor"],trows:[["Tramo","semanal"],["Por semana",nfE(c.total/c.semanas)],["Semanas",c.semanas]]}],BUILDINGS[b].label);
   return "<span data-tiph=\""+ta(tip)+"\">"+COIN()+fmt(c.total)+"</span>";
@@ -171,8 +172,9 @@ function recruitLine(u){
 function recruitEta(q){return q.wait?"<span class='neg'>"+(q.wait==="dinero"?"Sin dinero":"Espera material")+"</span>":fmtDur(q.hoursLeft)}
 // MANTENIMIENTO de un nivel (economy2 upkeepDue): ducados al mes al precio de hoy; el tooltip, el jornal y cada bien.
 function upLine(p,b){
-  const u=upkeepDue(b,1), N=S.nations[p.owner], rows=[["Jornal","",nfE(u.jornal)]]; let t=u.jornal;
-  for(const g in u.bienes){const pr=(N&&N.mktPrice&&N.mktPrice[g])||REF2[g]*PRICE_SCALE;t+=u.bienes[g]*pr;rows.push([resImg(g)+LABEL2[g],n1(u.bienes[g]),nfE(u.bienes[g]*pr)])}
+  const u=upkeepDue(b,1), N=S.nations[p.owner], fl=heavyFlete(p), rows=[["Jornal","",nfE(u.jornal)]]; let t=u.jornal,fr=0;
+  for(const g in u.bienes){const pr=(N&&N.mktPrice&&N.mktPrice[g])||REF2[g]*PRICE_SCALE;t+=u.bienes[g]*pr;fr+=u.bienes[g]*pr*(fl[g]||0);rows.push([resImg(g)+LABEL2[g],n1(u.bienes[g]),nfE(u.bienes[g]*pr)])}
+  if(fr>0.05){rows.push(["Flete","",nfE(fr)]);t+=fr}
   const tip=tipBox("Mantenimiento",[{cols:["Partida","Cantidad","Ducados"],trows:rows,ttot:["Total","",nfE(t)]}],"Por nivel al mes");
   return "<span data-tiph=\""+ta(tip)+"\">"+uiIcon('mantenimiento')+" "+COIN()+fmt(t)+"/mes</span>";
 }

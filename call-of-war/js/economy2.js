@@ -351,10 +351,21 @@ function obraCost(p,b){
   for(const g in tpl)bienes[g]=V*OBRA_MAT*tpl[g]/ref(g);
   bienes.herramientas=V*OBRA_HERR/ref("herramientas");
   const meses=(OBRA_MESES[b]||Math.max(obraProduce(b)?OBRA_MIN_PROD:OBRA_MIN_SERV,(B.time||0)/730))*(B.unique?1:1+0.35*lvl)*(1-buildSpeedBonus(p));
-  const N=S.nations[p.owner]; let mat=0;
-  for(const g in bienes)mat+=bienes[g]*((N&&N.mktPrice&&N.mktPrice[g])||ref(g));
-  return {V, jornal:V*OBRA_JORNAL, bienes, semanas:Math.max(1,Math.round(meses*730/168)), mat, total:V*OBRA_JORNAL+mat};
+  const N=S.nations[p.owner], fl=heavyFlete(p); let mat=0,flete=0;
+  for(const g in bienes){const v=bienes[g]*((N&&N.mktPrice&&N.mktPrice[g])||ref(g));mat+=v;flete+=v*(fl[g]||0)}
+  return {V, jornal:V*OBRA_JORNAL, bienes, semanas:Math.max(1,Math.round(meses*730/168)), mat, flete, fl, total:V*OBRA_JORNAL+mat+flete};
 }
+// FLETE DE LOS MATERIALES PESADOS (design/obras-tropas.md decisión 12): la madera, la piedra y el hierro se llevan desde el
+// centro de comercio del reino hasta la provincia de la obra, por la misma ruta y tarifa que el grano de socorro
+// (reliefRoute) con el peso de cada bien. Lo paga quien construye o mantiene, encima del precio de la plaza; lo cobran los
+// que acarrean: los campesinos de la provincia y, más allá de una jornada de carro, los burgueses (cartShare).
+const HEAVY=["madera","piedra","hierro"];
+function heavyFlete(p,payer=p.owner){const d=dayOf(S.hour);if(p._hf&&p._hf.d===d&&p._hf.n===payer)return p._hf.o;
+  const km=reliefRoute(p,payer).km,o={};for(const g of HEAVY)o[g]=Math.min(FLETE_MAX,TRADE_KM2*km*(TRADE_BULK[BULK2[g]]||1)/REF2[g]);
+  p._hf={d,n:payer,o};return o}
+function fletePay(n,N,p,v){if(!(v>0))return;const cs=cartShare(p),c=v*cs,b=v-c;
+  N.sWealth.campesino+=c;recFlow(n,"campesino","Transporte",c);addInc(N,"campesino",c);pmOtr(p,"campesino","Transporte",c);
+  if(b>0){N.sWealth.burgues+=b;recFlow(n,"burgues","Transporte",b);addInc(N,"burgues",b);pmOtr(p,"burgues","Transporte",b)}}
 // La obra que entra en la cola: su coste se fija al encargarla (el nivel de ese momento). Suma al momento su parte del
 // cupo del reino (N.e2.obraSat), para que el mismo día no se encarguen cientos.
 function newObra(p,b,owner){const c=obraCost(p,b);const q={b,prog:0,sem:c.semanas,jornal:c.jornal,bienes:c.bienes};if(owner)q.owner=owner;
@@ -392,8 +403,8 @@ function upkeepDue(b,lvl){ // lo debido AL MES por lvl niveles: {jornal, bienes:
   bienes.herramientas=V*OBRA_HERR/ref("herramientas");
   return {jornal:V*OBRA_JORNAL, bienes}}
 function upkeepMonth2(p,b,lvl){ // ducados al mes al precio de hoy (IA, rentabilidad, interfaz)
-  const u=upkeepDue(b,lvl), N=S.nations[p.owner]; let v=u.jornal;
-  for(const g in u.bienes)v+=u.bienes[g]*((N&&N.mktPrice&&N.mktPrice[g])||ref(g));
+  const u=upkeepDue(b,lvl), N=S.nations[p.owner], fl=heavyFlete(p); let v=u.jornal;
+  for(const g in u.bienes)v+=u.bienes[g]*((N&&N.mktPrice&&N.mktPrice[g])||ref(g))*(1+(fl[g]||0));
   return v}
 const upkeepFort=b=>{const B=BUILDINGS[b];return !!(B.unique||(B.fx&&B.fx.def))};
 // Cierre del mes: mueve la barra de cada tenencia abierta con lo que pagó (p.upk["b@dueño"] = [debido, pagado]).
@@ -421,7 +432,8 @@ function upkeepPass(n,N,ps,price,alc,GL,bought,gapStock){
   for(const t of list){
     let f=1;for(const g in t.g)if(r[g]<f)f=r[g];
     const pr=g=>price[g]*(t.o==="corona"?1-alc:1);         // la corona no se paga su propia alcabala
-    let goods=0;for(const g in t.g)goods+=t.g[g]*pr(g);
+    const fl=heavyFlete(t.p); let goods=0,fr=0;for(const g in t.g){goods+=t.g[g]*pr(g);fr+=t.g[g]*price[g]*(fl[g]||0)}
+    goods+=fr;
     const due=t.j+goods, purse=t.o==="corona"?Math.max(0,N.res.dinero):Math.max(0,N.sWealth[t.o]||0);
     if(f*due>purse)f=due>0?purse/due:0;
     for(const g in t.g){const want0=t.g[g],q=want0*f;gapStock[g]=(gapStock[g]||0)+(want0-q);glDem(GL,g,"mantenimiento",want0,q);if(q<=0)continue;
@@ -431,6 +443,7 @@ function upkeepPass(n,N,ps,price,alc,GL,bought,gapStock){
       N.e2.plaza+=mv*(1-MARGIN-alc)}
     const paid=f*due, lab=BUILDINGS[t.b].label;
     if(paid>0){if(t.o==="corona"){N.res.dinero-=paid;recCrown(n,"Mantenimiento de edificios",lab,-paid)}else{N.sWealth[t.o]-=paid;recFlow(n,t.o,"Mantenimiento de edificios",-paid)}
+      fletePay(n,N,t.p,f*fr);
       const sp=OBRA_TPL_OF[t.b]==="piedra"?OBRA_CANTERO:OBRA_PEON;
       for(const e in sp){const v=f*t.j*sp[e];N.sWealth[e]+=v;recFlow(n,e,"Jornales de obra",v);addInc(N,e,v);pmJor(t.p,e,v)}}
     const U=t.p.upk||(t.p.upk={}),k=t.b+"@"+t.o,x=U[k]||(U[k]=[0,0]);x[0]+=due;x[1]+=paid;
@@ -459,7 +472,7 @@ function recruitOrder(n,p,u,opt){
   const U=UNITS[u];if(soldAvail(p)<U.mano||!recruitOK(n,u))return false;
   const N=S.nations[n],e=unitCost(u).dinero;
   N.res.dinero-=e;recCrown(n,"Reclutamiento","Enganche",-e);
-  N.sWealth[U.who]+=e;recFlow(n,U.who,"Soldada",e);addInc(N,U.who,e);pmPay(p,U.who,"Soldada",e);
+  N.sWealth[U.who]+=e;recFlow(n,U.who,"Soldada",e);addInc(N,U.who,e);pmOtr(p,U.who,"Soldada",e);
   p.sold=soldAvail(p)-U.mano;
   const h=(opt&&opt.hours)||recruitTime(p,u), q={u,nation:n,hoursLeft:h,total:h,prog:0};
   if(opt&&opt.rally!=null&&opt.rally!==p.id)q.rally=opt.rally;
@@ -509,13 +522,13 @@ function armyPass(n,N,list,price,alc,GL,bought,gapStock,dt){
           const O=q.owner<NPLAY&&!atWarPair(a.nation,q.owner)?S.nations[q.owner]:null; if(!O||!O.sWealth)continue;
           const v=Math.min(t1*((O.mktPrice&&O.mktPrice.grano)||ref("grano")),purse()); if(!(v>0))continue;
           N.res.dinero-=v;recCrown(n,"Ejército","Requisas",-v);
-          O.sWealth.campesino+=v;recFlow(q.owner,"campesino","Requisas",v);addInc(O,"campesino",v);pmPay(q,"campesino","Requisas",v)}}}
+          O.sWealth.campesino+=v;recFlow(q.owner,"campesino","Requisas",v);addInc(O,"campesino",v);pmOtr(q,"campesino","Requisas",v)}}}
     // 2) SOLDADA a los pops de origen (campesino, burgués o nobleza según la tropa)
     const due=armySoldada(a)*dt/730, fs=due>0?Math.min(1,purse()/due):1;
     if(due>0&&fs>0){let st=0;for(const pid in a.src)st+=a.src[pid];
       for(const k in a.units){const U=UNITS[k],v=a.units[k]*soldadaMonth(k)*dt/730*fs;if(!(v>0))continue;
         N.res.dinero-=v;N.sWealth[U.who]+=v;recFlow(n,U.who,"Soldada",v);addInc(N,U.who,v);
-        if(st>0)for(const pid in a.src){const P=S.provs[pid];if(P)pmPay(P,U.who,"Soldada",v*a.src[pid]/st)}}
+        if(st>0)for(const pid in a.src){const P=S.provs[pid];if(P)pmOtr(P,U.who,"Soldada",v*a.src[pid]/st)}}
       recCrown(n,"Ejército","Soldada",-due*fs)}
     // 3) REPOSICIÓN del equipo: el 1% al mes, comprado en la plaza
     const rq={};let rd=0,fr=1;
@@ -590,6 +603,9 @@ function pm(p){return p._m||(p._m={prod:{},val:{},pay:{},lost:0,bld:{}})}
 function pmProd(p,g,q){if(q>0){const m=pm(p);m.prod[g]=(m.prod[g]||0)+q}}
 // jornales de obra y reparación que cobran los de la provincia: aparte de pay (no son el valor de lo que produce)
 function pmJor(p,who,v){if(!v)return;const m=pm(p),j=m.jor||(m.jor={});j[who]=(j[who]||0)+v}
+// cobros de la provincia que NO vienen de vender en la plaza (soldada, requisas, flete de obra): aparte del libro de
+// ventas, que debe cuadrar Σcobros = Σvalor vendido
+function pmOtr(p,who,cat,v){if(!v)return;const m=pm(p),o=m.otr||(m.otr={}),w=o[who]||(o[who]={});w[cat]=(w[cat]||0)+v}
 function pmPay(p,who,cat,v){if(!v)return;const m=pm(p),w=m.pay[who]||(m.pay[who]={});w[cat]=(w[cat]||0)+v}
 function pmClose(dt){ // al cambiar de mes de calendario, el libro en curso pasa a ser el del mes cerrado.
   // Se mira el mes del tick ANTERIOR: así el primer día del mes nuevo cae en el mes que cierra, igual que en el libro
@@ -967,7 +983,8 @@ function obraPass(n,N,ps,price,alc,GL,bought,gapStock,dt){
   for(const t of list){
     let f=1,why=null;for(const g in t.b)if(r[g]<f){f=r[g];why="material"}
     const pr=g=>price[g]*(t.who==="corona"?1-alc:1);       // la corona no se paga su propia alcabala
-    let goods=0;for(const g in t.b)goods+=t.b[g]*pr(g);
+    const fl=heavyFlete(t.p); let goods=0,fr=0;for(const g in t.b){goods+=t.b[g]*pr(g);fr+=t.b[g]*price[g]*(fl[g]||0)}
+    goods+=fr;                                             // el flete de la madera, la piedra y el hierro hasta la obra
     const purse=t.who==="corona"?Math.max(0,N.res.dinero):Math.max(0,N.sWealth[t.who]||0), need=f*(t.j+goods);
     if(need>purse){f*=need>0?purse/need:0;why="dinero"}
     for(const g in t.b){const want0=t.b[g],q=want0*f;gapStock[g]=(gapStock[g]||0)+(want0-q);glDem(GL,g,"obras",want0,q);if(q<=0)continue;
@@ -977,6 +994,7 @@ function obraPass(n,N,ps,price,alc,GL,bought,gapStock,dt){
       N.e2.plaza+=mv*(1-MARGIN-alc)}
     const paid=f*(t.j+goods), lab=BUILDINGS[t.q.b].label;
     if(paid>0){if(t.who==="corona"){N.res.dinero-=paid;recCrown(n,"Obras",lab,-paid)}else{N.sWealth[t.who]-=paid;recFlow(n,t.who,"Construcción",-paid)}
+      fletePay(n,N,t.p,f*fr);
       const sp=OBRA_TPL_OF[t.q.b]==="piedra"?OBRA_CANTERO:OBRA_PEON;
       for(const e in sp){const v=f*t.j*sp[e];N.sWealth[e]+=v;recFlow(n,e,"Jornales de obra",v);addInc(N,e,v);pmJor(t.p,e,v)}}
     t.q.prog+=f*t.k; t.q.wait=f<0.5?why:null;   // el aviso, solo si va a menos de la mitad de su ritmo
@@ -1222,4 +1240,4 @@ function granaryOf(p){
 }
 
 export { economyTick2, siteOK2, seedEstates2, upkeepMonth2, upkeepDue, seedOwner2, seedWealth2, GOODS2, LABEL2, REF2, NEED2, WANT2, TIERS, BLD2, ESTATE_BUILDS2, buildingProfit2, buildingOutput2,
-  transport, tradeCost2, moneyStock, sinkAdd, ARTISAN_IN, ctrOut, ctrIn, granaryOf, foodGrowth, obraCost, newObra, obraFull, repairCost, repairPay, positoCap, positoMonth, positoQuote, positoSend, POSITO_MONTHS, reserveOf, landYield, landCap, landOcc, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX, GRAIN_RESERVE, reliefQuote, reliefSend, isMarketDay, MARKET_DAYS, PRICE_SCALE, JORNAL, MARGIN, costQuote, costOK, costPay, specialty2, obsolete2, unitCost, recruitOK, recruitOrder, armySoldada, nationSoldada, soldadaMonth, SOLDADA_K, REPOSICION };
+  transport, tradeCost2, moneyStock, sinkAdd, ARTISAN_IN, ctrOut, ctrIn, granaryOf, foodGrowth, obraCost, newObra, obraFull, repairCost, repairPay, positoCap, positoMonth, positoQuote, positoSend, POSITO_MONTHS, reserveOf, landYield, landCap, landOcc, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX, GRAIN_RESERVE, reliefQuote, reliefSend, isMarketDay, MARKET_DAYS, PRICE_SCALE, JORNAL, MARGIN, costQuote, costOK, costPay, specialty2, obsolete2, heavyFlete, unitCost, recruitOK, recruitOrder, armySoldada, nationSoldada, soldadaMonth, SOLDADA_K, REPOSICION };

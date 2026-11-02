@@ -109,6 +109,9 @@ for(let y=0;y<YEARS;y++){
   for(const n of alive()){const N=S.nations[n],inc=N.e2&&N.e2.inc&&N.e2.inc.corona;if(inc>0)sh.push(e2.nationSoldada(n)/inc)}sh.sort((x,y)=>x-y);
   const q=f=>sh.length?(100*sh[Math.floor(f*(sh.length-1))]).toFixed(0)+"%":"—";
   console.log(`tropas: ${na} ejércitos, ${fmt(men)} hombres · estado medio ${(sc/(na||1)).toFixed(3)} · soldada/ingreso corona p10 ${q(0.1)} mediana ${q(0.5)} p90 ${q(0.9)} · comida requisada ${need>0?(100*req/need).toFixed(0):0}%`)}
+{const fs=[];let ft=0,tt=0;for(const p of S.provs){if(p.owner>=NPLAY||p.wasteland||!p.pops)continue;const c=e2.obraCost(p,"granja");fs.push(c.flete/c.mat);ft+=c.flete;tt+=c.total}
+  fs.sort((x,y)=>x-y);const q=f=>(100*fs[Math.floor(f*(fs.length-1))]).toFixed(0)+"%";
+  console.log(`flete (granja): sobre los materiales p10 ${q(0.1)} mediana ${q(0.5)} p90 ${q(0.9)} · sobre el total de la obra ${(100*ft/tt).toFixed(1)}%`)}
 if(AI){const w={};let n=0;for(const p of S.provs)if(p.buildQueue.length){n++;const k=p.buildQueue[0].wait||"avanza";w[k]=(w[k]||0)+1}
   console.log(`obras: ${OB.done} terminadas (${Object.entries(OB.by).map(([k,v])=>k+" "+v).join(", ")}) · en curso ${n}: ${Object.entries(w).map(([k,v])=>k+" "+v).join(", ")}`)}
 console.log(`\nNaN: ${nan?"⚠ SÍ":"✅ no"} · invariante del dinero: ${worstInv<1e-6?"✅":"⚠"} peor Δrel ${worstInv.toExponential(2)}`);

@@ -82,7 +82,14 @@ real, commit temático. Las cifras se calibran al final con /simular (fase 7).
   - Arnés a 2 años (2 Piqueros + 2 Levas por reino, sin reclutar): invariante ok, estado medio 0,948, soldada/ingreso
     de la corona mediana 21%. Armas: 532/mes producidas frente a 2,6k pedidas (precio ×2,6): las armerías ×5 no llegan
     porque hay pocas (F7).
-- [ ] **F5. Flete de materiales pesados** (madera, piedra, hierro) con reliefFlete.
+- [x] **F5. Flete de materiales pesados** (madera, piedra, hierro) con reliefFlete. HECHA 2026-11-02: economy2
+  heavyFlete(p) (ruta de reliefRoute, peso TRADE_BULK de cada bien, techo FLETE_MAX) y fletePay (a campesinos y, más
+  allá de una jornada, burgueses). Se aplica a las obras y al mantenimiento de edificios (quien paga, encima del precio
+  de la plaza); obraCost y upkeepMonth2 lo incluyen, así que la IA y las tarjetas ven el coste real. NO a las reclutas
+  ni a la reposición del ejército (el equipo se entrega en el centro de comercio). A 2 años: el flete de una granja es
+  el 39% de sus materiales en la mediana (11% p10, 65% p90) y el 17% del total de la obra; obras terminadas 160 (163
+  sin flete). Arreglo de paso: la soldada, las requisas y el flete de obra se apuntaban en el libro de VENTAS de la
+  provincia (rompía Σcobros = Σvalor desde la F4); ahora van a un cubo aparte (pmOtr, m.otr).
 - [ ] **F6. Pasada de UX** (/ux): barras de estado, tooltips de coste y de mantenimiento, desglose de la soldada en
   Tesorería.
 - [ ] **F7. Calibración en GitHub** (/simular): coste 1,0 vs 1,5 años; SOLDADA_K 1,0 vs 0,6; armerías ×5 vs ×3; vigilar
