@@ -1,11 +1,12 @@
 {
   "_doc": "Variantes de simulación (skill /simular: node tools/sim.mjs lanzar <nombre> [variantes]). Cada variante = cambios de texto EXACTOS sobre una copia de call-of-war: [archivo, texto actual, texto nuevo]; si un texto no aparece exactamente una vez, la variante falla. 'run' = las que se lanzan por defecto; 'years' = años. Deja siempre la de control ('actual', el código tal cual) para comparar en las mismas condiciones. Las rondas pasadas (B, C, D de la capacidad agraria) están en design/capacidad-agraria.md.",
   "run": [
-    "posito",
-    "sin-posito",
-    "posito-30"
+    "f7-control",
+    "f7-obra15",
+    "f7-soldada06",
+    "f7-armas3"
   ],
-  "years": 80,
+  "years": 10,
   "variants": {
     "posito": {
       "desc": "control: el código tal cual (la IA socorre con hasta el 10% de su ingreso)",
@@ -28,6 +29,64 @@
           "js/economy2.js",
           "const POSITO_AI=0.10;",
           "const POSITO_AI=0.30;"
+        ]
+      ]
+    },
+    "f7-control": {
+      "desc": "F7 control: obras, tropas y flete tal cual (obra = 1 año de producción, SOLDADA_K 1, armerías ×5)",
+      "probe": {
+        "file": "verify-v2.mjs",
+        "args": [
+          "--ia"
+        ]
+      },
+      "edits": []
+    },
+    "f7-obra15": {
+      "desc": "F7: obras un 50% más caras (coste = 1,5 años de producción)",
+      "probe": {
+        "file": "verify-v2.mjs",
+        "args": [
+          "--ia"
+        ]
+      },
+      "edits": [
+        [
+          "js/economy2.js",
+          "V=(OBRA_V[b]||OBRA_V_PROD)*(B.unique?1:1+0.5*lvl);",
+          "V=1.5*(OBRA_V[b]||OBRA_V_PROD)*(B.unique?1:1+0.5*lvl);"
+        ]
+      ]
+    },
+    "f7-soldada06": {
+      "desc": "F7: soldada al 60% (SOLDADA_K 0,6)",
+      "probe": {
+        "file": "verify-v2.mjs",
+        "args": [
+          "--ia"
+        ]
+      },
+      "edits": [
+        [
+          "js/economy2.js",
+          "const SOLDADA_K=1,",
+          "const SOLDADA_K=0.6,"
+        ]
+      ]
+    },
+    "f7-armas3": {
+      "desc": "F7: armerías ×3 en vez de ×5",
+      "probe": {
+        "file": "verify-v2.mjs",
+        "args": [
+          "--ia"
+        ]
+      },
+      "edits": [
+        [
+          "js/economy2.js",
+          "const ARMS_MUL=5;",
+          "const ARMS_MUL=3;"
         ]
       ]
     }

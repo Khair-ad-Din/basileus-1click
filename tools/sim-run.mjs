@@ -13,5 +13,7 @@ for(const[file,from,to]of vr.edits){const f=path.join(dst,file),t=fs.readFileSyn
   if(n!==1){console.error(`[${V}] "${from}" aparece ${n} veces en ${file}: la variante no encaja con el código`);process.exit(1)}
   fs.writeFileSync(f,t.replace(from,to));console.log(`[${V}] ${file}: ${from} → ${to}`)}
 console.log(`[${V}] ${vr.desc} · ${years} años`);
-const r=spawnSync(process.execPath,[path.join(root,"tools","capacidad-probe.mjs"),years,dec],{stdio:"inherit",env:{...process.env,COW:dst,TAG:V}});
+// la sonda: la de la variante, la de la ronda (cfg.probe) o la de capacidad agraria. verify-v2 recibe [años, ...args]
+const P=vr.probe||cfg.probe||{file:"capacidad-probe.mjs"}, pargs=P.file==="capacidad-probe.mjs"?[years,dec]:[years,...(P.args||[])];
+const r=spawnSync(process.execPath,[path.join(root,"tools",P.file),...pargs],{stdio:"inherit",env:{...process.env,COW:dst,TAG:V}});
 fs.rmSync(dst,{recursive:true,force:true});process.exit(r.status??1);
