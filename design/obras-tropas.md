@@ -50,7 +50,10 @@ real, commit temático. Las cifras se calibran al final con /simular (fase 7).
   mina de hierro (regalía del subsuelo), catedral (fundación real).
   Pasos: p.bOwner[b] (un dueño) → reparto de niveles por dueño; producción, beneficio, cierres del presupuesto y
   reparaciones por dueño; IA de la corona y botón del jugador filtrados por crownMay; ficha de provincia con los dueños.
-- [ ] **F3. Mantenimiento de edificios + barra.** 0,3% de V/nivel/mes comprado en la plaza repartido en 4 semanas
+- [x] **F3. Mantenimiento de edificios + barra.** HECHA 2026-11-02: upkeepPass (día de mercado, antes de las obras,
+  mismo cupo 25%), upkeepClose (barra por tenencia al cerrar el mes), effPow pondera productividad, defensa y moral; fuera
+  B.up y upkeepScale. A 2 años: estado medio 0,971, 420 niveles entre 0,6 y 0,9 (sobre todo cuarteles de la nobleza),
+  invariante ok. Planteamiento: 0,3% de V/nivel/mes comprado en la plaza repartido en 4 semanas
   (50/10/40), sin escalado por población; barra de estado de edificios (decisión 8) sobre bCond; efecto
   ×(0,5+0,5·estado) en producción, defensa y moral.
 - [ ] **F4. Tropas.** Reclutamiento = enganche + equipo (tabla); armerías ×5; soldada por hombre (SOLDADA_K) a los pops

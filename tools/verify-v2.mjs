@@ -99,6 +99,11 @@ for(let y=0;y<YEARS;y++){
   const extra=` · vendido/producido ${pct(st.soldV/Math.max(1,st.prodV))} · neto campesino por ducado vendido ${(st.campNet/Math.max(1,st.grossV)).toFixed(2)} · jornales ${fmt(st.jornal)}/año · invariante Δrel ${rel.toExponential(1)}`;
   console.log(`año ${y+1}: población ${fmt(pop)} · dinero en manos ${fmt(money)}${extra}`);
 }
+{const H={abiertas:0,"<0,6":0,"<0,9":0,cerradas:0},by={};let sc=0;   // F3: estado de las tenencias (barra de mantenimiento)
+  for(const p of S.provs){if(p.owner>=NPLAY||!p.bOwn)continue;for(const b in p.bOwn)for(const o in p.bOwn[b]){const l=p.bOwn[b][o];
+    if(ec.hOff(p,b,o)){H.cerradas+=l;continue}const c=ec.hCond(p,b,o);H.abiertas+=l;sc+=c*l;if(c<0.6)H["<0,6"]+=l;else if(c<0.9)H["<0,9"]+=l;
+    if(c<0.9){const k=b+"@"+o;by[k]=(by[k]||0)+l}}}
+  console.log(`mantenimiento: niveles abiertos ${H.abiertas} (estado medio ${(sc/(H.abiertas||1)).toFixed(3)}; 0,6-0,9: ${H["<0,9"]}; <0,6: ${H["<0,6"]}) · cerrados ${H.cerradas} · peor: ${Object.entries(by).sort((x,y)=>y[1]-x[1]).slice(0,6).map(([k,v])=>k+" "+v).join(", ")}`)}
 if(AI){const w={};let n=0;for(const p of S.provs)if(p.buildQueue.length){n++;const k=p.buildQueue[0].wait||"avanza";w[k]=(w[k]||0)+1}
   console.log(`obras: ${OB.done} terminadas (${Object.entries(OB.by).map(([k,v])=>k+" "+v).join(", ")}) · en curso ${n}: ${Object.entries(w).map(([k,v])=>k+" "+v).join(", ")}`)}
 console.log(`\nNaN: ${nan?"⚠ SÍ":"✅ no"} · invariante del dinero: ${worstInv<1e-6?"✅":"⚠"} peor Δrel ${worstInv.toExponential(2)}`);

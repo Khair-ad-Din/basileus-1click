@@ -3,7 +3,7 @@ import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, 
 import { S } from "./state.js";
 import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildJobs, buildMax, buildSlots, canAfford, costFor, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationProvCount, nationStrength, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, resetTsyLedger, tsyAvail, tsyMonthBal, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, provProdMul, YR_TICKS, manorOf, MANOR_RENT, hLvl, hOff, hCond, hOwners, effLvl, mainOwner, crownMay } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
-import { GOODS2, LABEL2, REF2, NEED2, WANT2, BLD2, PRICE_SCALE, costQuote, specialty2, obsolete2, siteOK2, transport, buildingProfit2, buildingOutput2, upkeepScale, granaryOf, foodGrowth, obraCost, repairCost, positoCap, positoMonth, positoQuote, POSITO_MONTHS, landYield, landCap, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX } from "./economy2.js";
+import { GOODS2, LABEL2, REF2, NEED2, WANT2, BLD2, PRICE_SCALE, costQuote, specialty2, obsolete2, siteOK2, transport, buildingProfit2, buildingOutput2, upkeepMonth2, upkeepDue, granaryOf, foodGrowth, obraCost, repairCost, positoCap, positoMonth, positoQuote, POSITO_MONTHS, landYield, landCap, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX } from "./economy2.js";
 import { calOf, MONTHS_ES, monthsToHarvest, harvestMonth } from "./economy.js";
 import { canvas, clampPan, repaintProvince } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
@@ -159,6 +159,13 @@ function buyLine(cost,title){
   const tip=tipBox("Coste",[{cols:["Partida","Cantidad","Ducados","En plaza"],trows:rows,ttot:["Total","",nfE(q.total),""]}],title);
   return "<span data-tiph=\""+ta(tip)+"\""+(q.ok?"":" class='neg'")+">"+COIN()+fmt(q.total)+(q.why==="plaza"?" Sin material":"")+"</span>";
 }
+// MANTENIMIENTO de un nivel (economy2 upkeepDue): ducados al mes al precio de hoy; el tooltip, el jornal y cada bien.
+function upLine(p,b){
+  const u=upkeepDue(b,1), N=S.nations[p.owner], rows=[["Jornal","",nfE(u.jornal)]]; let t=u.jornal;
+  for(const g in u.bienes){const pr=(N&&N.mktPrice&&N.mktPrice[g])||REF2[g]*PRICE_SCALE;t+=u.bienes[g]*pr;rows.push([resImg(g)+LABEL2[g],n1(u.bienes[g]),nfE(u.bienes[g]*pr)])}
+  const tip=tipBox("Mantenimiento",[{cols:["Partida","Cantidad","Ducados"],trows:rows,ttot:["Total","",nfE(t)]}],"Por nivel al mes");
+  return "<span data-tiph=\""+ta(tip)+"\">"+uiIcon('mantenimiento')+" "+COIN()+fmt(t)+"/mes</span>";
+}
 function costLine(c,owner){
   return Object.keys(c).map(k=>{
     const no=owner!=null&&tsyAvail(owner,k)<c[k];
@@ -270,10 +277,13 @@ function refreshProvPanel(){
   s+="</div>";
   panel.innerHTML=s;panel.className="show";panel.style.display="block";
 }
+// ESTADO de una tenencia abierta (barra de mantenimiento, economy2 upkeepClose): solo se pinta si no está perfecta
+function condBar(c){if(c>=0.995)return "";const pc=Math.round(c*100);
+  return "<span data-tip='Estado "+pc+"%' style='flex:1;height:5px;background:#241a14;border-radius:3px;overflow:hidden;display:inline-block'><i style='display:block;height:100%;background:"+(c<0.6?"#c0563e":"#8fae5a")+";width:"+pc+"%'></i></span>"}
 // DUEÑOS de los niveles de un edificio (tenencias): un sello por dueño con sus niveles; el tooltip, la tabla con su estado
 function ownersRow(p,b,bs){
   const os=hOwners(p,b).sort((x,y)=>hLvl(p,b,y)-hLvl(p,b,x));
-  const trows=os.map(o=>[whoIcon(o,p.owner)+" "+whoLabel(o),hLvl(p,b,o),hOff(p,b,o)?{v:"Cerrado",c:"#d08080"}:"Abierto"]);
+  const trows=os.map(o=>[whoIcon(o,p.owner)+" "+whoLabel(o),hLvl(p,b,o),hOff(p,b,o)?{v:"Cerrado",c:"#d08080"}:{v:Math.round(100*hCond(p,b,o))+"%",c:hCond(p,b,o)<0.6?"#d08080":null}]);
   const tip=tipBox("Dueños",[{cols:["Dueño","Niveles","Estado"],trows}],BUILDINGS[b].label);
   return "<div style='"+bs+"background:#262b31;cursor:help' data-tiph=\""+ta(tip)+"\"><span style='display:flex;gap:8px'>"+
     os.map(o=>"<span style='white-space:nowrap"+(hOff(p,b,o)?";opacity:.55":"")+"'>"+whoIcon(o,p.owner)+" "+hLvl(p,b,o)+"</span>").join("")+"</span></div>";
@@ -296,7 +306,7 @@ function buildTilesHTML(p){
       if(inQ)cls+=" building";else if(maxed)cls+=" done";else if(block)cls+=" locked";
       const lvBadge=B.unique?"<span class='uni'>Única</span>":(lvl>0?"<span class='lvb'>Nivel "+lvl+"</span>":"");
       // pie anclado abajo (misma posición en TODAS las tarjetas): mantenimiento · coste · tiempo/estado
-      const upStr=B.up?"<div class='up'>"+uiIcon('mantenimiento')+" "+Object.keys(B.up).map(k=>resImg(k)+n1(B.up[k])).join(" ")+"/año</div>":"";
+      const upStr="<div class='up'>"+upLine(p,b)+"</div>";
       let foot;
       if(inQ){const q=p.buildQueue.find(q=>q.b===b),pc=Math.min(100,Math.floor(100*(q.prog||0))),left=Math.max(0,(1-(q.prog||0))*(q.sem||0)*168);
         foot="<div class='ftime' style='color:var(--title)'>"+ph('obra')+" En obra "+pc+"%"+VSEP+(q.wait?"<span class='neg'>"+(q.wait==="dinero"?"Sin dinero":"Espera material")+"</span>":fmtDur(left))+"</div>";}
@@ -325,7 +335,7 @@ function buildTilesHTML(p){
             "<span style='color:#e0a860;white-space:nowrap'>"+ph('reactivar')+" Reactivar"+(cond<0.995?VSEP+rep+COIN():"")+"</span></div>";
         } else if(cl){
           ctrl+="<div style='"+bs+"background:#262b31' onclick='event.stopPropagation();toggleBuilding("+p.id+",\""+b+"\")' title='Deshabilitar: libera dotación y deja de producir'>"+
-            profTxt+"<span style='color:#9aa3ad;white-space:nowrap'>"+ph('pausa')+" Off</span></div>";
+            profTxt+condBar(hCond(p,b,"corona"))+"<span style='color:#9aa3ad;white-space:nowrap'>"+ph('pausa')+" Off</span></div>";
         }
       }
       // lo que añade el SIGUIENTE nivel (marginal), con la rentabilidad v2 del dueño
@@ -1510,7 +1520,7 @@ function stackBar(parts,w,tip){ // barra apilada con tooltip ya hecho (tipBox); 
   for(const x of parts)if(x.v>0)seg+="<i style='display:block;height:100%;width:"+(100*x.v/tot).toFixed(2)+"%;background:"+x.col+"'></i>";
   return "<span data-tiph=\""+ta(tip)+"\" style='display:inline-flex;width:"+(w||170)+"px;height:9px;border-radius:3px;overflow:hidden;background:#241a14;vertical-align:middle;cursor:help'>"+seg+"</span>";
 }
-const DEM_ORDER=[["socorro","Graneros","#c0563e"],["talleres","Talleres","#8d7a4a"],["nobleza"],["clero"],["burgues"],["campesino"]];
+const DEM_ORDER=[["socorro","Graneros","#c0563e"],["mantenimiento","Mantenimiento","#7f8c99"],["obras","Obras","#9a7fb8"],["talleres","Talleres","#8d7a4a"],["nobleza"],["clero"],["burgues"],["campesino"]];
 function goodFlowHTML(N,g){
   const gm=glMonth(N,g); if(!gm)return "";
   const {x,k}=gm, sup=x.sup, sw=c=>"<i class='sw' style='background:"+c+"'></i>";
@@ -1699,7 +1709,7 @@ function estateBar(p,w){ // los cuatro estamentos apilados (ancho = su parte de 
 function siteBlock2(p,b){return BLD2[b]&&!siteOK2(p,b)?"Sin materia prima aquí":null}
 function bldEcon2(p,b,lvl){ // {o, stock:[{k,q}] | out:{g,q}, ins, noSite, profit (🪙/mes)} para lvl niveles
   const B=BUILDINGS[b],fx=B.fx||{},o=mainOwner(p,b)||"corona",D=BLD2[b];
-  const up=B.up&&B.up.dinero?B.up.dinero/12*lvl*MONTH_TICKS*upkeepScale(p,b):0;
+  const up=upkeepMonth2(p,b,lvl);
   if(D&&!siteOK2(p,b))return {o,noSite:true,profit:-up};
   return {o,out:D?buildingOutput2(p,b,lvl):null,ins:(D&&D.in)||null,profit:buildingProfit2(p,b,lvl)};
 }

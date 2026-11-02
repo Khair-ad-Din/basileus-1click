@@ -419,6 +419,9 @@ function hOwners(p,b){const m=p.bOwn&&p.bOwn[b];return m?Object.keys(m):[]}     
 // nivel OPERATIVO de b (los niveles de las tenencias abiertas): lo usan dotación, productividad, defensa y moral
 function effLvl(p,b){const l=p.buildings[b]||0;if(!l||!p.bOff)return l;const m=p.bOwn&&p.bOwn[b];let s=l;
   if(m)for(const o in m)if(p.bOff[hk(b,o)])s-=m[o];return s}
+// POTENCIA de b en la provincia: cada nivel abierto vale según el ESTADO de su tenencia, ×(0,5+0,5·estado) (un edificio
+// sin mantener rinde a medias: design/obras-tropas.md F3). Lo usan la productividad, la defensa y la moral.
+function effPow(p,b){const m=p.bOwn&&p.bOwn[b];if(!m)return 0;let s=0;for(const o in m)if(!hOff(p,b,o))s+=m[o]*(0.5+0.5*hCond(p,b,o));return s}
 function setOff(p,b,o,off){const k=hk(b,o);
   if(off){(p.bOff||(p.bOff={}))[k]=true;const C=p.bCond||(p.bCond={});if(C[k]==null)C[k]=1}
   else{if(p.bOff)delete p.bOff[k];if(p.bCond)delete p.bCond[k]}}
@@ -441,7 +444,7 @@ function timeFor(p,b){
   return Math.max(24,Math.round(h));
 }
 function buildSpeedBonus(p){
-  let s=0;for(const b of fxKeys("buildSpeed"))s+=BUILDINGS[b].fx.buildSpeed*effLvl(p,b);
+  let s=0;for(const b of fxKeys("buildSpeed"))s+=BUILDINGS[b].fx.buildSpeed*effPow(p,b);
   return Math.min(0.6,s);
 }
 // Sin límite por edificio (los HUECOS de construcción por población limitan el total): las obras
@@ -459,11 +462,11 @@ function buildBlock(p,b){
   return null;
 }
 function provProdMul(p){
-  let m=1;for(const b of fxKeys("prodMul"))m+=BUILDINGS[b].fx.prodMul*effLvl(p,b);
+  let m=1;for(const b of fxKeys("prodMul"))m+=BUILDINGS[b].fx.prodMul*effPow(p,b);
   return m;
 }
 function provDefMul(p){
-  let m=1;for(const b of fxKeys("def"))m+=BUILDINGS[b].fx.def*effLvl(p,b);
+  let m=1;for(const b of fxKeys("def"))m+=BUILDINGS[b].fx.def*effPow(p,b);
   return m;
 }
 /* ---- Moral: factor de productividad ganado con edificios (Fase 3) ----
@@ -477,7 +480,7 @@ function provDefMul(p){
 const MORALE_MIN=15;        // suelo de moral (una provincia hostil no cae por debajo)
 const MORALE_HOSTILE=2.0;   // moral/mes que drena cada provincia vecina enemiga en guerra
 function moraleGrowth(p){   // crecimiento de moral/mes por los edificios de moral de ESTA provincia
-  let g=0;for(const b of fxKeys("moral"))g+=BUILDINGS[b].fx.moral*lvlOf(p,b);
+  let g=0;for(const b of fxKeys("moral"))g+=BUILDINGS[b].fx.moral*effPow(p,b);
   g+=CLERO_MORALE*stratFrac(p,"clero"); // Fase D: el clero legitima → moral extra donde abunda (catedrales)
   return g;
 }
@@ -560,5 +563,5 @@ function recruitTime(p,u){
 }
 
 export {
-  BKEYS, fxKeys, ledger, sinkAdd, calOf, harvestMonth, monthsToHarvest, MONTHS_ES, canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, isOccupied, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, recruitable, moraleGrowth, MORALE_MIN, MORALE_HOSTILE, SOLD_FRAC, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, specialistCap, buildJobs, freeLabor, staffing, jobsOf, buildSlots, usedSlots, structPPF, JOBS_PER_LEVEL, ensureMarket, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, manorOf, canStaffIndustry, hLvl, hOff, hCond, hOwners, setOff, addLevel, dropLevel, mainOwner, syncOwn, crownMay, CROWN_CORE, ESTATES_BUILD, TRADE_BULK, TERRAIN_CAT, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, monthKeyOf, resetTsyLedger, tsyTick, tsyAvail, tsyMonthBal, recFlow, recCrown, effLvl, degradeBuildings, YR_TICKS, TRADE_KM, TRADE_SEA, TRADE_WAR, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN, PROMO_RATE, targetBurgFrac, recBuy
+  BKEYS, fxKeys, ledger, sinkAdd, calOf, harvestMonth, monthsToHarvest, MONTHS_ES, canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, isOccupied, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, recruitable, moraleGrowth, MORALE_MIN, MORALE_HOSTILE, SOLD_FRAC, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, specialistCap, buildJobs, freeLabor, staffing, jobsOf, buildSlots, usedSlots, structPPF, JOBS_PER_LEVEL, ensureMarket, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, manorOf, canStaffIndustry, hLvl, hOff, hCond, hOwners, setOff, addLevel, dropLevel, mainOwner, syncOwn, crownMay, CROWN_CORE, ESTATES_BUILD, TRADE_BULK, TERRAIN_CAT, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, monthKeyOf, resetTsyLedger, tsyTick, tsyAvail, tsyMonthBal, recFlow, recCrown, effLvl, effPow, degradeBuildings, YR_TICKS, TRADE_KM, TRADE_SEA, TRADE_WAR, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN, PROMO_RATE, targetBurgFrac, recBuy
 };

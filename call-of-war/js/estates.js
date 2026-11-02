@@ -4,7 +4,7 @@
 import { NPLAY, BUILDINGS } from "./config.js";
 import { S } from "./state.js";
 import { BKEYS, sinkAdd, lvlOf, hLvl, hOff, hOwners, setOff, crownMay, buildMax, usedSlots, buildSlots, freeLabor, buildJobs, JOBS_PER_LEVEL, costFor, timeFor, canAfford, pay, recFlow, isOccupied, ESTATES_BUILD, buildBlock } from "./economy.js";
-import { ESTATE_BUILDS2, buildingProfit2, buildingOutput2, upkeepScale, siteOK2, isMarketDay, obraCost, newObra, obraFull, repairPay, obsolete2 } from "./economy2.js";
+import { ESTATE_BUILDS2, buildingProfit2, buildingOutput2, upkeepMonth2, siteOK2, isMarketDay, obraCost, newObra, obraFull, repairPay, obsolete2 } from "./economy2.js";
 // La IA de obras usa la rentabilidad y la producción de la economía (economy2.js, design/economia-v2.md)
 const profitOf=(p,b,l)=>buildingProfit2(p,b,l);
 const outputOf=(p,b,l)=>buildingOutput2(p,b,l);
@@ -101,7 +101,7 @@ function pickEstateBuild(p,e,N){ // el edificio del repertorio del estamento MÁ
     let score;
     if(B.inputs||fx.prodAdd||fx.goldAdd){ score=profitOf(p,b,hLvl(p,b,e)+1); if(score<=0)continue; }
     else{ // servicio sin ingreso (fortaleza, templo, catedral…): en v2 solo si puede MANTENERLO mucho tiempo (si no, lo cerraría enseguida)
-      {const upM=(B.up&&B.up.dinero?B.up.dinero/12*730*upkeepScale(p,b):0), own=ownerUpkeepMonth(p.owner,e);
+      {const upM=upkeepMonth2(p,b,1), own=ownerUpkeepMonth(p.owner,e);
         if(N.sWealth[e]<REOPEN_MONTHS*(own+upM)||((N.budTr&&N.budTr[e]&&N.budTr[e].d)||0)<0)continue}
       score=ESTATE_FILLER;}
     if(score>bestScore){bestScore=score;best=b;}
@@ -131,7 +131,7 @@ function pickCrownBuild(p){
       if(g&&!needMore(n,g))continue;
       score=buildingProfit2(p,b,hLvl(p,b,"corona")+1); if(score<=0)continue;
     }else{
-      const upM=(B.up&&B.up.dinero?B.up.dinero/12*730*upkeepScale(p,b):0);
+      const upM=upkeepMonth2(p,b,1);
       if(treas<REOPEN_MONTHS*(up+upM)||inc-up-upM<0)continue;   // solo si puede mantenerlo holgado
       score=ESTATE_FILLER;
     }
@@ -190,7 +190,7 @@ function ownerUpkeepMonth(n,o){ // (una pasada por día, cacheada)
       const k=p.owner+"|"+o;_upC.set(k,(_upC.get(k)||0)+upkeepMonth(p,b,hLvl(p,b,o)))}}}
   return _upC.get(n+"|"+o)||0;
 }
-function upkeepMonth(p,b,l){const u=BUILDINGS[b].up;return u&&u.dinero?u.dinero/12*l*730*upkeepScale(p,b):0}
+const upkeepMonth=(p,b,l)=>upkeepMonth2(p,b,l);   // economy2: lo que cuesta al mes mantener l niveles, al precio de hoy
 function purseOf(N,o){return o==="corona"?(N.res.dinero||0):(N.sWealth[o]||0)}
 function isProductive(b){const B=BUILDINGS[b];return !!(B.inputs||(B.fx&&(B.fx.prodAdd||B.fx.goldAdd)))}
 function budgetManage(){
