@@ -3,7 +3,7 @@ import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, 
 import { S } from "./state.js";
 import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildJobs, buildMax, buildSlots, canAfford, costFor, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationProvCount, nationStrength, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, resetTsyLedger, tsyAvail, tsyMonthBal, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, provProdMul, YR_TICKS, manorOf, MANOR_RENT, bOwnerOf } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
-import { GOODS2, LABEL2, REF2, NEED2, WANT2, BLD2, PRICE_SCALE, CROWN_STOCK, specialty2, obsolete2, siteOK2, transport, buildingProfit2, buildingOutput2, upkeepScale, granaryOf, foodGrowth, obraCost, repairCost, positoCap, positoMonth, positoQuote, POSITO_MONTHS, landYield, landCap, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX } from "./economy2.js";
+import { GOODS2, LABEL2, REF2, NEED2, WANT2, BLD2, PRICE_SCALE, costQuote, specialty2, obsolete2, siteOK2, transport, buildingProfit2, buildingOutput2, upkeepScale, granaryOf, foodGrowth, obraCost, repairCost, positoCap, positoMonth, positoQuote, POSITO_MONTHS, landYield, landCap, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX } from "./economy2.js";
 import { calOf, MONTHS_ES, monthsToHarvest, harvestMonth } from "./economy.js";
 import { canvas, clampPan, repaintProvince } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
@@ -150,6 +150,14 @@ function obraLine(p,b){
   const tip=tipBox("Obra",[{cols:["Partida","Cantidad","Ducados"],trows:rows,ttot:["Total","",nfE(c.total)]},
     {cols:["Pago","Valor"],trows:[["Tramo","semanal"],["Por semana",nfE(c.total/c.semanas)],["Semanas",c.semanas]]}],BUILDINGS[b].label);
   return "<span data-tiph=\""+ta(tip)+"\">"+COIN()+fmt(c.total)+"</span>";
+}
+// COSTE DE UNA COMPRA DE LA CORONA (economy2 costQuote): el total en ducados al precio de la plaza de hoy; el tooltip,
+// cada bien con lo que cuesta y lo que hay en la plaza. En rojo si no llega el dinero o la plaza no tiene bastante.
+function buyLine(cost,title){
+  const q=costQuote(S.player,cost); if(!q)return "";
+  const rows=q.rows.map(r=>r.g==="dinero"?["Paga","",nfE(r.v),""]:[resImg(r.g)+gLabel(r.g),nfE(r.q),nfE(r.v),{v:nfE(r.en),c:r.en<r.q?"#d08080":null}]);
+  const tip=tipBox("Coste",[{cols:["Partida","Cantidad","Ducados","En plaza"],trows:rows,ttot:["Total","",nfE(q.total),""]}],title);
+  return "<span data-tiph=\""+ta(tip)+"\""+(q.ok?"":" class='neg'")+">"+COIN()+fmt(q.total)+(q.why==="plaza"?" Sin material":"")+"</span>";
 }
 function costLine(c,owner){
   return Object.keys(c).map(k=>{
@@ -340,14 +348,14 @@ function roadsHTML(p){
     }else if(lvl>=3){
       rows+="<div class='recrow'><span class='u'>"+name+"</span><span class='cst'><i class='ck'></i> nivel 3/3</span></div>";
     }else{
-      const dis=!canAfford(S.player,{dinero:800,madera:1200});
+      const rc={dinero:800,madera:1200},dis=!costQuote(S.player,rc)||!costQuote(S.player,rc).ok;
       const tag=lvl>0?"<span class='cst' style='margin-right:6px'>nivel "+lvl+"/3</span>":"<span class='sm'>("+kmR+" km)</span> ";
-      rows+="<div class='recrow'><span class='u'>"+name+" "+tag+"</span>"+
+      rows+="<div class='recrow'><span class='u'>"+name+" "+tag+"<div class='cst'>"+buyLine(rc,"Camino")+"</div></span>"+
         "<button class='bbtn' "+(dis?"disabled":"")+" onclick='tryRoad("+p.id+","+b+")'>"+(lvl>0?"Mejorar":"Camino")+"</button></div>";
     }
   }
   if(!any)return "<div class='prow'><span class='dim'>Sin provincias propias adyacentes a las que unir por camino.</span></div>";
-  return "<div class='sm' style='color:#9aa3ad;margin-bottom:7px'>Une provincias propias adyacentes: +10% de velocidad de marcha por nivel (máx nivel 3, +30%). Cada nivel cuesta 800 Ducados y 1200 Madera (6 meses).</div>"+rows;
+  return "<div class='sm' style='color:#9aa3ad;margin-bottom:7px'>Une provincias propias adyacentes: +10% de velocidad de marcha por nivel (máx nivel 3, +30%). Cada nivel tarda 6 meses.</div>"+rows;
 }
 // ejércitos presentes + reclutamiento de esta provincia; la pinta la ventana de Ejércitos
 function armyHTML(p){
@@ -358,9 +366,9 @@ function armyHTML(p){
     let ok=true;for(const req in U.req)if((p.buildings[req]||0)<U.req[req])ok=false;
     if(!ok)continue;
     any=true;
-    const dis=!canAfford(S.player,U.cost)||soldAvail(p)<U.mano;
+    const cq=costQuote(S.player,U.cost),dis=!(cq&&cq.ok)||soldAvail(p)<U.mano;
     r+="<div class='recrow'><span class='u'>"+U.label+" <span class='sm'>("+fmtDur(recruitTime(p,u))+")</span>"+
-      "<div class='cst'>"+costStr(U.cost,U.mano)+"</div></span>"+
+      "<div class='cst'>"+buyLine(U.cost,U.label)+VSEP+fmtPop(U.mano)+" soldadesca</div></span>"+
       "<button class='bbtn' "+(dis?"disabled":"")+" onclick='tryRecruit("+p.id+",\""+u+"\")'>Reclutar</button></div>";
   }
   s+="<div class='winh' style='font-size:12px;margin-top:2px'>Reclutar</div>";
@@ -420,12 +428,11 @@ function refreshProvWin(){
 function refreshBuildBar(){refreshProvPanel();refreshProvTabs();refreshProvWin();}
 // menú del reino (arriba-izquierda, estilo EU4): escudo + botonera de ajustes del reino
 /* ============================= Tesorería (libro mayor navegable) =============================
- * Dos pestañas: TESORO (el libro de la corona por partidas; cada una abre su detalle, y el total verifica la
- * suma) y ALMACÉN (lo que guarda la corona para obras y ejército). Ver refreshTreasury2 (bloque v2, abajo). */
+ * El libro de la corona por partidas; cada una abre su detalle, y el total verifica la suma. Ver refreshTreasury2. */
 function tsyCrumb(path){ // migas de pan de navegación (volver a niveles superiores)
-  let h="<span class='tcrumbi' onclick='treasuryBack(0)'>"+(S.treasuryTab==="tesoro"?COIN()+" Tesoro":ph('almacen')+" Almacén")+"</span>";
+  let h="<span class='tcrumbi' onclick='treasuryBack(0)'>"+COIN()+" Tesoro</span>";
   for(let i=0;i<path.length;i++){
-    const label=(S.treasuryTab==="inv"&&i===0)?RES_LABEL[path[i]]:path[i];
+    const label=path[i];
     h+=" › "+(i===path.length-1?"<b class='tcrumbc'>"+label+"</b>":"<span class='tcrumbi' onclick='treasuryBack("+(i+1)+")'>"+label+"</span>");
   }
   return "<div class='tcrumb'>"+h+"</div>";
@@ -525,9 +532,9 @@ function refreshArmyPanel(){
       let okReq=true;for(const r in U.req)if(p.buildings[r]<U.req[r])okReq=false;
       if(!okReq)continue;
       any=true;
-      const dis=!canAfford(S.player,U.cost)||soldAvail(p)<U.mano;
+      const cq=costQuote(S.player,U.cost),dis=!(cq&&cq.ok)||soldAvail(p)<U.mano;
       R+="<div class='recrow'><span class='u'>"+U.label+" <span class='sm'>("+fmtDur(recruitTime(p,u))+")</span>"+
-        "<div class='cst'>"+costStr(U.cost,U.mano)+"</div></span>"+
+        "<div class='cst'>"+buyLine(U.cost,U.label)+VSEP+fmtPop(U.mano)+" soldadesca</div></span>"+
         "<button class='bbtn' "+(dis?"disabled":"")+" onclick='tryRecruit("+p.id+",\""+u+"\")'>Reclutar</button></div>";
     }
     if(!any)R+="<p class='sm' style='color:#9aa3ad'>Esta provincia aún no puede reclutar: construye un Cuartel de levas.</p>";
@@ -1413,20 +1420,9 @@ function treasuryTesoro2(){
   }
   return h+"</div>";
 }
-function treasuryAlmacen2(){ // el almacén de la corona: lo que producen sus edificios para obras y ejército (no va a la plaza)
-  const N=S.nations[S.player];
-  const ks=Object.keys(N.res).filter(k=>k!=="dinero"&&((N.res[k]||0)>=0.5||Math.abs(tsyMonthBal(k))>=0.5)).sort((a,b)=>(N.res[b]||0)-(N.res[a]||0));
-  let h="<div class='tbook'><div class='trow thead'><span>Bien</span><span><span class='tstock'>Existencias</span> Balance/mes</span></div>";
-  if(!ks.length)h+="<div class='trow tdim'>—</div>";
-  for(const k of ks){const d=tsyMonthBal(k);
-    h+="<div class='trow'><span>"+resImg(k)+" "+gLabel(k)+"</span><b><span class='tstock'>"+nfE(N.res[k])+"</span> <span class='"+(d<0?"neg":"pos")+"'>"+(Math.abs(d)<0.5?"<span class='e2sub'>0</span>":sgnE(d))+"</span></b></div>"}
-  return h+"</div>";
-}
 function refreshTreasury2(body){
-  const tab=(k,lab)=>"<span class='ttab"+(S.treasuryTab===k?" on":"")+"' onclick=\"setTreasuryTab('"+k+"')\">"+lab+"</span>";
   body.innerHTML=headE(iInfo("Lo que entra y sale del tesoro de la corona. Pulsa una partida para ver su detalle. Los impuestos se ajustan en Hacienda (el % junto a cada uno)."))+
-    "<div class='ttabs'>"+tab("tesoro",COIN()+" Tesoro")+tab("inv",ph('almacen')+" Almacén")+"</div>"+
-    (S.treasuryTab==="inv"?treasuryAlmacen2():treasuryTesoro2());
+    treasuryTesoro2();
 }
 window.setTsyMonth=function(k){S.tsyMonth=k;S.treasuryPath=[];refreshTreasury()};
 
@@ -1697,17 +1693,12 @@ function siteBlock2(p,b){return BLD2[b]&&!siteOK2(p,b)?"Sin materia prima aquí"
 function bldEcon2(p,b,lvl){ // {o, stock:[{k,q}] | out:{g,q}, ins, noSite, profit (🪙/mes)} para lvl niveles
   const B=BUILDINGS[b],fx=B.fx||{},o=lvlOf(p,b)>0?bOwnerOf(p,b):"corona",D=BLD2[b];
   const up=B.up&&B.up.dinero?B.up.dinero/12*lvl*MONTH_TICKS*upkeepScale(p,b):0;
-  const stock=o==="corona"&&fx.prodAdd?Object.keys(fx.prodAdd).filter(k=>CROWN_STOCK.has(k)):[];
-  if(stock.length){ // lo de la corona que va a su ALMACÉN (obras y ejército): no se vende (economy2, pasada A)
-    const mor=(p.morale||0)/100,st=staffing(p),terr=(TERRAINS[p.terrain]||{prod:1}).prod,mul=1+(provProdMul(p)-1)*st;
-    return {o,stock:stock.map(k=>({k,q:fx.prodAdd[k]*lvl*terr*mor*st*mul*MONTH_TICKS})),profit:-up}}
   if(D&&!siteOK2(p,b))return {o,noSite:true,profit:-up};
   return {o,out:D?buildingOutput2(p,b,lvl):null,ins:(D&&D.in)||null,profit:buildingProfit2(p,b,lvl)};
 }
 function benefitHTML2(p,b,lvl){
   const B=BUILDINGS[b],fx=B.fx||{},e=bldEcon2(p,b,Math.max(1,lvl)),N=S.nations[p.owner],lines=[];
   if(b==="granja")lines.push("<div class='bl'>+40% "+resImg("grano")+" del campo</div>");
-  if(e.stock)for(const x of e.stock)lines.push("<div class='bl' data-tip='Al almacén de la corona (obras y ejército): no se vende'><i class='arw r'></i> "+resImg(x.k)+" "+nfE(x.q)+"/mes "+ph('almacen')+"</div>");
   if(e.noSite)lines.push("<div class='bl' style='color:#d0913a'><i class='xk'></i> sin materia prima aquí</div>");
   if(e.out&&e.out.g)lines.push("<div class='bl' data-tip=\""+ta("Lo que vende a la plaza"+(lvl>0?"":" (un nivel)")+", al mes")+"\"><i class='arw r'></i> "+resImg(e.out.g)+" "+nfE(e.out.q)+"/mes</div>");
   if(e.ins&&e.out)for(const k in e.ins){const cv=N&&N.e2&&N.e2.cover?N.e2.cover[k]:null;
@@ -1799,7 +1790,7 @@ function reliefRow2(p,g,hm){
   const r=positoQuote(S.player,p); if(!r)return "";
   const q=r.q, dn=p.duchy>=0&&S.duchies&&S.duchies[p.duchy]?S.duchies[p.duchy].name:p.name;
   const tip=tipBox("Socorro",[{cols:["Concepto","Cantidad","Ducados"],trows:[["Grano",nfE(q.falta),""],
-      ...(q.almacen>=0.5?[["Almacén",nfE(q.almacen),""]]:[]),...(q.compra>=0.5?[["Compra",nfE(q.compra),nfE(q.compra*q.price)]]:[]),
+      ...(q.compra>=0.5?[["Compra",nfE(q.compra),nfE(q.compra*q.price)]]:[]),
       ["Flete",Math.round(q.km)+" km",nfE(q.flete)]],ttot:["Total","",nfE(q.total)]},
     {cols:["Pósito","Ducados"],trows:[["Tope",nfE(r.cap)],["Queda",nfE(r.left)]]},
     ...(r.ok?[]:[{rows:[["Bloqueo",r.why,"#d08080"]]}])],dn+(r.ok?", "+Math.round(r.days)+" días":""));
@@ -1841,13 +1832,12 @@ function splitBlock(p,g){ // reparto de cada 100 ducados del comprador (economy2
 }
 function produceRow2(p){ // lo que sale de la provincia, los bienes de más valor (u/mes; tooltip con su valor y su reparto)
   const b=provBook(p); if(!b)return "";
-  const gs=goodsByValue(b.m), st=Object.keys(b.m.stock).filter(k=>b.m.stock[k]>=0.5);
-  if(!gs.length&&!st.length)return "";
-  const cell=(g,q,v)=>{const blocks=[{h:"Producción",cols:["Concepto","Valor"],trows:[["Unidades",nfE(q)+" /mes"],v!=null?["Plaza",nfE(v)+" "+COIN()]:["Destino","Almacén"]]}];
-    if(v!=null)blocks.push(splitBlock(p,g));
+  const gs=goodsByValue(b.m);
+  if(!gs.length)return "";
+  const cell=(g,q,v)=>{const blocks=[{h:"Producción",cols:["Concepto","Valor"],trows:[["Unidades",nfE(q)+" /mes"],["Plaza",nfE(v)+" "+COIN()]]},splitBlock(p,g)];
     return "<span data-tiph=\""+ta(tipBox(gLabel(g),blocks))+"\" style='cursor:help;white-space:nowrap'>"+resImg(g)+nfE(q)+"</span>"};
   return "<div class='bsec'>Produce <span class='u'>/mes</span></div><div style='display:flex;flex-wrap:wrap;gap:3px 10px;font-size:var(--fs)'>"+
-    gs.slice(0,6).map(g=>cell(g,b.m.prod[g],b.m.val[g]||0)).join("")+st.map(k=>cell(k,b.m.stock[k],null)).join("")+"</div>";
+    gs.slice(0,6).map(g=>cell(g,b.m.prod[g],b.m.val[g]||0)).join("")+"</div>";
 }
 function yieldBar2(p,b,w){ // barra apilada: a quién va el dinero que paga la plaza; el FLETE aparte (lo cobran los que transportan)
   let seg="";const tot=b.val||1, fr={};let frT=0;
@@ -1881,7 +1871,6 @@ function provEcoWinHTML(p){ // ventana Economía: el mismo libro que la Tesorer�
   }
   h+="<div class='trow thead'><span>Producción</span><span><span class='tstock'>Unidades</span> Plaza</span></div>";
   for(const g of goodsByValue(b.m))h+="<div class='trow'><span>"+resImg(g)+" "+gLabel(g)+"</span><b><span class='tstock'>"+nfE(b.m.prod[g])+"</span> "+(b.m.val[g]>=0.5?nfE(b.m.val[g]):"<span class='e2sub'>—</span>")+"</b></div>";
-  for(const k in b.m.stock)if(b.m.stock[k]>=0.5)h+="<div class='trow' data-tip='Al almacén de la corona: no se vende'><span>"+resImg(k)+" "+gLabel(k)+" "+ph('almacen')+"</span><b><span class='tstock'>"+nfE(b.m.stock[k])+"</span> <span class='e2sub'>—</span></b></div>";
   h+="<div class='tsec'>Quién cobra</div>";
   for(const w of WHO_ORDER){const v=b.who[w]||0;if(v<0.5)continue;
     h+="<div class='trow click' onclick=\"provEcoDrill('"+w+"')\"><span>"+whoIcon(w,p.owner)+" "+whoLabel(w)+" <span class='tarrow'>›</span></span><b>"+barE(pctE(v/(b.val||1)),50)+" <span class='pos'>"+sgnE(v)+"</span> "+resImg("dinero")+"</b></div>"}

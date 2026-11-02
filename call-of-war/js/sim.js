@@ -1,5 +1,5 @@
 // sim.js
-import { BUILDINGS, GARR_CITADEL, GARR_FORT, GARR_MIN, GOLD_PER_WS, LEVY_RAISE_HOURS, NATIONS, NEUTRAL, NPLAY, RES_BUILDING, RES_KEYS, SIEGE_BASE_H, START_STOCK, TERRAINS, UNITS, WAR_LOCK_HOURS, WS_BATTLE, WS_DUCHY_BASE, WS_DUCHY_PER, isSea, EMBARK_HOURS } from "./config.js";
+import { BUILDINGS, GARR_CITADEL, GARR_FORT, GARR_MIN, GOLD_PER_WS, LEVY_RAISE_HOURS, NATIONS, NEUTRAL, NPLAY, RES_BUILDING, SIEGE_BASE_H, START_STOCK, TERRAINS, UNITS, WAR_LOCK_HOURS, WS_BATTLE, WS_DUCHY_BASE, WS_DUCHY_PER, isSea, EMBARK_HOURS } from "./config.js";
 import { S } from "./state.js";
 import { fxKeys, armyAtk, armyCount, armyDef, armyHp, armySpd, bOwnerOf, buildBlock, buildJobs, buildMax, buildSlots, canAfford, canStaffIndustry, costFor, ESTATES_BUILD, foodFill, storeCap, SUBS_BASICS, freeLabor, isOccupied, JOBS_PER_LEVEL, lvlOf, moraleGrowth, MORALE_HOSTILE, MORALE_MIN, nationProvCount, nationStrength, pay, provDefMul, recruitTime, soldAvail, soldCap, timeFor, usedSlots, tsyTick, recFlow, recCrown, specialistCap, jobsOf, degradeBuildings } from "./economy.js";
 import { relTick, getRel, THRESH, conquestFanout, insult, fabricateClaim, hasClaim, duchyOwner, sameLeague, hasPact, nationNeighbors, rivalsOf, isRival, sharedRivals, MAX_RIVALS, canPact, formPact, leagueOf, canApplyLeague, applyToLeague, createLeague, leaveLeague, resolveApplication, MAX_LEAGUE } from "./diplomacy.js";
@@ -7,7 +7,7 @@ import { aiOpenWar } from "./council.js";
 import { buildDuchies, hasRoad, roadLvl, isDuchyCap, kmBetween, roadKey } from "./mapgen.js";
 import { drawRoads, paintBorders, repaintProvince } from "./render.js";
 import { saveGame } from "./save.js";
-import { economyTick2, seedOwner2, seedWealth2, seedEstates2, siteOK2, BLD2, obsolete2, newObra } from "./economy2.js";
+import { economyTick2, seedOwner2, seedWealth2, seedEstates2, siteOK2, BLD2, obsolete2, newObra, costOK, costPay } from "./economy2.js";
 // IA de obras y gestión de edificios de los ESTAMENTOS (y de la corona IA): vive en estates.js, sin DOM (la usa el arnés)
 import { estatesDaily, profitOf, pickCrownBuild } from "./estates.js";
 import { log, refreshBuildBar, refreshSide, refreshTop } from "./ui.js";
@@ -23,7 +23,7 @@ function seedEstateBld(p,b,estate){ // E2: siembra 1 nivel de b propiedad de est
 // supera en pop una vecina), así que el ajuste por ducado no basta. Se fijan por NOMBRE. Ampliable.
 const CAPITAL_FIX={Mamelucos:"El Cairo",Polonia:"Cracovia","Milán":"Milán",Navarra:"Pamplona"};
 function setupNations(){
-  S.nations=NATIONS.map((n,i)=>({idx:i,res:Object.fromEntries(RES_KEYS.map(k=>[k,START_STOCK[k]||0])),
+  S.nations=NATIONS.map((n,i)=>({idx:i,res:{...START_STOCK},
     ai:true,capital:-1,alive:!n.neutral,lastAI:0,startProvs:0,
     sWealth:{campesino:0,burgues:0,clero:0,nobleza:0},mkt:{},taxRate:0.08})); // Fase B: riqueza de estratos + mercado + palanca fiscal
   // sembrar la soldadesca (cupo movilizable) y la despensa (almacén de comida) iniciales, y
@@ -162,8 +162,7 @@ function tryRoad(a,b){
   const key=roadKey(a,b), lvl=S.roads.get(key)||0;
   if(lvl>=3)return;                                   // ya al nivel máximo
   if(S.roadQueue.some(q=>q.key===key))return;         // ya en obra
-  if(!canAfford(S.player,cost))return;
-  pay(S.player,cost,"Caminos");                      // mismo coste por nivel
+  if(!costPay(S.player,cost,"Caminos"))return;       // mismo coste por nivel; la madera, comprada en la plaza
   S.roadQueue.push({key,hoursLeft:4320,nation:S.player,toLvl:lvl+1}); // 6 meses de obra por nivel
   refreshSide();refreshTop();
 }
@@ -828,8 +827,8 @@ function aiTurn(n){
       if(p.buildings.fabrica>=3&&S.rand()<0.3)u="blindadoMedio";
       else if(p.buildings.fabrica>=1&&S.rand()<0.35)u="blindadoLigero";
       else if(p.buildings.fabrica>=2&&S.rand()<0.3)u="artilleria";
-      if(canAfford(n,UNITS[u].cost)&&soldAvail(p)>=UNITS[u].mano){
-        pay(n,UNITS[u].cost,"Reclutamiento",UNITS[u].label);p.sold=soldAvail(p)-UNITS[u].mano;
+      if(soldAvail(p)>=UNITS[u].mano&&costPay(n,UNITS[u].cost,"Reclutamiento",UNITS[u].label)){
+        p.sold=soldAvail(p)-UNITS[u].mano;
         p.recruitQueue.push({u,nation:n,hoursLeft:recruitTime(p,u)});
         break;
       }
@@ -1076,8 +1075,8 @@ function tryRecruit(pid,u,rally){
   if(p.owner!==S.player||isOccupied(p))return false;
   const U=UNITS[u];
   for(const r in U.req)if(p.buildings[r]<U.req[r])return false;
-  if(!canAfford(S.player,U.cost)||soldAvail(p)<U.mano)return false;
-  pay(S.player,U.cost,"Reclutamiento",U.label);p.sold=soldAvail(p)-U.mano;
+  if(soldAvail(p)<U.mano||!costPay(S.player,U.cost,"Reclutamiento",U.label))return false;   // el equipo, comprado en la plaza
+  p.sold=soldAvail(p)-U.mano;
   const q={u,nation:S.player,hoursLeft:recruitTime(p,u)};
   if(rally!=null&&rally!==pid)q.rally=rally; // marchará a reunirse (profesionales y levas por igual)
   p.recruitQueue.push(q);
@@ -1119,7 +1118,7 @@ function raiseLevies(army,n){
   while(raised<n&&ring.length){
     const capable=ring.filter(pid=>{
       const p=S.provs[pid];
-      return p.owner===nat&&!p.wasteland&&!isOccupied(p)&&soldAvail(p)>=U.mano&&canAfford(nat,U.cost);
+      return p.owner===nat&&!p.wasteland&&!isOccupied(p)&&soldAvail(p)>=U.mano&&costOK(nat,U.cost);
     });
     let progressed=true;
     while(raised<n&&progressed){
@@ -1127,8 +1126,8 @@ function raiseLevies(army,n){
       for(const pid of capable){
         if(raised>=n)break;
         const p=S.provs[pid];
-        if(soldAvail(p)<U.mano||!canAfford(nat,U.cost))continue;
-        pay(nat,U.cost,"Reclutamiento",U.label);p.sold=soldAvail(p)-U.mano;
+        if(soldAvail(p)<U.mano||!costPay(nat,U.cost,"Reclutamiento",U.label))continue;
+        p.sold=soldAvail(p)-U.mano;
         p.recruitQueue.push({u:"miliciano",nation:nat,hoursLeft:LEVY_RAISE_HOURS,rally:muster}); // rally al punto FIJO
         raised++;progressed=true;
       }

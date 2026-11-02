@@ -162,7 +162,7 @@ window.closeArmyPanel=function(){S.armyPanelOpen=false;document.getElementById("
 // --- Tesorería (libro mayor navegable): abrir, cambiar de pestaña, entrar en una categoría y volver ---
 window.openTreasury=function(){
   if(S.player<0)return;
-  S.treasuryTab="tesoro";S.treasuryPath=[];S.tsyMonth="prev";
+  S.treasuryPath=[];S.tsyMonth="prev";
   document.getElementById("treasuryOverlay").style.display="flex";
   refreshTreasury();
 };
@@ -226,7 +226,6 @@ window.downloadEconLog=function(){
   log("Log económico descargado ("+S.econLog.length+" meses).");
 };
 window.clearEconLog=function(){S.econLog.length=0;_logPosted=0;log("Log económico reiniciado.")};
-window.setTreasuryTab=function(t){S.treasuryTab=t;S.treasuryPath=[];refreshTreasury()};
 window.treasuryDrill=function(key){S.treasuryPath.push(key);refreshTreasury()};
 window.treasuryBack=function(len){S.treasuryPath=S.treasuryPath.slice(0,len);refreshTreasury()};
 window.setRecruitProv=function(id){S.recruitProv=+id;refreshArmyPanel()};

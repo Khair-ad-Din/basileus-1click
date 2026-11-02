@@ -4,9 +4,9 @@
 import { NPLAY, BUILDINGS } from "./config.js";
 import { S } from "./state.js";
 import { BKEYS, sinkAdd, lvlOf, bOwnerOf, buildMax, usedSlots, buildSlots, freeLabor, buildJobs, JOBS_PER_LEVEL, costFor, timeFor, canAfford, pay, recFlow, isOccupied, ESTATES_BUILD, bOff, buildBlock } from "./economy.js";
-import { ESTATE_BUILDS2, buildingProfit2, buildingOutput2, upkeepScale, siteOK2, crownStockOut, isMarketDay, obraCost, newObra, obraFull, repairPay } from "./economy2.js";
+import { ESTATE_BUILDS2, buildingProfit2, buildingOutput2, upkeepScale, siteOK2, isMarketDay, obraCost, newObra, obraFull, repairPay } from "./economy2.js";
 // La IA de obras usa la rentabilidad y la producción de la economía (economy2.js, design/economia-v2.md)
-const profitOf=(p,b,l,o)=>buildingProfit2(p,b,l,o);
+const profitOf=(p,b,l)=>buildingProfit2(p,b,l);
 const outputOf=(p,b,l)=>buildingOutput2(p,b,l);
 // el dinero que un estamento gasta en obras sale de la economía → sumidero contado (invariante del dinero)
 function sink2(v,cat="Obras y reparaciones"){sinkAdd(cat,v)}
@@ -129,9 +129,9 @@ function pickCrownBuild(p){
     if(treas<obraTotal(p,b)*OBRA_KEEP)continue;          // mismo colchón que un estamento
     let score;
     if(B.inputs||fx.prodAdd){
-      if(!crownStockOut(p,b,1)){const g=buildingOutput2(p,b,1).g;   // lo que VENDE: ¿hace falta más?
-        if(g&&!needMore(n,g))continue}
-      score=buildingProfit2(p,b,lvlOf(p,b)+1,"corona"); if(score<=0)continue;
+      const g=buildingOutput2(p,b,1).g;                   // lo que VENDE: ¿hace falta más?
+      if(g&&!needMore(n,g))continue;
+      score=buildingProfit2(p,b,lvlOf(p,b)+1); if(score<=0)continue;
     }else{
       const upM=(B.up&&B.up.dinero?B.up.dinero/12*730*upkeepScale(p,b):0);
       if(treas<REOPEN_MONTHS*(up+upM)||inc-up-upM<0)continue;   // solo si puede mantenerlo holgado

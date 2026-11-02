@@ -217,7 +217,7 @@ function siteOK2(p,b){const f=SITE2[b];return !f||f(p)}
 // cera, carbón, cobre, vidrio…) o solo daban oro "de la nada" (mercado, lonja). No se siembran al arrancar, no se
 // ofrecen al jugador y nadie los construye (su mantenimiento era dinero tirado hasta que el presupuesto los cerraba).
 function obsolete2(b){const B=BUILDINGS[b]; if(!B||BLD2[b])return false; const fx=B.fx||{};
-  if(fx.prodAdd)return !Object.keys(fx.prodAdd).some(k=>CROWN_STOCK.has(k)||k==="dinero");
+  if(fx.prodAdd)return !Object.keys(fx.prodAdd).some(k=>k==="dinero");
   return !!fx.goldAdd&&Object.keys(fx).every(k=>k==="goldAdd")&&!B.unlock}
 // Lo que DISTINGUE a la provincia en v2 (para la ficha): su especialidad plegada a los 17 bienes y lo que da su sitio
 // (puerta de las especias, ciudad sedera o pañera, salina/mina de sal, centro armero). Solo lectura (UI).
@@ -229,9 +229,6 @@ function specialty2(p){const s=[],add=g=>{if(s.indexOf(g)<0)s.push(g)};
   if(inBox(p,SALT_POINTS))add("sal");
   if(inBox(p,ARMS_CENTERS))add("armas");
   return s}
-// Lo que la CORONA produce en sus propios edificios para sus obras y su ejército NO va a la plaza: va a su almacén.
-const CROWN_STOCK=new Set(["madera","piedra","hierro","grano","caballos"]);
-const CROWN_STOCK_WANT=3000;   // unidades en el almacén de la corona por debajo de las cuales le HACE FALTA producir ese bien
 // DUEÑO de los talleres sembrados al arrancar (el del resType de cada provincia). En la v1 eran todos de la corona
 // porque su producción iba a su almacén; en la v2 se VENDE, y una corona dueña de toda la industria sería 5× más rica
 // que en la v1 y dejaría sin oficio a burgueses y nobles. Cada uno, a su dueño histórico. La corona: regalías (minas).
@@ -430,7 +427,7 @@ function pushHarvest(list,p,g,q,sh,N){
 // mes cerrado. prod[g] = unidades producidas · val[g] = lo que la plaza paga por ellas · pay[quién][concepto] = a quién va
 // ese dinero · lost = lo que se come el flete · bld[b] = unidades de cada taller · stock[k] = lo que va al almacén de la
 // corona. Invariante: Σ pay + lost = Σ val (lo comprueba el arnés). La ficha de provincia lo lee (ui.js).
-function pm(p){return p._m||(p._m={prod:{},val:{},pay:{},lost:0,bld:{},stock:{}})}
+function pm(p){return p._m||(p._m={prod:{},val:{},pay:{},lost:0,bld:{}})}
 function pmProd(p,g,q){if(q>0){const m=pm(p);m.prod[g]=(m.prod[g]||0)+q}}
 // jornales de obra y reparación que cobran los de la provincia: aparte de pay (no son el valor de lo que produce)
 function pmJor(p,who,v){if(!v)return;const m=pm(p),j=m.jor||(m.jor={});j[who]=(j[who]||0)+v}
@@ -465,24 +462,11 @@ function bldYear(p,b,lvl){
   return {g:D.out, q:lvl*BLD_VALUE*(D.v||1)/REF2[D.out]*mor*st*terr, in:D.in||null};
 }
 // Beneficio MENSUAL de un edificio (al precio actual): venta neta de transporte y jornal − insumos − mantenimiento.
-// Lo que un taller de la CORONA manda a su almacén (unidades/mes; misma fórmula que la pasada A), o null si vende.
-function crownStockOut(p,b,lvl){
-  const fx=BUILDINGS[b].fx||{}; if(!fx.prodAdd)return null;
-  const ks=Object.keys(fx.prodAdd).filter(k=>CROWN_STOCK.has(k)); if(!ks.length)return null;
-  const mor=(p.morale||0)/100, st=staffing(p), terr=(TERRAINS[p.terrain]||{prod:1}).prod, mul=1+(provProdMul(p)-1)*st, o={};
-  for(const k of ks)o[k]=fx.prodAdd[k]*lvl*terr*mor*st*mul*(YR_TICKS/12);
-  return o;
-}
-// Beneficio MENSUAL de un edificio PARA SU DUEÑO. owner: quién lo tendría (por defecto, el dueño actual si ya existe).
-// Si es de la corona y su producto va al ALMACÉN, no se vende: vale su precio en la plaza SOLO mientras al almacén le
-// falte ese bien (por debajo de CROWN_STOCK_WANT); si el almacén va sobrado, el taller solo cuesta su mantenimiento.
-function buildingProfit2(p,b,lvlArg,owner){
+// Beneficio MENSUAL de un edificio PARA SU DUEÑO (el mismo para la corona y para un estamento: todos venden a la plaza).
+function buildingProfit2(p,b,lvlArg){
   const lvl=lvlArg!=null?lvlArg:(p.buildings[b]||0); if(!lvl)return 0;
   const N=S.nations[p.owner]; const pr=g=>(N&&N.mktPrice&&N.mktPrice[g]!=null)?N.mktPrice[g]:ref(g);
-  const B=BUILDINGS[b], o=owner||(lvlOf(p,b)>0?bOwnerOf(p,b):null);
-  const upM=(B.up&&B.up.dinero)?B.up.dinero/12*lvl*(YR_TICKS/12)*upkeepScale(p,b):0;
-  if(o==="corona"){const so=crownStockOut(p,b,lvl);
-    if(so){let v=0;for(const k in so)if(N&&(N.res[k]||0)<CROWN_STOCK_WANT)v+=so[k]*pr(k);return v-upM}}
+  const B=BUILDINGS[b];
   const y=bldYear(p,b,lvl); let v=0;
   if(y){v+=y.q*pr(y.g)*(1-MARGIN-alcabalaOf(p.owner))*(1-transport(p,y.g))*(1-JORNAL);
     if(y.in)for(const k in y.in)v-=y.q*y.in[k]*pr(k);}
@@ -581,17 +565,13 @@ function economyTick2(dt=24,doArb=true){
     for(const b of BKEYS){
       const lvl=effLvl(p,b); if(!lvl)continue;
       const B=BUILDINGS[b], fx=B.fx||{}, o=bOwnerOf(p,b);
-      // mantenimiento: dinero → sumidero; bienes → la corona los descuenta de su almacén, un estamento los paga
-      if(B.up)for(const k in B.up){const a=B.up[k]/12*lvl*dt*upkeepScale(p,b);
-        if(k==="dinero"){if(o==="corona"){N.res.dinero-=a;recCrown(n,"Mantenimiento de edificios",B.label,-a)}else{N.sWealth[o]-=a;recFlow(n,o,"Mantenimiento de edificios",-a);upMonth[n][o]=(upMonth[n][o]||0)+a/dt*730}sinkAdd("Mantenimiento",a)}
-        else if(o==="corona")N.res[k]=(N.res[k]||0)-a;}  // el mantenimiento en BIENES es del almacén de la corona (unidades de la v1); un estamento solo paga el dinero
+      // mantenimiento: el dinero → sumidero (los bienes de B.up, de la v1, no se cobran a nadie hasta que el mantenimiento
+      // se compre en la plaza: design/obras-tropas.md F3)
+      if(B.up&&B.up.dinero){const a=B.up.dinero/12*lvl*dt*upkeepScale(p,b);
+        if(o==="corona"){N.res.dinero-=a;recCrown(n,"Mantenimiento de edificios",B.label,-a)}else{N.sWealth[o]-=a;recFlow(n,o,"Mantenimiento de edificios",-a);upMonth[n][o]=(upMonth[n][o]||0)+a/dt*730}sinkAdd("Mantenimiento",a)}
       if(isOccupied(p))continue; // ocupada: no produce para su dueño
       // minas de plata/oro: el ÚNICO dinero que nace sin venta (acuñación), contado aparte
       if(fx.prodAdd&&fx.prodAdd.dinero){const a=fx.prodAdd.dinero*lvl*mor*st*dt;pay(n,o,a,"Minas de plata y oro",B.label);L.mint+=a}
-      // la corona abastece su almacén de obra y ejército (misma fórmula y unidades que la v1)
-      if(o==="corona"&&fx.prodAdd){let used=false;
-        for(const k in fx.prodAdd)if(CROWN_STOCK.has(k)){const a=fx.prodAdd[k]*lvl*terr*mor*st*mul*dt;N.res[k]=(N.res[k]||0)+a;used=true;const m=pm(p);m.stock[k]=(m.stock[k]||0)+a}
-        if(used)continue;}
       const D=BLD2[b]; if(!D||!siteOK2(p,b))continue;   // un taller fuera del sitio de su materia no produce
       const y=bldYear(p,b,lvl); const cov=inputCov(N,b);
       const q=y.q*mul*f;
@@ -739,21 +719,25 @@ function economyTick2(dt=24,doArb=true){
   }
 
   positoPass();
-  // ---------------- EJÉRCITO: mantenimiento y comida (como en la v1) ----------------
-  for(const a of S.armies){if(a.nation>=NPLAY)continue;const R=S.nations[a.nation].res;
-    for(const k in a.units){const u=UNITS[k].up||{};for(const r in u){const v=u[r]*a.units[k]*dt;R[r]=(R[r]||0)-v;if(r==="dinero"){sinkAdd("Ejército",v);recCrown(a.nation,"Ejército",UNITS[k].label,-v)}}}
+  // ---------------- EJÉRCITO: mantenimiento y comida ----------------
+  // La paga en dinero (los bienes de UNITS.up, de la v1, no se cobran hasta la soldada de design/obras-tropas.md F4). La
+  // comida: la parte que no forrajea la COMPRA en la plaza de su reino; lo que la plaza no tiene, también lo forrajea.
+  for(const a of S.armies){if(a.nation>=NPLAY)continue;const N=S.nations[a.nation],R=N.res;
+    for(const k in a.units){const v=((UNITS[k].up||{}).dinero||0)*a.units[k]*dt;if(v>0){R.dinero-=v;sinkAdd("Ejército",v);recCrown(a.nation,"Ejército",UNITS[k].label,-v)}}
     const food=armyFood(a)*dt; if(food<=1e-9)continue;
-    const forage=(a.supply==null?70:a.supply)/100;
-    R.grano=Math.max(0,(R.grano||0)-food*(1-forage));
-    const localNeed=food*forage;
+    const forage=(a.supply==null?70:a.supply)/100, want=food*(1-forage);
+    let got=0;
+    if(want>1e-9&&N.e2){const pr=crownPrice(a.nation,"grano");
+      got=Math.max(0,Math.min(want,N.mkt.grano||0,pr>0?Math.max(0,R.dinero)/pr:0));
+      if(got>1e-9){const v=crownBuyGoods(a.nation,"grano",got);R.dinero-=v;recCrown(a.nation,"Ejército","Comida",-v)}
+      if(N.e2.wk)N.e2.wk.d.grano=(N.e2.wk.d.grano||0)+(want-got)}   // lo que no encontró también es demanda
+    const localNeed=food*forage+(want-got);
     if(localNeed>1e-9){const P=S.provs[a.prov],pool=[];
       if(P&&!P.wasteland&&P.store&&P.store.grano>0)pool.push(P);
       for(const nb of (S.adj[a.prov]||[])){const q=S.provs[nb];if(q&&!q.wasteland&&q.store&&q.store.grano>0)pool.push(q)}
       let avail=0;for(const q of pool)avail+=q.store.grano;
       if(avail>0){const take=Math.min(localNeed,avail);for(const q of pool)q.store.grano-=take*(q.store.grano/avail)}}
   }
-  for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(!N||!N.alive)continue;
-    for(const k in N.res)if(k!=="dinero"&&N.res[k]<0)N.res[k]=0}
 
   // ---------------- DEMOGRAFÍA: hambre, crecimiento, ascensos, leva ----------------
   const regen=Math.min(1,SOLD_REGEN*dt);
@@ -992,8 +976,28 @@ function priceWhy(N,g){
 // La compra en sí, que hace el Pósito: llena el granero de un ducado hasta dentro de `horizon` meses (o hasta su próxima
 // siega con la reserva de GRAIN_RESERVE, si el horizonte pasa de la siega: así no revende lo que le llega). Primero saca
 // grano de su ALMACÉN (solo paga el flete), sin tocar los RELIEF_ARMY_MONTHS meses que come su ejército; lo que falte lo
+// COMPRAS DE LA CORONA EN LA PLAZA (reclutamiento, caminos, comida del ejército). La corona no tiene almacén: todo bien
+// que gasta lo compra en la plaza de su reino al precio de la semana y sin su propia alcabala, como las obras y el
+// socorro. Lo comprado cuenta como demanda para el precio de la semana siguiente. Si la plaza no tiene bastante, no se
+// compra: la leva espera a que lo haya.
+function crownPrice(n,g){const N=S.nations[n];return ((N.mktPrice&&N.mktPrice[g])||ref(g))*(1-alcabalaOf(n))}
+function costQuote(n,cost){const N=S.nations[n];if(!N||!N.e2)return null;const rows=[];let total=0,why=null;
+  for(const g in cost){const q=cost[g];if(!(q>0))continue;
+    if(g==="dinero"){total+=q;rows.push({g,q,v:q});continue}
+    const v=q*crownPrice(n,g),en=(N.mkt&&N.mkt[g])||0;total+=v;rows.push({g,q,v,en});if(en<q-1e-9&&!why)why="plaza"}
+  if(!why&&(N.res.dinero||0)<total-1e-9)why="dinero";
+  return {rows,total,why,ok:!why}}
+function costOK(n,cost){const r=costQuote(n,cost);return !!(r&&r.ok)}
+// q unidades ya comprobadas: la comisión al burgués y el resto a la plaza (la alcabala no se paga: es de la corona).
+// Devuelve lo que le cuesta a la corona; quien llama lo descuenta del tesoro y lo apunta en su libro.
+function crownBuyGoods(n,g,q){const N=S.nations[n],mp=(N.mktPrice&&N.mktPrice[g])||ref(g),alc=alcabalaOf(n),mv=q*mp;
+  N.mkt[g]=(N.mkt[g]||0)-q; N.sWealth.burgues+=mv*MARGIN; recFlow(n,"burgues","Comisión de la plaza",mv*MARGIN); addInc(N,"burgues",mv*MARGIN);
+  N.e2.plaza+=mv*(1-MARGIN-alc); if(N.e2.wk)N.e2.wk.d[g]=(N.e2.wk.d[g]||0)+q;
+  return mv*(1-alc)}
+function costPay(n,cost,cat,sub){const r=costQuote(n,cost);if(!r||!r.ok)return false;const N=S.nations[n];let goods=0;
+  for(const g in cost)if(g!=="dinero"&&cost[g]>0)goods+=crownBuyGoods(n,g,cost[g]);
+  const d=cost.dinero||0; N.res.dinero-=d+goods; recCrown(n,cat,sub,-(d+goods)); sinkAdd(cat,d); return true}
 // COMPRA en la plaza del reino a precio + flete. reliefQuote es la ÚNICA fuente del precio.
-const RELIEF_ARMY_MONTHS=3;
 function granaryMembers(p){const k=granaryKey(p),ps=[];
   for(const q of S.provs)if(q.owner===p.owner&&!q.wasteland&&q.pops&&q.store&&q.store.grano!=null&&granaryKey(q)===k)ps.push(q);return ps}
 function reliefQuote(payer,p,horizon){
@@ -1001,15 +1005,13 @@ function reliefQuote(payer,p,horizon){
   const ps=granaryMembers(p); let st=0,need=0,needFull=0,c=0;
   for(const q of ps){const cq=q.pops.campesino||0,mth=monthsToHarvest(q,S.hour);c+=cq;st+=q.store.grano||0;
     needFull+=cq*mth/12*reserveOf(q.owner); need+=horizon>0&&horizon<mth?cq*horizon/12:cq*mth/12*reserveOf(q.owner)}
-  const falta=Math.max(0,need-st);
-  let army=0;for(const a of S.armies)if(a.nation===payer)army+=armyFood(a)*730*RELIEF_ARMY_MONTHS;
-  const almacen=Math.min(falta,Math.max(0,(N.res.grano||0)-army)), compra=falta-almacen;
+  const falta=Math.max(0,need-st), compra=falta;
   // price: lo que le cuesta a la corona cada unidad comprada = el de la plaza SIN su propia alcabala (no se paga a sí misma)
   const mktPrice=(N.mktPrice&&N.mktPrice.grano)||ref("grano"), alc=alcabalaOf(payer), price=mktPrice*(1-alc);
   const t=reliefFlete(p,payer), rr=reliefRoute(p,payer);
   const enPlaza=N.mkt.grano||0, flete=falta*mktPrice*t, cost=compra*price, total=cost+flete;
   const why=falta<=0?"no le falta":compra>enPlaza+1e-9?"no hay tanto grano en la plaza":!canAfford(payer,{dinero:total})?"sin dinero":null;
-  return {falta,almacen,compra,price,mktPrice,alc,fletePct:t,km:rr.km,from:rr.from?rr.from.name:"",flete,cost,total,enPlaza,ps,c,st,need,needFull,ok:!why,why};
+  return {falta,compra,price,mktPrice,alc,fletePct:t,km:rr.km,from:rr.from?rr.from.name:"",flete,cost,total,enPlaza,ps,c,st,need,needFull,ok:!why,why};
 }
 // Ejecuta el socorro. El dinero no nace ni muere: lo comprado se paga como una compra en la plaza (comisión al burgués,
 // el resto a la plaza; SIN alcabala: la corona no se paga su propio impuesto, así el total anunciado es exactamente lo
@@ -1017,7 +1019,7 @@ function reliefQuote(payer,p,horizon){
 function reliefSend(payer,p,horizon){
   const q=reliefQuote(payer,p,horizon); if(!q||!q.ok)return q;
   const N=S.nations[payer], dn=p.duchy>=0&&S.duchies&&S.duchies[p.duchy]?S.duchies[p.duchy].name:p.name;
-  N.res.grano=(N.res.grano||0)-q.almacen; N.mkt.grano=(N.mkt.grano||0)-q.compra;
+  N.mkt.grano=(N.mkt.grano||0)-q.compra;
   N.res.dinero-=q.total; recCrown(payer,"Socorro",dn,-q.total);
   const mv=q.compra*q.mktPrice;                                   // lo comprado a precio de la plaza
   N.sWealth.burgues+=mv*MARGIN; recFlow(payer,"burgues","Comisión de la plaza",mv*MARGIN);
@@ -1066,4 +1068,4 @@ function granaryOf(p){
 }
 
 export { economyTick2, siteOK2, seedEstates2, upkeepScale, seedOwner2, seedWealth2, GOODS2, LABEL2, REF2, NEED2, WANT2, TIERS, BLD2, ESTATE_BUILDS2, buildingProfit2, buildingOutput2,
-  transport, tradeCost2, moneyStock, sinkAdd, ARTISAN_IN, ctrOut, ctrIn, granaryOf, foodGrowth, obraCost, newObra, obraFull, repairCost, repairPay, positoCap, positoMonth, positoQuote, positoSend, POSITO_MONTHS, reserveOf, landYield, landCap, landOcc, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX, GRAIN_RESERVE, reliefQuote, reliefSend, isMarketDay, MARKET_DAYS, PRICE_SCALE, JORNAL, MARGIN, CROWN_STOCK, CROWN_STOCK_WANT, crownStockOut, specialty2, obsolete2 };
+  transport, tradeCost2, moneyStock, sinkAdd, ARTISAN_IN, ctrOut, ctrIn, granaryOf, foodGrowth, obraCost, newObra, obraFull, repairCost, repairPay, positoCap, positoMonth, positoQuote, positoSend, POSITO_MONTHS, reserveOf, landYield, landCap, landOcc, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX, GRAIN_RESERVE, reliefQuote, reliefSend, isMarketDay, MARKET_DAYS, PRICE_SCALE, JORNAL, MARGIN, costQuote, costOK, costPay, specialty2, obsolete2 };

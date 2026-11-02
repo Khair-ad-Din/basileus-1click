@@ -29,9 +29,25 @@ real, commit temático. Las cifras se calibran al final con /simular (fase 7).
   - "Espera material" solo si la obra va a menos de la mitad de su ritmo. Reparar = 50% de una obra nueva por la parte
     perdida, de golpe (jornal a la provincia, materiales al sumidero) hasta la F3.
   - La IA de la corona solo construye en el juego real (aiTurn de sim.js), no en el arnés verify-v2 --ia.
-- [ ] **F2. Fin del almacén.** Los edificios de la corona venden a la plaza (fuera CROWN_STOCK, crownStockOut,
+- [x] **F2. Fin del almacén.** HECHA 2026-11-02. Una sola regla de compra de la corona (economy2 costQuote/costPay):
+  reclutamiento y caminos compran sus bienes en la plaza al precio de la semana sin alcabala; si la plaza no tiene, no se
+  recluta. La comida del ejército que no forrajea se compra en la plaza; lo que no hay, se forrajea. Interino hasta F3/F4:
+  los bienes de B.up y UNITS.up (unidades de la v1) no se cobran a nadie; solo el dinero. START_STOCK = 5.000 ducados para
+  todos (un tesoro inicial proporcional al reino, a calibrar en la F7).
+  Antes: Los edificios de la corona venden a la plaza (fuera CROWN_STOCK, crownStockOut,
   CROWN_STOCK_WANT); START_STOCK solo dinero (lo demás a ducados); el socorro sin "almacén"; fuera la sección "Almacén de
   la corona" de la UI y los bienes de la barra superior.
+- [ ] **F2b. Propiedad mixta + permiso de la corona** (Sergio 2026-11-02). La corona HEREDABA de la v1 poder construirlo
+  todo. Decisión: a nivel de MECÁNICA cualquiera (corona o estamento) puede ser dueño de cualquier edificio, y un mismo
+  edificio puede tener NIVELES DE VARIOS DUEÑOS (p. ej. salina: 2 niveles de la nobleza + 1 de la corona); la UI muestra
+  de quién es cada nivel. Lo que la corona PUEDE construir lo decide un permiso por reino (`crownMay(n,b)`) que más
+  adelante darán las LEYES, la CULTURA y la TECNOLOGÍA (se engancha al consejo de lealtad y al árbol tecnológico).
+  Por defecto, el NÚCLEO HISTÓRICO aprobado: mina de plata, mina de oro, fundición, castillo, ciudadela, puerto,
+  almacén, universidad, campo de entrenamiento. Lo demás (granjas, talleres, cuartel de levas, templo, catedral…), solo
+  estamentos mientras ninguna ley/cultura/tecnología lo abra. Casos mixtos para abrir por ley: salina (regalía de la sal),
+  mina de hierro (regalía del subsuelo), catedral (fundación real).
+  Pasos: p.bOwner[b] (un dueño) → reparto de niveles por dueño; producción, beneficio, cierres del presupuesto y
+  reparaciones por dueño; IA de la corona y botón del jugador filtrados por crownMay; ficha de provincia con los dueños.
 - [ ] **F3. Mantenimiento de edificios + barra.** 0,3% de V/nivel/mes comprado en la plaza repartido en 4 semanas
   (50/10/40), sin escalado por población; barra de estado de edificios (decisión 8) sobre bCond; efecto
   ×(0,5+0,5·estado) en producción, defensa y moral.

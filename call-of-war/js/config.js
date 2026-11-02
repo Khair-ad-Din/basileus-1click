@@ -19,8 +19,7 @@ const RES_LABEL={dinero:"Ducados",grano:"Grano",madera:"Madera",piedra:"Piedra",
   especias:"Especias",pano:"Paño",bebida:"Vino",sal:"Sal",seda:"Seda",plata:"Plata",oro:"Oro"};
 const RES_SHORT={dinero:"Duc",grano:"Gra",madera:"Mad",piedra:"Pie",hierro:"Hie",caballos:"Cab",
   especias:"Esp",pano:"Pañ",bebida:"Vin",sal:"Sal",seda:"Sed",plata:"Pla",oro:"Oro"};
-const START_STOCK={dinero:5000,grano:3000,madera:4000,piedra:2500,hierro:2500,caballos:1500,
-  especias:800,pano:600,bebida:600,sal:800,seda:300};
+const START_STOCK={dinero:5000};   // la corona solo guarda ducados: todo bien que gasta lo compra en la plaza (economy2 costPay)
 // Descripción larga de cada bien (para los tooltips del menú): qué es, para qué sirve, quién lo
 // produce/consume y su papel económico. plata/oro no son stock: son yacimientos que rinden ducados.
 const RES_DESC={
@@ -197,7 +196,7 @@ for(const[k,label,short,price,strat,desc]of NEW_GOODS){
   RES_LABEL[k]=label; RES_SHORT[k]=short; RES_DESC[k]=desc;
   // TODOS los bienes nuevos los stockea la corona (RES_KEYS → resbar): los estratégicos en su grupo, los de
   // consumo en el grupo de comercio. Así la barra de recursos se llena (2 filas) con todo el catálogo.
-  RES_KEYS.push(k); START_STOCK[k]=0; (strat?RES_STRAT:RES_TRADE).push(k);
+  RES_KEYS.push(k); (strat?RES_STRAT:RES_TRADE).push(k);
 }
 // Bienes con SPRITE .png (assets/res/); los demás se pintan con el hueco [ ] (ui.js ph). El resbar y resImg lo usan.
 const RES_ART=new Set(["dinero","grano","madera","piedra","hierro","caballos","especias","pano","bebida","sal","seda",
