@@ -113,7 +113,7 @@ function pickEstateBuild(p,e,N){ // el edificio del repertorio del estamento MÁ
  * tecnología). Mismos filtros (sitio de la materia, hueco, dotación, requisitos), mismo colchón (solo invierte si su
  * tesoro supera OBRA_KEEP del coste de la obra), misma previsión de demanda para lo que VENDE y misma rentabilidad. Los
  * servicios (castillo, puerto, universidad…) solo si puede mantenerlos holgado, como un estamento. */
-function pickCrownBuild(p){
+function pickCrownBuild(p,filler=true){ // filler=false: solo edificios que producen (la IA ya tiene una obra de servicio)
   const n=p.owner,N=S.nations[n]; if(!N)return null;
   const treas=N.res.dinero||0, up=ownerUpkeepMonth(n,"corona"), inc=(N.e2&&N.e2.inc&&N.e2.inc.corona)||0;
   if(obraFull(n))return null;                              // el cupo de obras del reino ya está lleno
@@ -131,6 +131,7 @@ function pickCrownBuild(p){
       if(g&&!needMore(n,g))continue;
       score=buildingProfit2(p,b,hLvl(p,b,"corona")+1); if(score<=0)continue;
     }else{
+      if(!filler)continue;
       const upM=upkeepMonth2(p,b,1);
       if(treas<REOPEN_MONTHS*(up+upM)||inc-up-upM<0)continue;   // solo si puede mantenerlo holgado
       score=ESTATE_FILLER;

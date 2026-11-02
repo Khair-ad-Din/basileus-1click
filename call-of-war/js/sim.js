@@ -7,7 +7,7 @@ import { aiOpenWar } from "./council.js";
 import { buildDuchies, hasRoad, roadLvl, isDuchyCap, kmBetween, roadKey } from "./mapgen.js";
 import { drawRoads, paintBorders, repaintProvince } from "./render.js";
 import { saveGame } from "./save.js";
-import { economyTick2, seedOwner2, seedWealth2, seedEstates2, siteOK2, BLD2, obsolete2, newObra, costOK, costPay, recruitOK, recruitOrder, nationSoldada, soldadaMonth } from "./economy2.js";
+import { economyTick2, seedOwner2, seedWealth2, seedEstates2, siteOK2, BLD2, obsolete2, newObra, obraProduce, costOK, costPay, recruitOK, recruitOrder, nationSoldada, soldadaMonth } from "./economy2.js";
 // IA de obras y gestión de edificios de los ESTAMENTOS (y de la corona IA): vive en estates.js, sin DOM (la usa el arnés)
 import { estatesDaily, profitOf, pickCrownBuild } from "./estates.js";
 import { log, refreshBuildBar, refreshSide, refreshTop } from "./ui.js";
@@ -811,6 +811,7 @@ function aiDiplomacy(n){
   let best=-1,bm=-1;for(const m of partners){if(hasPact(n,m))continue;const mm=mightOf(m);if(mm>bm){bm=mm;best=m;}}
   if(best>=0&&canPact(n,best,"alliance").ok)formPact(n,best,"alliance");
 }
+const CROWN_OBRAS_MAX=3;  // obras de la corona IA a la vez (estamentos aparte)
 const AI_RECRUIT_MAX=4;   // reclutas a la vez de una corona IA
 const AI_ARMY_SHARE=0.25; // la IA no recluta si la soldada de su ejército pasaría de esta parte del ingreso de la corona
 function aiTurn(n){
@@ -818,11 +819,16 @@ function aiTurn(n){
   const owned=S.provs.filter(p=>p.owner===n&&!isOccupied(p)); // no desarrollar lo ocupado
   if(!owned.length)return;
   // construir: la corona elige sus obras con la MISMA lógica que los estamentos (estates.js pickCrownBuild)
-  for(let t=0;t<2;t++){
+  // Como mucho CROWN_OBRAS_MAX obras de la corona a la vez y UNA de servicio (las que no producen): sin tope, la IA llenaba
+  // el reino de campos de entrenamiento y almacenes (500+ en cola en el mundo), el cupo de obras se quedaba lleno en 184
+  // de 189 reinos y los estamentos no podían empezar ni un taller en todo el año.
+  let co=0,cf=0;for(const p of owned)for(const q of p.buildQueue)if(!q.owner){co++;if(!obraProduce(q.b))cf++}
+  for(let t=0;t<2&&co<CROWN_OBRAS_MAX;t++){
     const p=owned[(S.rand()*owned.length)|0];
     if(p.buildQueue.length)continue;
-    const b=pickCrownBuild(p); if(!b)continue;
+    const b=pickCrownBuild(p,cf<1); if(!b)continue;
     p.buildQueue.push(newObra(p,b));          // se paga por tramos semanales (economy2 obraPass)
+    co++;if(!obraProduce(b))cf++;
   }
   // reclutar: mientras la soldada de todo el ejército quepa en el 25% del ingreso de la corona
   let troops=0;
