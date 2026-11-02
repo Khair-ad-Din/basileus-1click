@@ -100,8 +100,26 @@ real, commit temático. Las cifras se calibran al final con /simular (fase 7).
   siempre, y quién cobra la Soldada y el Enganche (soldTip). Pendiente (bonito): estado en la lista de ejércitos,
   unificar condBar/barra de Reactivar con barE, y llevar a tooltip los textos visibles que señaló (clic en el mapa,
   Licenciar, Caminos).
-- [ ] **F7. Calibración en GitHub** (/simular): coste 1,0 vs 1,5 años; SOLDADA_K 1,0 vs 0,6; armerías ×5 vs ×3; vigilar
+- [x] **F7. Calibración en GitHub** (/simular): coste 1,0 vs 1,5 años; SOLDADA_K 1,0 vs 0,6; armerías ×5 vs ×3; vigilar
   riqueza de estamentos, precio de madera y piedra (¿más aserraderos/canteras?) y peso del ejército (15-30% del ingreso).
+  HECHA 2026-11-02, ejecución 41437482418 (sim/f7), 10 años, sonda verify-v2 --ia (estamentos construyen; la corona NO
+  construye ni recluta: su IA solo corre en el juego real; ejército fijo de 2 Piqueros + 2 Levas por reino).
+
+  | Variante | Obras terminadas | Mant. <0,6 | Soldada/ingreso (mediana) | Armas prod./pedidas | Madera, piedra (año 5) |
+  |---|---|---|---|---|---|
+  | control | 1.477 | 273 | 15% | 1,0k / 2,6k | ×1,02 ×1,03 |
+  | obra ×1,5 | 1.066 (−28%) | 439 | 14% | 1,1k / 2,6k | ×1,09 ×1,08 |
+  | soldada ×0,6 | 1.459 | 213 (+607 en 0,6-0,9) | 16% | 1,1k / 2,6k | ×1,06 ×1,05 |
+  | armerías ×3 | 1.462 | 280 | 16% | 1,1k / 2,6k | ×1,04 ×1,05 |
+
+  Lectura: se quedan los valores de control. Obra ×1,5 recorta un 28% las obras y empeora el mantenimiento sin mejorar
+  precios. Soldada ×1 ya cae en la banda (15%), y ×0,6 solo pasa dinero de los campesinos a la corona. Armerías ×3 vs
+  ×5 no cambia nada: la falta de armas es de NÚMERO de armerías (casi nadie las construye), no de su rendimiento; la
+  demanda de 2,6k es sobre todo lujo de la nobleza (NEED2 armas 0,002).
+  HALLAZGO (igual en las 4): en 10 años la riqueza se va a la corona: corona 26M → 209M, campesinos 216M → 63M, clero
+  7,7M → 1,5M, nobleza 15M → 10M; madera y piedra al suelo (×0,50) desde ~el año 7. Es en buena parte ARTEFACTO DEL
+  ARNÉS: la corona cobra impuestos y no gasta (no construye ni recluta en verify-v2). SIGUIENTE: llevar la IA de la
+  corona (obras de pickCrownBuild y reclutamiento de aiTurn) al arnés y repetir la F7 antes de fiarse de cifras largas.
 - Después: consejo de LEALTAD de estamentos + negociación de palancas (con lo aparcado abajo).
 
 ## Dictamen del consejero (APROBADO por Sergio 2026-11-01)
