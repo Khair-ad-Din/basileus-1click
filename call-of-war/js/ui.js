@@ -154,22 +154,60 @@ function obraLine(p,b){
 }
 // COSTE DE UNA COMPRA DE LA CORONA (economy2 costQuote): el total en ducados al precio de la plaza de hoy; el tooltip,
 // cada bien con lo que cuesta y lo que hay en la plaza. En rojo si no llega el dinero o la plaza no tiene bastante.
-function buyLine(cost,title,payLabel,wait){ // wait: la compra espera al material (recluta): solo el dinero la bloquea
+function buyLine(cost,title){
   const q=costQuote(S.player,cost); if(!q)return "";
-  const rows=q.rows.map(r=>r.g==="dinero"?[payLabel||"Paga","",nfE(r.v),""]:[resImg(r.g)+gLabel(r.g),nfE(r.q),nfE(r.v),{v:nfE(r.en),c:r.en<r.q?"#d08080":null}]);
+  const rows=q.rows.map(r=>r.g==="dinero"?["Paga","",nfE(r.v),""]:[resImg(r.g)+gLabel(r.g),nfE(r.q),nfE(r.v),{v:nfE(r.en),c:r.en<r.q?"#d08080":null}]);
   const tip=tipBox("Coste",[{cols:["Partida","Cantidad","Ducados","En plaza"],trows:rows,ttot:["Total","",nfE(q.total),""]}],title);
-  const bad=wait?(S.nations[S.player].res.dinero||0)<q.total:!q.ok;
-  return "<span data-tiph=\""+ta(tip)+"\""+(bad?" class='neg'":"")+">"+COIN()+fmt(q.total)+(q.why==="plaza"&&!wait?" Sin material":"")+"</span>";
+  return "<span data-tiph=\""+ta(tip)+"\""+(q.ok?"":" class='neg'")+">"+COIN()+fmt(q.total)+(q.why==="plaza"?" Sin material":"")+"</span>";
 }
-// COSTE DE RECLUTAR una unidad (economy2 unitCost): enganche + equipo al precio de hoy, y su soldada al mes
-function recruitLine(u){
+// RECLUTAR (economy2 recruitOrder/recruitPass): tabla Tropa | Tiempo | Coste | Mes | soldadesca. El coste separa lo que se
+// paga AHORA (el enganche, a los pops) de lo que la recluta compra por TRAMOS (el equipo, al precio de hoy).
+function recruitCostCell(u){
+  const U=UNITS[u], N=S.nations[S.player], e=unitCost(u).dinero, alc=alcabalaOf(S.player), trows=[]; let eq=0;
+  for(const g in U.eq){const v=U.eq[g]*((N.mktPrice&&N.mktPrice[g])||REF2[g]*PRICE_SCALE)*(1-alc),en=(N.mkt&&N.mkt[g])||0;eq+=v;
+    trows.push([resImg(g)+LABEL2[g],nfE(U.eq[g]),nfE(v),{v:nfE(en),c:en<U.eq[g]?"#d08080":null}])}
+  const tip=tipBox("Coste",[{h:"Ahora",rows:[["Enganche",nfE(e)]]},{h:"Tramos",cols:["Partida","Cantidad","Ducados","En plaza"],trows,ttot:["Total","",nfE(eq),""]},
+    {tot:["Total",nfE(e+eq)]}],U.label);
+  return "<span data-tiph=\""+ta(tip)+"\""+((N.res.dinero||0)<e+eq?" class='neg'":"")+">"+fmt(e+eq)+"</span>";
+}
+function recruitMonthCell(u){
   const U=UNITS[u], N=S.nations[S.player], sm=soldadaMonth(u); let rep=0;
   for(const g in U.eq)rep+=U.eq[g]*REPOSICION*((N&&N.mktPrice&&N.mktPrice[g])||REF2[g]*PRICE_SCALE);
   const tip=tipBox("Sostenerla",[{cols:["Partida","Ducados"],trows:[["Soldada",nfE(sm)],["Reposición",nfE(rep)]],ttot:["Total",nfE(sm+rep)]}],"Al mes, sin la comida");
-  return buyLine(unitCost(u),U.label,"Enganche",true)+VSEP+"<span data-tiph=\""+ta(tip)+"\">"+uiIcon('mantenimiento')+" "+COIN()+fmt(sm+rep)+"/mes</span>";
+  return "<span data-tiph=\""+ta(tip)+"\">"+fmt(sm+rep)+"</span>";
 }
-// tiempo que le queda a una recluta, o por qué está parada (economy2 recruitPass)
-function recruitEta(q){return q.wait?"<span class='neg'>"+(q.wait==="dinero"?"Sin dinero":"Espera material")+"</span>":fmtDur(q.hoursLeft)}
+function recruitRows(p){
+  const us=Object.keys(UNITS).filter(u=>{const U=UNITS[u];for(const r in U.req)if((p.buildings[r]||0)<U.req[r])return false;return true});
+  if(!us.length)return "<div class='prow'><span class='dim' data-tip='Construye un Cuartel de levas para reclutar aquí'>"+ph('bloqueado')+" Sin cuartel</span></div>";
+  let s="<table class='ctab'><tr><th>Tropa</th><th>Tiempo</th><th>Coste</th><th>Mes</th><th>"+uiIcon('soldadesca')+"</th><th></th></tr>";
+  for(const u of us){const U=UNITS[u],dis=!recruitOK(S.player,u)||soldAvail(p)<U.mano;
+    s+="<tr><td>"+U.label+"</td><td>"+fmtDur(recruitTime(p,u))+"</td><td>"+recruitCostCell(u)+"</td><td>"+recruitMonthCell(u)+"</td><td>"+fmtPop(U.mano)+"</td>"+
+      "<td><button class='bbtn' "+(dis?"disabled":"")+" onclick='tryRecruit("+p.id+",\""+u+"\")'>Reclutar</button></td></tr>"}
+  return s+"</table>";
+}
+// soldadesca de la provincia (lo que puede dar / su techo); la población, al tooltip
+function soldLine(p){return "<div class='sm' style='margin:0 0 8px;color:#c9c2ae' data-tip='De "+fmtPop(p.pop)+" habitantes'>"+uiIcon('soldadesca')+" Soldadesca: <b>"+fmtPop(soldAvail(p))+"</b> / "+fmtPop(soldCap(p))+"</div>"}
+// PROGRESO de una recluta u obra en cola: barra y, si está parada, el bien que le falta o "Sin dinero" (economy2 q.wait/q.short)
+function queueEta(q,left){const pc=Math.min(100,Math.floor(100*(q.prog||0)));
+  const why=q.wait==="dinero"?"<span class='neg'>Sin dinero</span>":q.wait?"<span class='neg' data-tip='Espera material en la plaza'>"+(q.short?resImg(q.short)+LABEL2[q.short]:"Sin material")+"</span>":fmtDur(left);
+  return barE(pc,40)+VSEP+why}
+function recruitEta(q){return queueEta(q,q.hoursLeft)}
+// ESTADO de un ejército (economy2 armyPass/armyClose): barra con la raya del 30% (deserción) y tooltip con lo debido y lo
+// pagado del mes en curso por partida, su peso y lo que moverá la barra al cerrar el mes.
+const ARMY_W_UI={s:0.55,f:0.30,r:0.15}, ARMY_DESERT_PC=30;
+function armyCondUI(a,w){
+  const cond=a.cond!=null?a.cond:1, pc=Math.round(cond*100), M=a.mo, N=S.nations[a.nation], trows=[];
+  const prG=(N&&N.mktPrice&&N.mktPrice.grano)||REF2.grano*PRICE_SCALE, L={s:"Soldada",f:"Comida",r:"Reposición"};
+  let c=1;
+  if(M){c=0;for(const k of ["s","f","r"]){const x=M[k],r=x[0]>0?Math.min(1,x[1]/x[0]):1,m=k==="f"?prG:1;c+=ARMY_W_UI[k]*r;
+    trows.push([L[k],nfE(x[0]*m),{v:nfE(x[1]*m),c:r<0.98?"#d08080":null},Math.round(ARMY_W_UI[k]*100)+"%"])}}
+  const nxt=c>=0.98?Math.min(1,cond+0.25)-cond:-0.30*(1-c);
+  const col=c>=0.98?"#6fae5a":pc<ARMY_DESERT_PC?"#c0563e":"#c98a3a";
+  const tip=tipBox("Estado",[{cols:["Este mes","Debido","Pagado","Peso"],trows,ttot:["Cubierto","","",Math.round(c*100)+"%"]},
+    {rows:[["Fuerza","×"+(0.85+0.15*cond).toFixed(2)],["Al cerrar el mes",(nxt>=0?"+":"−")+Math.abs(Math.round(nxt*100))+"%",nxt<-0.005?"#d08080":null],
+      ["Deserción","Bajo 30%"],["Desbandada","En 0%"]]}]);
+  return {pc,tip,html:barE(pc,w||70,col,ARMY_DESERT_PC)+" <b>"+pc+"%</b>"+(Math.abs(nxt)<0.005?"":arw(nxt>0?"upg":"dnr"))};
+}
 // MANTENIMIENTO de un nivel (economy2 upkeepDue): ducados al mes al precio de hoy; el tooltip, el jornal y cada bien.
 function upLine(p,b){
   const u=upkeepDue(b,1), N=S.nations[p.owner], fl=heavyFlete(p), rows=[["Jornal","",nfE(u.jornal)]]; let t=u.jornal,fr=0;
@@ -313,7 +351,7 @@ function buildTilesHTML(p){
       const lvl=lvlOf(p,b),max=buildMax(p,b),inQ=p.buildQueue.some(q=>q.b===b);
       if(!lvl&&obsolete2(b))continue; // heredado de la v1 (bien que ya no existe u oro "de la nada"): no se ofrece
       const block=inQ?null:(buildBlock(p,b)||siteBlock2(p,b)||(crownMay(S.player,b)?null:"Solo estamentos"));
-      const maxed=lvl>=max;
+      const maxed=lvl>=max, busy=block==="Obra en curso";
       let cls="btile";
       if(inQ)cls+=" building";else if(maxed)cls+=" done";else if(block)cls+=" locked";
       const lvBadge=B.unique?"<span class='uni'>Única</span>":(lvl>0?"<span class='lvb'>Nivel "+lvl+"</span>":"");
@@ -321,10 +359,10 @@ function buildTilesHTML(p){
       const upStr="<div class='up'>"+upLine(p,b)+"</div>";
       let foot;
       if(inQ){const q=p.buildQueue.find(q=>q.b===b),pc=Math.min(100,Math.floor(100*(q.prog||0))),left=Math.max(0,(1-(q.prog||0))*(q.sem||0)*168);
-        foot="<div class='ftime' style='color:var(--title)'>"+ph('obra')+" En obra "+pc+"%"+VSEP+(q.wait?"<span class='neg'>"+(q.wait==="dinero"?"Sin dinero":"Espera material")+"</span>":fmtDur(left))+"</div>";}
+        foot="<div class='ftime' style='color:var(--title)'>"+ph('obra')+" "+queueEta(q,left)+"</div>";}
       else if(maxed)foot="<div class='ftime pos'>"+(B.unique?"<i class='ck'></i> Construida":"Nivel máximo")+"</div>";
-      else foot="<div class='cost'>"+obraLine(p,b)+"</div>"+
-          "<div class='ftime'>"+(block?ph('bloqueado')+" "+block:ph('tiempo')+" "+fmtDur(obraCost(p,b).semanas*168))+"</div>";
+      else foot="<div class='cost'>"+obraLine(p,b)+"</div>"+   // con otra obra en marcha, la tarjeta sale en gris con su coste y plazo; el motivo, al tooltip
+          "<div class='ftime'>"+(block&&!busy?ph('bloqueado')+" "+block:ph('tiempo')+" "+fmtDur(obraCost(p,b).semanas*168))+"</div>";
       // beneficios (producción viva + efectos, cada uno en su línea) y empleos en su propia fila
       const jb=jobsOf(b);
       const jobsHtml=jb>0?"<div class='jobs2'>"+uiIcon('poblacion')+" "+fmtPop(jb)+" empleos/niv</div>":"";
@@ -352,7 +390,7 @@ function buildTilesHTML(p){
       }
       // lo que añade el SIGUIENTE nivel (marginal), con la rentabilidad v2 del dueño
       const hint=((BLD2[b]||(B.fx&&B.fx.prodAdd))&&!maxed&&!inQ&&!block)?nextHint2(p,b,lvl):"";
-      tiles+="<div class='"+cls+"'"+onclick+(off?" style='opacity:.62'":"")+" data-tip=\""+ta(B.desc)+"\">"+
+      tiles+="<div class='"+cls+"'"+onclick+(off?" style='opacity:.62'":"")+" data-tip=\""+ta(B.desc+(busy?" Ya hay una obra en curso en la provincia.":""))+"\">"+
         "<img class='bic' src='assets/buildings/"+b+".png' alt='"+B.label+"' title='"+B.label+"' onerror=\"this.replaceWith(bph('"+b+"'))\">"+
         "<div class='th'><span class='nm'>"+B.label+"</span>"+lvBadge+"</div>"+
         "<div class='ben'>"+benefitHTML2(p,b,lvl)+jobsHtml+hint+"</div>"+ctrl+
@@ -388,20 +426,8 @@ function roadsHTML(p){
 }
 // ejércitos presentes + reclutamiento de esta provincia; la pinta la ventana de Ejércitos
 function armyHTML(p){
-  let s="<div class='sm' style='margin:0 0 8px;color:#c9c2ae'>"+uiIcon('soldadesca')+" Soldadesca: <b>"+fmtPop(soldAvail(p))+"</b> / "+fmtPop(soldCap(p))+" <span style='color:#9aa3ad'>(de "+fmtPop(p.pop)+" hab)</span></div>";
-  let any=false,r="";
-  for(const u in UNITS){
-    const U=UNITS[u];
-    let ok=true;for(const req in U.req)if((p.buildings[req]||0)<U.req[req])ok=false;
-    if(!ok)continue;
-    any=true;
-    const dis=!recruitOK(S.player,u)||soldAvail(p)<U.mano;
-    r+="<div class='recrow'><span class='u'>"+U.label+" <span class='sm'>("+fmtDur(recruitTime(p,u))+")</span>"+
-      "<div class='cst'>"+recruitLine(u)+VSEP+fmtPop(U.mano)+" soldadesca</div></span>"+
-      "<button class='bbtn' "+(dis?"disabled":"")+" onclick='tryRecruit("+p.id+",\""+u+"\")'>Reclutar</button></div>";
-  }
-  s+="<div class='winh' style='font-size:12px;margin-top:2px'>Reclutar</div>";
-  s+=any?r:"<div class='prow'><span class='dim'>Construye un Cuartel de levas para reclutar aquí.</span></div>";
+  let s=soldLine(p);
+  s+="<div class='winh' style='font-size:12px;margin-top:2px'>Reclutar</div>"+recruitRows(p);
   if(p.recruitQueue.length){
     s+="<div class='winh' style='font-size:12px'>En cola</div>";
     for(const q of p.recruitQueue)s+="<div class='recrow'><span class='u'>"+UNITS[q.u].label+"</span><span class='cst'>"+recruitEta(q)+"</span></div>";
@@ -554,19 +580,7 @@ function refreshArmyPanel(){
     R+="<select class='recSel' onchange='setRecruitProv(this.value)'>"+
       provs.map(p=>"<option value='"+p.id+"'"+(p.id===S.recruitProv?" selected":"")+">"+p.name+(p.capital?" "+ph('capital'):"")+"</option>").join("")+"</select>";
     const p=S.provs[S.recruitProv];
-    R+="<div class='sm' style='margin:4px 0 6px;color:#c9c2ae'>"+uiIcon('soldadesca')+" Soldadesca disponible: <b>"+fmtPop(soldAvail(p))+"</b> / "+fmtPop(soldCap(p))+" <span style='color:#9aa3ad'>(de "+fmtPop(p.pop)+" hab)</span></div>";
-    let any=false;
-    for(const u in UNITS){
-      const U=UNITS[u];
-      let okReq=true;for(const r in U.req)if(p.buildings[r]<U.req[r])okReq=false;
-      if(!okReq)continue;
-      any=true;
-      const dis=!recruitOK(S.player,u)||soldAvail(p)<U.mano;
-      R+="<div class='recrow'><span class='u'>"+U.label+" <span class='sm'>("+fmtDur(recruitTime(p,u))+")</span>"+
-        "<div class='cst'>"+recruitLine(u)+VSEP+fmtPop(U.mano)+" soldadesca</div></span>"+
-        "<button class='bbtn' "+(dis?"disabled":"")+" onclick='tryRecruit("+p.id+",\""+u+"\")'>Reclutar</button></div>";
-    }
-    if(!any)R+="<p class='sm' style='color:#9aa3ad'>Esta provincia aún no puede reclutar: construye un Cuartel de levas.</p>";
+    R+=soldLine(p)+recruitRows(p);
     if(p.recruitQueue.length){
       R+="<h3 style='color:#c9c2ae;font-size:13px;margin:12px 0 4px;border-bottom:1px solid #3a4047;padding-bottom:2px'>En cola</h3>";
       for(const q of p.recruitQueue)R+="<div class='recrow'><span class='u'>"+UNITS[q.u].label+"</span><span class='cst'>"+recruitEta(q)+"</span></div>";
@@ -622,16 +636,16 @@ function refreshArmyWin(){
   const cond=a.cond!=null?a.cond:1, pc=Math.round(cond*100), F=a._fed||{need:armyFood(a),buy:0,req:0}, fp=armyForage(a);
   const N=S.nations[a.nation]; let rep=0;
   for(const k in a.units){const eq=UNITS[k].eq;for(const g in eq)rep+=eq[g]*a.units[k]*REPOSICION*((N&&N.mktPrice&&N.mktPrice[g])||REF2[g]*PRICE_SCALE)}
-  const ctip=tipBox("Estado",[{rows:[["Fuerza","×"+(0.85+0.15*cond).toFixed(2)],["Pagado el mes pasado",a.paid!=null?Math.round(a.paid*100)+"%":"—"]]}],
-    cond<0.3?"Deserta un 5% al mes":"Sube si se paga todo");
-  const ftrows=[["Comprado",n1(F.buy*730)],["Requisado",n1(F.req*730)]];
-  for(const it of fp.slice(0,6))ftrows.push([" "+it.p.name,n1(it.amt*730)]);
-  const ftip=tipBox("Comida",[{cols:["Origen","Grano/mes"],trows:ftrows,ttot:["Necesita",n1(F.need*730)]}]);
+  const st=armyCondUI(a,70), prG=(N&&N.mktPrice&&N.mktPrice.grano)||REF2.grano*PRICE_SCALE, sold=armySoldada(a), food=F.need*730*prG;
+  const ftip=tipBox("Comida",[{cols:["Origen","Grano","Ducados"],trows:[["Comprado",nfE(F.buy*730),nfE(F.buy*730*prG)],["Requisado",nfE(F.req*730),""]],ttot:["Necesita",nfE(F.need*730),nfE(food)]},
+    {h:"Requisa",rows:fp.slice(0,6).map(it=>[it.p.name,nfE(it.amt*730)+" grano",null,{in:1}])}],"Al mes");
   s+="<div class='bsec'>Sostén</div>";
-  s+="<div class='prow'><span data-tiph=\""+ta(ctip)+"\">Estado</span><span>"+barE(pc,70)+" <b>"+pc+"%</b></span></div>";
-  s+="<div class='prow'><span>Soldada</span><b>"+COIN()+fmt(armySoldada(a))+"/mes</b></div>";
-  s+="<div class='prow'><span>Reposición</span><b>"+COIN()+fmt(rep)+"/mes</b></div>";
-  s+="<div class='prow'><span data-tiph=\""+ta(ftip)+"\">Comida</span><b"+(F.req>0?" class='neg'":"")+">"+n1(F.need*730)+" "+resImg('grano')+"/mes</b></div>";
+  s+="<div class='prow' data-tiph=\""+ta(st.tip)+"\"><span>Estado</span><span>"+st.html+"</span></div>";
+  s+="<table class='ctab'><tr><th>Partida</th><th>Mes</th></tr>"+
+    "<tr><td>Soldada</td><td>"+fmt(sold)+"</td></tr>"+
+    "<tr data-tiph=\""+ta(ftip)+"\"><td>Comida"+(F.req>0?" <span style='color:#e0a17a' data-tip='Parte se requisa a las provincias'>"+ph('requisa')+"</span>":"")+"</td><td>"+fmt(food)+"</td></tr>"+
+    "<tr><td>Reposición</td><td>"+fmt(rep)+"</td></tr>"+
+    "<tr><td><b>Total</b></td><td><b>"+COIN()+fmt(sold+food+rep)+"</b></td></tr></table>";
   s+="</div>";
   el.innerHTML=s;el.className="show";el.style.display="block";
   refreshArmyEdit(a); // menú Editar (licenciar) a la derecha
@@ -1363,8 +1377,10 @@ const nfE=v=>Math.round(v||0).toLocaleString("es-ES");
 const sgnE=v=>(v>=0?"+":"−")+nfE(Math.abs(v));
 const prE=v=>v<10?(Math.round(v*10)/10).toLocaleString("es-ES"):nfE(v);  // precio: un decimal si es pequeño
 const pctE=v=>Math.round(Math.max(0,v)*100);
-function barE(pc,w,col){ // barra 0..100 (rojo <60, ámbar <90, verde, o el color que se pase) — misma estética que relFillBar, ancho a medida
-  return "<span style='display:inline-block;width:"+(w||46)+"px;height:7px;background:#241a14;border-radius:3px;overflow:hidden;vertical-align:middle'><i style='display:block;height:100%;width:"+Math.max(0,Math.min(100,pc))+"%;background:"+(col||(pc<60?"#c0563e":pc<90?"#c98a3a":"#6fae5a"))+"'></i></span>";
+function barE(pc,w,col,mark){ // barra 0..100 (rojo <60, ámbar <90, verde, o el color que se pase) — misma estética que relFillBar, ancho a medida
+  // mark: raya vertical en ese % (un umbral, p. ej. el 30% en que deserta la tropa)
+  return "<span style='display:inline-block;position:relative;width:"+(w||46)+"px;height:7px;background:#241a14;border-radius:3px;overflow:hidden;vertical-align:middle'><i style='display:block;height:100%;width:"+Math.max(0,Math.min(100,pc))+"%;background:"+(col||(pc<60?"#c0563e":pc<90?"#c98a3a":"#6fae5a"))+"'></i>"+
+    (mark!=null?"<i style='position:absolute;top:0;bottom:0;left:"+mark+"%;width:1px;background:#e8e4d8;opacity:.75'></i>":"")+"</span>";
 }
 function tipRows(title,rows,tot){ // tooltip estructurado (data-tiph): título + filas [etiqueta, valor, color?] + total opcional
   let h="<div class='tipT'>"+title+"</div>";
@@ -1386,10 +1402,10 @@ const CROWN_CAT={
   "Minas de plata y oro":["","Acuñación: el único dinero que nace sin venta."],
   "Paces y tributos":["","Oro pactado en los tratados de paz."],
   "Diplomacia":["","Regalos entre reinos."],
-  "Ejército":["","Soldada de las tropas."],
+  "Ejército":["","Soldada, comida, reposición y requisas de las tropas en pie."],
   "Mantenimiento de edificios":["","Mantenimiento de los edificios de la corona."],
   "Obras":["","Edificios que has mandado construir."],
-  "Reclutamiento":["","Tropas reclutadas."],
+  "Reclutamiento":["","Enganche al ordenar y equipo comprado durante la recluta."],
   "Caminos":["","Caminos que has mandado construir."],
   "Reparaciones":["","Edificios reabiertos y reparados."],
   "Socorro":["","Grano enviado a ducados que no llegaban a la siega: comprado en la plaza y su flete."],
@@ -1426,6 +1442,15 @@ function crownRow(cat,amt,drill){
     "<span>"+ph(CAT_ICO[cat]||"otros")+" "+cat+chip+(drill?" <span class='tarrow'>›</span>":"")+"</span>"+
     "<b class='"+(amt<0?"neg":"pos")+"'>"+sgnE(amt)+" "+resImg("dinero")+"</b></div>";
 }
+// QUIÉN COBRA LA SOLDADA (economy2 armyPass/recruitOrder): por tipo de tropa, lo que se paga al mes y a qué estamento.
+// meses = 1 para la soldada de las tropas en pie; 2 para el enganche (por unidad que se recluta).
+function soldTip(title,meses){
+  const n=S.player, trows=[]; let tot=0;
+  if(meses===1){const by={};for(const a of S.armies)if(a.nation===n)for(const k in a.units)by[k]=(by[k]||0)+a.units[k];
+    for(const k in by){const v=by[k]*soldadaMonth(k);tot+=v;trows.push([UNITS[k].label,whoIcon(UNITS[k].who,n)+" "+whoLabel(UNITS[k].who),nfE(v)])}
+    return tipBox(title,[{cols:["Tropa","Cobra","Ducados"],trows,ttot:["Total","",nfE(tot)]}],"Al mes, hoy")}
+  for(const k in UNITS)trows.push([UNITS[k].label,whoIcon(UNITS[k].who,n)+" "+whoLabel(UNITS[k].who),nfE(soldadaMonth(k)*meses)]);
+  return tipBox(title,[{cols:["Tropa","Cobra","Ducados"],trows}],"Por unidad")}
 function treasuryTesoro2(){
   const cb=crownBook(),path=S.treasuryPath;
   const mt=(k,lab)=>"<span class='e2seg"+((S.tsyMonth==="cur"?"cur":"prev")===k?" on":"")+"' onclick=\"setTsyMonth('"+k+"')\">"+lab+"</span>";
@@ -1435,7 +1460,7 @@ function treasuryTesoro2(){
   if(!path.length){
     const inc=Object.keys(cb.cats).filter(c=>cb.cats[c]>=0.5).sort((a,b)=>cb.cats[b]-cb.cats[a]);
     const exp=Object.keys(cb.cats).filter(c=>cb.cats[c]<=-0.5).sort((a,b)=>cb.cats[a]-cb.cats[b]);
-    const drillable=c=>c!=="Otros"&&cb.book[c]&&Object.keys(cb.book[c]).length>1;
+    const drillable=c=>c!=="Otros"&&cb.book[c]&&Object.keys(cb.book[c]).length>=1;   // la flecha, siempre (aunque haya una sola partida)
     h+="<div class='tsec'>Ingresos</div>"+(inc.length?inc.map(c=>crownRow(c,cb.cats[c],drillable(c))).join(""):"<div class='trow tdim'>—</div>");
     h+="<div class='tsec'>Gastos</div>"+(exp.length?exp.map(c=>crownRow(c,cb.cats[c],drillable(c))).join(""):"<div class='trow tdim'>—</div>");
     h+="<div class='ttotal'><span>"+(cb.forecast?"Balance previsto del mes":cb.cur?"Balance en lo que va de mes":"Balance del mes")+"</span><b class='"+(cb.net<0?"neg":"pos")+"'>"+sgnE(cb.net)+" "+resImg("dinero")+"</b></div>";
@@ -1443,7 +1468,8 @@ function treasuryTesoro2(){
     const cat=path[0],subs=cb.book[cat]||{},ks=Object.keys(subs).sort((a,b)=>Math.abs(subs[b])-Math.abs(subs[a]));
     const TOP=14;let rest=0;for(const k of ks.slice(TOP))rest+=subs[k];
     h+=tsyCrumb([cat]);
-    for(const k of ks.slice(0,TOP))h+="<div class='trow'><span>"+k+"</span><b class='"+(subs[k]<0?"neg":"pos")+"'>"+sgnE(subs[k])+"</b></div>";
+    const ktip=k=>cat==="Ejército"&&k==="Soldada"?soldTip("Soldada",1):cat==="Reclutamiento"&&k==="Enganche"?soldTip("Enganche",2):"";
+    for(const k of ks.slice(0,TOP)){const t=ktip(k);h+="<div class='trow'"+(t?" data-tiph=\""+ta(t)+"\"":"")+"><span>"+k+"</span><b class='"+(subs[k]<0?"neg":"pos")+"'>"+sgnE(subs[k])+"</b></div>"}
     if(ks.length>TOP)h+="<div class='trow'><span class='e2sub'>Resto ("+(ks.length-TOP)+")</span><b class='"+(rest<0?"neg":"pos")+"'>"+sgnE(rest)+"</b></div>";
     h+="<div class='ttotal'><span>Total "+cat+"</span><b class='"+(cb.cats[cat]<0?"neg":"pos")+"'>"+sgnE(cb.cats[cat]||0)+" "+resImg("dinero")+"</b></div>";
   }

@@ -491,12 +491,12 @@ function recruitPass(n,N,ps,price,alc,GL,bought,gapStock,dt){
     N.sWealth.burgues+=mv*MARGIN;recFlow(n,"burgues","Comisión de la plaza",mv*MARGIN);addInc(N,"burgues",mv*MARGIN);
     N.e2.plaza+=mv*(1-MARGIN-alc);N.res.dinero-=mv*(1-alc);return mv*(1-alc)};
   for(const t of list){
-    let f=1,why=null;for(const g in t.b)if(r[g]<f){f=r[g];why="material"}
+    let f=1,why=null,short=null;for(const g in t.b)if(r[g]<f){f=r[g];why="material";short=g}
     let cost=0;for(const g in t.b)cost+=t.b[g]*f*price[g]*(1-alc);
     if(cost>Math.max(0,N.res.dinero)){f*=cost>0?Math.max(0,N.res.dinero)/cost:0;why="dinero"}
     let paid=0;for(const g in t.b){const w=t.b[g],q=w*f;gapStock[g]=(gapStock[g]||0)+(w-q);glDem(GL,g,"reclutamiento",w,q);if(q>0)paid+=take(g,q)}
     if(paid>0)recCrown(n,"Reclutamiento",UNITS[t.q.u].label,-paid);
-    t.q.prog+=f*t.k; t.q.hoursLeft=Math.max(1,Math.round((1-t.q.prog)*t.q.total)); t.q.wait=f<0.5?why:null}
+    t.q.prog+=f*t.k; t.q.hoursLeft=Math.max(1,Math.round((1-t.q.prog)*t.q.total)); t.q.wait=f<0.5?why:null; t.q.short=why==="material"?short:null}
 }
 function armyPass(n,N,list,price,alc,GL,bought,gapStock,dt){
   const mk=monthKeyOf(S.hour), purse=()=>Math.max(0,N.res.dinero);
@@ -981,7 +981,7 @@ function obraPass(n,N,ps,price,alc,GL,bought,gapStock,dt){
     sat=Math.max(sat,quota>0?want[g]/quota:(want[g]>0?Infinity:0))}
   N.e2.obraSat=sat;
   for(const t of list){
-    let f=1,why=null;for(const g in t.b)if(r[g]<f){f=r[g];why="material"}
+    let f=1,why=null,short=null;for(const g in t.b)if(r[g]<f){f=r[g];why="material";short=g}
     const pr=g=>price[g]*(t.who==="corona"?1-alc:1);       // la corona no se paga su propia alcabala
     const fl=heavyFlete(t.p); let goods=0,fr=0;for(const g in t.b){goods+=t.b[g]*pr(g);fr+=t.b[g]*price[g]*(fl[g]||0)}
     goods+=fr;                                             // el flete de la madera, la piedra y el hierro hasta la obra
@@ -997,7 +997,7 @@ function obraPass(n,N,ps,price,alc,GL,bought,gapStock,dt){
       fletePay(n,N,t.p,f*fr);
       const sp=OBRA_TPL_OF[t.q.b]==="piedra"?OBRA_CANTERO:OBRA_PEON;
       for(const e in sp){const v=f*t.j*sp[e];N.sWealth[e]+=v;recFlow(n,e,"Jornales de obra",v);addInc(N,e,v);pmJor(t.p,e,v)}}
-    t.q.prog+=f*t.k; t.q.wait=f<0.5?why:null;   // el aviso, solo si va a menos de la mitad de su ritmo
+    t.q.prog+=f*t.k; t.q.wait=f<0.5?why:null; t.q.short=why==="material"?short:null;   // el aviso, solo si va a menos de la mitad de su ritmo
   }
 }
 // Unidades/día que un reino tiene CONTRATADAS para exportar de un bien (su plaza las guarda además de su demanda).

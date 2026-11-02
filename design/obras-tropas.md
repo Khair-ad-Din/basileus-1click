@@ -90,8 +90,16 @@ real, commit temático. Las cifras se calibran al final con /simular (fase 7).
   el 39% de sus materiales en la mediana (11% p10, 65% p90) y el 17% del total de la obra; obras terminadas 160 (163
   sin flete). Arreglo de paso: la soldada, las requisas y el flete de obra se apuntaban en el libro de VENTAS de la
   provincia (rompía Σcobros = Σvalor desde la F4); ahora van a un cubo aparte (pmOtr, m.otr).
-- [ ] **F6. Pasada de UX** (/ux): barras de estado, tooltips de coste y de mantenimiento, desglose de la soldada en
-  Tesorería.
+- [x] **F6. Pasada de UX** (/ux): barras de estado, tooltips de coste y de mantenimiento, desglose de la soldada en
+  Tesorería. HECHA 2026-11-02 (los 6 imprescindibles del director de UX): Estado del ejército con barra marcada en el 30%
+  (barE mark), color por la situación del mes y tooltip Debido/Pagado/Peso + "Al cerrar el mes" (armyCondUI, de a.mo);
+  Sostén como tabla en ducados con total (la requisa, aviso ámbar, no rojo: no baja la barra); reclutar como tabla
+  Tropa/Tiempo/Coste/Mes/soldadesca (recruitRows) con el coste partido en Ahora (enganche) y Tramos (equipo); colas de
+  reclutas y obras con barra de progreso y el bien que falta (q.short); Construir con obra en curso: tarjetas en gris
+  con coste y plazo, el motivo al tooltip; Tesorería: tooltips de Ejército y Reclutamiento al día, flecha de desglose
+  siempre, y quién cobra la Soldada y el Enganche (soldTip). Pendiente (bonito): estado en la lista de ejércitos,
+  unificar condBar/barra de Reactivar con barE, y llevar a tooltip los textos visibles que señaló (clic en el mapa,
+  Licenciar, Caminos).
 - [ ] **F7. Calibración en GitHub** (/simular): coste 1,0 vs 1,5 años; SOLDADA_K 1,0 vs 0,6; armerías ×5 vs ×3; vigilar
   riqueza de estamentos, precio de madera y piedra (¿más aserraderos/canteras?) y peso del ejército (15-30% del ingreso).
 - Después: consejo de LEALTAD de estamentos + negociación de palancas (con lo aparcado abajo).
