@@ -3,7 +3,7 @@ import { MW, MH, NATIONS, NPLAY, TERRAINS, TERRAIN_KEYS, UNITS, isSea, CENTER_PO
 import { S } from "./state.js";
 import { hashN, roadKey, hasRoad, kmBetween, localize } from "./mapgen.js";
 import { armyCount, armyPops, recruitable, soldAvail } from "./economy.js";
-import { costOK } from "./economy2.js";
+import { recruitOK } from "./economy2.js";
 // número compacto para el marcador del ejército (pops soldados): 850, 4.2k, 12k
 function popTag(v){return v>=1000?(v/1000).toFixed(v>=10000?0:1).replace(".0","")+"k":Math.round(v)}
 
@@ -923,7 +923,7 @@ function draw(){
     ctx.textAlign="center";ctx.textBaseline="middle";
     for(const p of S.provs){
       if(!recruitable(p,u))continue;
-      const ok=soldAvail(p)>=U.mano&&costOK(S.player,U.cost);
+      const ok=soldAvail(p)>=U.mano&&recruitOK(S.player,u);
       ctx.beginPath();ctx.arc(p.x,p.y,r,0,7);
       ctx.fillStyle=ok?"rgba(74,120,56,.95)":"rgba(58,64,71,.92)";ctx.fill();
       ctx.lineWidth=1.5/z;ctx.strokeStyle=ok?"#cfe0a8":"#8a929b";ctx.stroke();

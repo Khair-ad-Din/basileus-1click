@@ -3,7 +3,7 @@ import { START_DATE, MESES, BUILDINGS, BUILD_CATS, GOLD_PER_WS, NATIONS, NPLAY, 
 import { S } from "./state.js";
 import { armyAtk, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyDef, armySpd, buildBlock, buildJobs, buildMax, buildSlots, canAfford, costFor, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, freeLabor, isOccupied, jobsOf, lvlOf, moraleGrowth, MORALE_HOSTILE, nationProvCount, nationStrength, provDefMul, recruitable, recruitTime, soldAvail, soldCap, specialistCap, staffing, timeFor, usedSlots, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, resetTsyLedger, tsyAvail, tsyMonthBal, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, provProdMul, YR_TICKS, manorOf, MANOR_RENT, hLvl, hOff, hCond, hOwners, effLvl, mainOwner, crownMay } from "./economy.js";
 import { hasRoad, kmBetween, roadKey } from "./mapgen.js";
-import { GOODS2, LABEL2, REF2, NEED2, WANT2, BLD2, PRICE_SCALE, costQuote, specialty2, obsolete2, siteOK2, transport, buildingProfit2, buildingOutput2, upkeepMonth2, upkeepDue, granaryOf, foodGrowth, obraCost, repairCost, positoCap, positoMonth, positoQuote, POSITO_MONTHS, landYield, landCap, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX } from "./economy2.js";
+import { GOODS2, LABEL2, REF2, NEED2, WANT2, BLD2, PRICE_SCALE, costQuote, unitCost, recruitOK, soldadaMonth, armySoldada, REPOSICION, specialty2, obsolete2, siteOK2, transport, buildingProfit2, buildingOutput2, upkeepMonth2, upkeepDue, granaryOf, foodGrowth, obraCost, repairCost, positoCap, positoMonth, positoQuote, POSITO_MONTHS, landYield, landCap, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX } from "./economy2.js";
 import { calOf, MONTHS_ES, monthsToHarvest, harvestMonth } from "./economy.js";
 import { canvas, clampPan, repaintProvince } from "./render.js";
 import { continueGame, loadSaveMeta } from "./save.js";
@@ -153,12 +153,22 @@ function obraLine(p,b){
 }
 // COSTE DE UNA COMPRA DE LA CORONA (economy2 costQuote): el total en ducados al precio de la plaza de hoy; el tooltip,
 // cada bien con lo que cuesta y lo que hay en la plaza. En rojo si no llega el dinero o la plaza no tiene bastante.
-function buyLine(cost,title){
+function buyLine(cost,title,payLabel,wait){ // wait: la compra espera al material (recluta): solo el dinero la bloquea
   const q=costQuote(S.player,cost); if(!q)return "";
-  const rows=q.rows.map(r=>r.g==="dinero"?["Paga","",nfE(r.v),""]:[resImg(r.g)+gLabel(r.g),nfE(r.q),nfE(r.v),{v:nfE(r.en),c:r.en<r.q?"#d08080":null}]);
+  const rows=q.rows.map(r=>r.g==="dinero"?[payLabel||"Paga","",nfE(r.v),""]:[resImg(r.g)+gLabel(r.g),nfE(r.q),nfE(r.v),{v:nfE(r.en),c:r.en<r.q?"#d08080":null}]);
   const tip=tipBox("Coste",[{cols:["Partida","Cantidad","Ducados","En plaza"],trows:rows,ttot:["Total","",nfE(q.total),""]}],title);
-  return "<span data-tiph=\""+ta(tip)+"\""+(q.ok?"":" class='neg'")+">"+COIN()+fmt(q.total)+(q.why==="plaza"?" Sin material":"")+"</span>";
+  const bad=wait?(S.nations[S.player].res.dinero||0)<q.total:!q.ok;
+  return "<span data-tiph=\""+ta(tip)+"\""+(bad?" class='neg'":"")+">"+COIN()+fmt(q.total)+(q.why==="plaza"&&!wait?" Sin material":"")+"</span>";
 }
+// COSTE DE RECLUTAR una unidad (economy2 unitCost): enganche + equipo al precio de hoy, y su soldada al mes
+function recruitLine(u){
+  const U=UNITS[u], N=S.nations[S.player], sm=soldadaMonth(u); let rep=0;
+  for(const g in U.eq)rep+=U.eq[g]*REPOSICION*((N&&N.mktPrice&&N.mktPrice[g])||REF2[g]*PRICE_SCALE);
+  const tip=tipBox("Sostenerla",[{cols:["Partida","Ducados"],trows:[["Soldada",nfE(sm)],["Reposición",nfE(rep)]],ttot:["Total",nfE(sm+rep)]}],"Al mes, sin la comida");
+  return buyLine(unitCost(u),U.label,"Enganche",true)+VSEP+"<span data-tiph=\""+ta(tip)+"\">"+uiIcon('mantenimiento')+" "+COIN()+fmt(sm+rep)+"/mes</span>";
+}
+// tiempo que le queda a una recluta, o por qué está parada (economy2 recruitPass)
+function recruitEta(q){return q.wait?"<span class='neg'>"+(q.wait==="dinero"?"Sin dinero":"Espera material")+"</span>":fmtDur(q.hoursLeft)}
 // MANTENIMIENTO de un nivel (economy2 upkeepDue): ducados al mes al precio de hoy; el tooltip, el jornal y cada bien.
 function upLine(p,b){
   const u=upkeepDue(b,1), N=S.nations[p.owner], rows=[["Jornal","",nfE(u.jornal)]]; let t=u.jornal;
@@ -383,16 +393,16 @@ function armyHTML(p){
     let ok=true;for(const req in U.req)if((p.buildings[req]||0)<U.req[req])ok=false;
     if(!ok)continue;
     any=true;
-    const cq=costQuote(S.player,U.cost),dis=!(cq&&cq.ok)||soldAvail(p)<U.mano;
+    const dis=!recruitOK(S.player,u)||soldAvail(p)<U.mano;
     r+="<div class='recrow'><span class='u'>"+U.label+" <span class='sm'>("+fmtDur(recruitTime(p,u))+")</span>"+
-      "<div class='cst'>"+buyLine(U.cost,U.label)+VSEP+fmtPop(U.mano)+" soldadesca</div></span>"+
+      "<div class='cst'>"+recruitLine(u)+VSEP+fmtPop(U.mano)+" soldadesca</div></span>"+
       "<button class='bbtn' "+(dis?"disabled":"")+" onclick='tryRecruit("+p.id+",\""+u+"\")'>Reclutar</button></div>";
   }
   s+="<div class='winh' style='font-size:12px;margin-top:2px'>Reclutar</div>";
   s+=any?r:"<div class='prow'><span class='dim'>Construye un Cuartel de levas para reclutar aquí.</span></div>";
   if(p.recruitQueue.length){
     s+="<div class='winh' style='font-size:12px'>En cola</div>";
-    for(const q of p.recruitQueue)s+="<div class='recrow'><span class='u'>"+UNITS[q.u].label+"</span><span class='cst'>"+fmtDur(q.hoursLeft)+"</span></div>";
+    for(const q of p.recruitQueue)s+="<div class='recrow'><span class='u'>"+UNITS[q.u].label+"</span><span class='cst'>"+recruitEta(q)+"</span></div>";
   }
   const here=armiesIn(p.id);
   s+="<div class='winh' style='font-size:12px'>Aquí ("+here.length+")</div>";
@@ -549,15 +559,15 @@ function refreshArmyPanel(){
       let okReq=true;for(const r in U.req)if(p.buildings[r]<U.req[r])okReq=false;
       if(!okReq)continue;
       any=true;
-      const cq=costQuote(S.player,U.cost),dis=!(cq&&cq.ok)||soldAvail(p)<U.mano;
+      const dis=!recruitOK(S.player,u)||soldAvail(p)<U.mano;
       R+="<div class='recrow'><span class='u'>"+U.label+" <span class='sm'>("+fmtDur(recruitTime(p,u))+")</span>"+
-        "<div class='cst'>"+buyLine(U.cost,U.label)+VSEP+fmtPop(U.mano)+" soldadesca</div></span>"+
+        "<div class='cst'>"+recruitLine(u)+VSEP+fmtPop(U.mano)+" soldadesca</div></span>"+
         "<button class='bbtn' "+(dis?"disabled":"")+" onclick='tryRecruit("+p.id+",\""+u+"\")'>Reclutar</button></div>";
     }
     if(!any)R+="<p class='sm' style='color:#9aa3ad'>Esta provincia aún no puede reclutar: construye un Cuartel de levas.</p>";
     if(p.recruitQueue.length){
       R+="<h3 style='color:#c9c2ae;font-size:13px;margin:12px 0 4px;border-bottom:1px solid #3a4047;padding-bottom:2px'>En cola</h3>";
-      for(const q of p.recruitQueue)R+="<div class='recrow'><span class='u'>"+UNITS[q.u].label+"</span><span class='cst'>"+fmtDur(q.hoursLeft)+"</span></div>";
+      for(const q of p.recruitQueue)R+="<div class='recrow'><span class='u'>"+UNITS[q.u].label+"</span><span class='cst'>"+recruitEta(q)+"</span></div>";
     }
   }
   R+="</div>";
@@ -606,20 +616,20 @@ function refreshArmyWin(){
        (u==="miliciano"?"<span class='qlev'><button class='mini' onclick='raiseLevies("+a.id+",5)'>+5</button> <button class='mini' onclick='raiseLevies("+a.id+",10)'>+10</button></span>":"")+"</div>";
   }
   if(S.recruitUnit)s+="<div class='tl' style='color:#9fb878;font-size:11px'>Clic en el mapa en las provincias con <b>+</b> para reclutar (las tropas marchan a reunirse con este ejército).</div>";
-  // SUMINISTRO de grano (slider reserva local ↔ nacional + consumo/mes); detalle en la ⓘ
-  const sup=a.supply==null?70:a.supply, foodMonth=armyFood(a)*730; // 730 ticks ≈ 1 mes de juego
-  s+="<div class='bsec'>Suministro de grano"+iInfo("Reparte de dónde saca el grano el ejército: la reserva NACIONAL gasta el Grano del tesoro del reino; la reserva LOCAL lo toma de la despensa de la provincia donde está y sus vecinas, repartido para no vaciar una sola (si aprieta, puede provocar hambruna local).")+"</div>";
-  s+="<input class='supply' type='range' min='0' max='100' step='5' value='"+sup+"' oninput='setArmySupply("+a.id+",this.value)'>";
-  s+="<div class='prow' id='supLbl'><span>Reserva local <b>"+sup+"%</b></span><b>Reserva nacional "+(100-sup)+"%</b></div>";
-  // consumo/mes dividido: IZQUIERDA lo que sostienen las provincias (con desglose al hover), DERECHA lo
-  // que sostienen las arcas nacionales. Alineado bajo los % de arriba. (Sin la palabra "Consumo".)
-  const localM=foodMonth*(sup/100), natM=foodMonth*(1-sup/100), fp=armyForage(a);
-  let ltip="De las reservas LOCALES: "+n1(localM)+" grano/mes\nForrajeado de la provincia que pisa y sus vecinas (a prorrata de la reserva de cada una):\n";
-  if(fp.length)for(const it of fp)ltip+="  "+it.p.name+": "+n1(it.amt*730)+"/mes\n";
-  else ltip+="  Sin reservas locales alrededor";
-  s+="<div class='prow'>"+
-     "<b class='statv' id='supLoc' data-tip=\""+ta(ltip)+"\"><span class='n'>"+n1(localM)+"</span> "+resImg('grano')+"/mes</b>"+
-     "<b class='statv' data-tip=\""+ta("De las arcas NACIONALES: "+n1(natM)+" grano/mes\nSale del Grano del tesoro del reino.")+"\" id='supNat'><span class='n'>"+n1(natM)+"</span> "+resImg('grano')+"/mes</b></div>";
+  // SOSTÉN (economy2 armyPass/armyClose): estado de la tropa, soldada, comida (comprada o requisada) y reposición al mes
+  const cond=a.cond!=null?a.cond:1, pc=Math.round(cond*100), F=a._fed||{need:armyFood(a),buy:0,req:0}, fp=armyForage(a);
+  const N=S.nations[a.nation]; let rep=0;
+  for(const k in a.units){const eq=UNITS[k].eq;for(const g in eq)rep+=eq[g]*a.units[k]*REPOSICION*((N&&N.mktPrice&&N.mktPrice[g])||REF2[g]*PRICE_SCALE)}
+  const ctip=tipBox("Estado",[{rows:[["Fuerza","×"+(0.85+0.15*cond).toFixed(2)],["Pagado el mes pasado",a.paid!=null?Math.round(a.paid*100)+"%":"—"]]}],
+    cond<0.3?"Deserta un 5% al mes":"Sube si se paga todo");
+  const ftrows=[["Comprado",n1(F.buy*730)],["Requisado",n1(F.req*730)]];
+  for(const it of fp.slice(0,6))ftrows.push([" "+it.p.name,n1(it.amt*730)]);
+  const ftip=tipBox("Comida",[{cols:["Origen","Grano/mes"],trows:ftrows,ttot:["Necesita",n1(F.need*730)]}]);
+  s+="<div class='bsec'>Sostén</div>";
+  s+="<div class='prow'><span data-tiph=\""+ta(ctip)+"\">Estado</span><span>"+barE(pc,70)+" <b>"+pc+"%</b></span></div>";
+  s+="<div class='prow'><span>Soldada</span><b>"+COIN()+fmt(armySoldada(a))+"/mes</b></div>";
+  s+="<div class='prow'><span>Reposición</span><b>"+COIN()+fmt(rep)+"/mes</b></div>";
+  s+="<div class='prow'><span data-tiph=\""+ta(ftip)+"\">Comida</span><b"+(F.req>0?" class='neg'":"")+">"+n1(F.need*730)+" "+resImg('grano')+"/mes</b></div>";
   s+="</div>";
   el.innerHTML=s;el.className="show";el.style.display="block";
   refreshArmyEdit(a); // menú Editar (licenciar) a la derecha

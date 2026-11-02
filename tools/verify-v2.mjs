@@ -104,6 +104,11 @@ for(let y=0;y<YEARS;y++){
     if(ec.hOff(p,b,o)){H.cerradas+=l;continue}const c=ec.hCond(p,b,o);H.abiertas+=l;sc+=c*l;if(c<0.6)H["<0,6"]+=l;else if(c<0.9)H["<0,9"]+=l;
     if(c<0.9){const k=b+"@"+o;by[k]=(by[k]||0)+l}}}
   console.log(`mantenimiento: niveles abiertos ${H.abiertas} (estado medio ${(sc/(H.abiertas||1)).toFixed(3)}; 0,6-0,9: ${H["<0,9"]}; <0,6: ${H["<0,6"]}) · cerrados ${H.cerradas} · peor: ${Object.entries(by).sort((x,y)=>y[1]-x[1]).slice(0,6).map(([k,v])=>k+" "+v).join(", ")}`)}
+{let na=0,sc=0,men=0,sh=[],req=0,need=0;for(const a of S.armies){if(a.nation>=NPLAY)continue;na++;sc+=a.cond!=null?a.cond:1;men+=ec.armyPops(a);
+    if(a._fed){req+=a._fed.req;need+=a._fed.need}}
+  for(const n of alive()){const N=S.nations[n],inc=N.e2&&N.e2.inc&&N.e2.inc.corona;if(inc>0)sh.push(e2.nationSoldada(n)/inc)}sh.sort((x,y)=>x-y);
+  const q=f=>sh.length?(100*sh[Math.floor(f*(sh.length-1))]).toFixed(0)+"%":"—";
+  console.log(`tropas: ${na} ejércitos, ${fmt(men)} hombres · estado medio ${(sc/(na||1)).toFixed(3)} · soldada/ingreso corona p10 ${q(0.1)} mediana ${q(0.5)} p90 ${q(0.9)} · comida requisada ${need>0?(100*req/need).toFixed(0):0}%`)}
 if(AI){const w={};let n=0;for(const p of S.provs)if(p.buildQueue.length){n++;const k=p.buildQueue[0].wait||"avanza";w[k]=(w[k]||0)+1}
   console.log(`obras: ${OB.done} terminadas (${Object.entries(OB.by).map(([k,v])=>k+" "+v).join(", ")}) · en curso ${n}: ${Object.entries(w).map(([k,v])=>k+" "+v).join(", ")}`)}
 console.log(`\nNaN: ${nan?"⚠ SÍ":"✅ no"} · invariante del dinero: ${worstInv<1e-6?"✅":"⚠"} peor Δrel ${worstInv.toExponential(2)}`);

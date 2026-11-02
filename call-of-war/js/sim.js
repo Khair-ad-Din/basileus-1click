@@ -7,7 +7,7 @@ import { aiOpenWar } from "./council.js";
 import { buildDuchies, hasRoad, roadLvl, isDuchyCap, kmBetween, roadKey } from "./mapgen.js";
 import { drawRoads, paintBorders, repaintProvince } from "./render.js";
 import { saveGame } from "./save.js";
-import { economyTick2, seedOwner2, seedWealth2, seedEstates2, siteOK2, BLD2, obsolete2, newObra, costOK, costPay } from "./economy2.js";
+import { economyTick2, seedOwner2, seedWealth2, seedEstates2, siteOK2, BLD2, obsolete2, newObra, costOK, costPay, recruitOK, recruitOrder, nationSoldada, soldadaMonth } from "./economy2.js";
 // IA de obras y gestión de edificios de los ESTAMENTOS (y de la corona IA): vive en estates.js, sin DOM (la usa el arnés)
 import { estatesDaily, profitOf, pickCrownBuild } from "./estates.js";
 import { log, refreshBuildBar, refreshSide, refreshTop } from "./ui.js";
@@ -153,7 +153,7 @@ function spawnArmy(nation,prov,units){
   const src={};
   let w=0;for(const k in units)w+=units[k]*(UNITS[k].mano||0);
   if(w>0)src[prov]=w;
-  const a={id:S.armyIdSeq++,nation,prov,units:Object.assign({},units),src,path:[],legDone:0,legTotal:0,supply:70}; // supply = % de grano forrajeado localmente (resto, nacional)
+  const a={id:S.armyIdSeq++,nation,prov,units:Object.assign({},units),src,path:[],legDone:0,legTotal:0,cond:1}; // cond = estado de la tropa (economy2 armyClose)
   S.armies.push(a);
   return a;
 }
@@ -524,6 +524,10 @@ function hourTick(){
   if(S.hour%24===0){
     const tsyBefore=S.player>=0?{...S.nations[S.player].res}:null; // foto del tesoro antes del tick económico
     economyTick2(24,true); // dt=24 (1 día); arbitraje TAMBIÉN diario (barato) para reponer gradual y evitar la oscilación mensual
+    if(S.armyEv&&S.armyEv.length){for(const e of S.armyEv)if(e.n===S.player){const P=S.provs[e.prov];   // tropa sin pagar (economy2 armyClose)
+      log(e.kind==="desbanda"?"Un ejército sin soldada se ha desbandado en "+P.name+": "+Math.round(e.men)+" hombres vuelven a casa."
+        :"Deserciones en el ejército de "+P.name+" ("+Math.round(e.men)+" hombres): no cobra la soldada.")}
+      S.armyEv.length=0}
     tsyTick(tsyBefore); // capa mensual: acumula el delta recurrente del jugador y publica la cifra "/mes"
     relTick(); // diplomacia: deriva mensual del campo de relaciones hacia su línea base (se autodispara al mes)
     estatesDaily(); // presupuesto a diario; obras y cierre/reapertura de talleres el DÍA DE MERCADO (semanal)
@@ -541,7 +545,7 @@ function hourTick(){
     }
     if(p.recruitQueue.length){
       const q=p.recruitQueue[0];
-      if(--q.hoursLeft<=0){
+      if(q.prog!=null?q.prog>=1-1e-9:--q.hoursLeft<=0){   // la recluta avanza con el equipo que compra (economy2 recruitPass)
         p.recruitQueue.shift();
         if(p.owner===q.nation||q.nation===p.owner){
           let a=S.armies.find(x=>x.nation===q.nation&&x.prov===p.id&&x.path.length===0);
@@ -717,7 +721,9 @@ function mergeIdle(){
     if(a.path.length)continue;
     const k=a.nation+":"+a.prov;
     if(key.has(k)){
-      const t=key.get(k);
+      const t=key.get(k), wa=armyCount(a), wt=armyCount(t);
+      t.cond=wa+wt>0?((t.cond!=null?t.cond:1)*wt+(a.cond!=null?a.cond:1)*wa)/(wa+wt):1;   // el estado, ponderado por tropa
+      if(a.mo){if(!t.mo)t.mo=a.mo;else for(const x in a.mo){t.mo[x][0]+=a.mo[x][0];t.mo[x][1]+=a.mo[x][1]}}
       for(const u in a.units)t.units[u]=(t.units[u]||0)+a.units[u];
       if(a.src){t.src=t.src||{};for(const pid in a.src)t.src[pid]=(t.src[pid]||0)+a.src[pid]}
       if(S.selArmy===a)S.selArmy=t;
@@ -805,6 +811,8 @@ function aiDiplomacy(n){
   let best=-1,bm=-1;for(const m of partners){if(hasPact(n,m))continue;const mm=mightOf(m);if(mm>bm){bm=mm;best=m;}}
   if(best>=0&&canPact(n,best,"alliance").ok)formPact(n,best,"alliance");
 }
+const AI_RECRUIT_MAX=4;   // reclutas a la vez de una corona IA
+const AI_ARMY_SHARE=0.25; // la IA no recluta si la soldada de su ejército pasaría de esta parte del ingreso de la corona
 function aiTurn(n){
   const N=S.nations[n];
   const owned=S.provs.filter(p=>p.owner===n&&!isOccupied(p)); // no desarrollar lo ocupado
@@ -816,29 +824,30 @@ function aiTurn(n){
     const b=pickCrownBuild(p); if(!b)continue;
     p.buildQueue.push(newObra(p,b));          // se paga por tramos semanales (economy2 obraPass)
   }
-  // reclutar
+  // reclutar: mientras la soldada de todo el ejército quepa en el 25% del ingreso de la corona
   let troops=0;
   for(const a of S.armies)if(a.nation===n)troops+=armyCount(a);
-  const treasury=S.nations[n].res.dinero;
-  if(troops<6+owned.length&&treasury>800){ // no reclutar si el tesoro está bajo
+  const treasury=S.nations[n].res.dinero, inc=(N.e2&&N.e2.inc&&N.e2.inc.corona)||0;
+  let sold=nationSoldada(n),pend=0,stuck=false;
+  for(const p of owned)for(const q of p.recruitQueue)if(q.nation===n){sold+=soldadaMonth(q.u);pend++;if(q.wait)stuck=true} // también la que está en recluta
+  // como las obras: no encarga otra mientras alguna espera material (la plaza no da para más) ni pasa de AI_RECRUIT_MAX
+  if(troops<6+owned.length&&treasury>800&&!stuck&&pend<AI_RECRUIT_MAX){
     for(const p of owned){
       if(p.recruitQueue.length||p.buildings.cuartel<1)continue;
       let u="infanteria";
       if(p.buildings.fabrica>=3&&S.rand()<0.3)u="blindadoMedio";
       else if(p.buildings.fabrica>=1&&S.rand()<0.35)u="blindadoLigero";
       else if(p.buildings.fabrica>=2&&S.rand()<0.3)u="artilleria";
-      if(soldAvail(p)>=UNITS[u].mano&&costPay(n,UNITS[u].cost,"Reclutamiento",UNITS[u].label)){
-        p.sold=soldAvail(p)-UNITS[u].mano;
-        p.recruitQueue.push({u,nation:n,hoursLeft:recruitTime(p,u)});
-        break;
-      }
+      if(sold+soldadaMonth(u)>AI_ARMY_SHARE*inc)continue;
+      if(recruitOrder(n,p,u))break;
     }
   }
-  // solvencia: en bancarrota, licenciar la tropa MÁS CARA de mantener para no hundir el tesoro
-  if(treasury<0){
+  // solvencia: si la soldada pasa del doble de su parte del ingreso y el tesoro no cubre un mes, licencia la unidad
+  // MÁS CARA de su ejército más grande (una a una, hasta volver a caber)
+  if(inc>0&&sold>2*AI_ARMY_SHARE*inc&&treasury<sold){
     let big=null,bc=-1;for(const a of S.armies)if(a.nation===n){const c=armyCount(a);if(c>bc){bc=c;big=a}}
     if(big){
-      let bu=null,bup=-1;for(const k in big.units){if(big.units[k]<1)continue;const up=(UNITS[k].up&&UNITS[k].up.dinero)||0;if(up>bup){bup=up;bu=k}}
+      let bu=null,bup=-1;for(const k in big.units){if(big.units[k]<1)continue;const up=soldadaMonth(k);if(up>bup){bup=up;bu=k}}
       if(bu)disbandUnit(big,bu,1);
     }
   }
@@ -1076,11 +1085,9 @@ function tryRecruit(pid,u,rally){
   if(p.owner!==S.player||isOccupied(p))return false;
   const U=UNITS[u];
   for(const r in U.req)if(p.buildings[r]<U.req[r])return false;
-  if(soldAvail(p)<U.mano||!costPay(S.player,U.cost,"Reclutamiento",U.label))return false;   // el equipo, comprado en la plaza
-  p.sold=soldAvail(p)-U.mano;
-  const q={u,nation:S.player,hoursLeft:recruitTime(p,u)};
-  if(rally!=null&&rally!==pid)q.rally=rally; // marchará a reunirse (profesionales y levas por igual)
-  p.recruitQueue.push(q);
+  // el enganche, a los pops; el equipo lo compra la recluta por tramos en la plaza (economy2 recruitPass). Con rally,
+  // marchará a reunirse al terminar (profesionales y levas por igual)
+  if(!recruitOrder(S.player,p,u,{rally}))return false;
   refreshSide();refreshTop();
   return true;
 }
@@ -1119,7 +1126,7 @@ function raiseLevies(army,n){
   while(raised<n&&ring.length){
     const capable=ring.filter(pid=>{
       const p=S.provs[pid];
-      return p.owner===nat&&!p.wasteland&&!isOccupied(p)&&soldAvail(p)>=U.mano&&costOK(nat,U.cost);
+      return p.owner===nat&&!p.wasteland&&!isOccupied(p)&&soldAvail(p)>=U.mano&&recruitOK(nat,"miliciano");
     });
     let progressed=true;
     while(raised<n&&progressed){
@@ -1127,9 +1134,7 @@ function raiseLevies(army,n){
       for(const pid of capable){
         if(raised>=n)break;
         const p=S.provs[pid];
-        if(soldAvail(p)<U.mano||!costPay(nat,U.cost,"Reclutamiento",U.label))continue;
-        p.sold=soldAvail(p)-U.mano;
-        p.recruitQueue.push({u:"miliciano",nation:nat,hoursLeft:LEVY_RAISE_HOURS,rally:muster}); // rally al punto FIJO
+        if(!recruitOrder(nat,p,"miliciano",{hours:LEVY_RAISE_HOURS,rally:muster}))continue; // rally al punto FIJO
         raised++;progressed=true;
       }
     }

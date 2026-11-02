@@ -271,21 +271,20 @@ const RES_CAT={
 const RES_RAW_CATS=["cereal","cultivo","carne","bosque","extractivo","mar"]; // categorías que produce el CAMPO por terreno
 
 function newBuildings(){const o={};for(const b in BUILDINGS)o[b]=0;return o}
-// up = MANTENIMIENTO por unidad y MES (dinero/comida/recurso). Las levas son baratísimas de sostener
-// (campesinos armados) pero su coste real es la POBLACIÓN: la soldadesca sale de los pops y las bajas
-// restan pob para siempre. Las tropas profesionales muerden fuerte el tesoro cada mes.
-// food = RACIÓN de grano por POP y AÑO (el consumo de comida del ejército es pop-driven y se
-// forrajea de las reservas locales / nacional según el slider de suministro; ya NO va en up).
-// Levas = ración de campesino (1/año); los profesionales comen más (mejor alimentados, monturas).
-// up = mantenimiento en dinero/recursos (SIN comida). cost.comida sigue siendo el gasto de reclutar.
+// TROPAS (design/obras-tropas.md, decisiones 3, 6 y 7). Reclutar cuesta el ENGANCHE (2 meses de soldada, economy2
+// unitCost) más el EQUIPO (eq, unidades compradas en la plaza; sin grano). Sostenerla cuesta la SOLDADA: pay ducados por
+// hombre y mes (× SOLDADA_K), que cobran los pops de su origen (who: campesino, burgués o nobleza), más la reposición
+// del 1% del equipo al mes y su comida. food = RACIÓN de grano por POP y AÑO (los profesionales y las monturas comen
+// más); se compra en la plaza con prioridad de hambre y lo que falta se requisa (economy2 armyPass).
+// El coste de fondo de las levas sigue siendo la POBLACIÓN: la soldadesca sale de los pops y las bajas no vuelven.
 const UNITS={
-  miliciano:{label:"Levas",atk:1.2,def:2.5,hp:12,spd:16,time:504,cost:{dinero:350,grano:250},up:{dinero:0.15},food:1,mano:200,req:{}},                                  // 3 semanas
-  infanteria:{label:"Piqueros",atk:2.5,def:4,hp:18,spd:18,time:1440,cost:{dinero:850,grano:560,madera:280},up:{dinero:0.8},food:1.45,mano:400,req:{cuartel:1}},      // 2 meses
-  motorizada:{label:"Caballería ligera",atk:4,def:5,hp:20,spd:40,time:2160,cost:{dinero:1300,grano:700,caballos:420,madera:420},up:{dinero:1.2,caballos:0.4},food:2.2,mano:500,req:{cuartel:2}}, // 3 meses
-  antitanque:{label:"Alabarderos",atk:3,def:7,hp:16,spd:16,time:1800,cost:{dinero:1300,hierro:850,madera:420},up:{dinero:1.0,hierro:0.2},food:1.45,mano:300,req:{cuartel:1,fabrica:1}},
-  artilleria:{label:"Bombardas",atk:7,def:2,hp:14,spd:10,time:4320,cost:{dinero:2100,hierro:1300,madera:560},up:{dinero:1.6,hierro:0.3},food:1.45,mano:300,req:{fabrica:2}},        // 6 meses
-  blindadoLigero:{label:"Caballería",atk:6,def:4,hp:22,spd:35,time:2400,cost:{dinero:2000,hierro:1100,caballos:700},up:{dinero:1.5,caballos:0.5},food:2.2,mano:300,req:{fabrica:1}},
-  blindadoMedio:{label:"Caballeros",atk:9,def:6,hp:30,spd:28,time:4320,cost:{dinero:3400,hierro:2100,caballos:1100,especias:420},up:{dinero:2.2,caballos:0.7,hierro:0.4},food:2.2,mano:400,req:{fabrica:3}} // 6 meses
+  miliciano:{label:"Levas",atk:1.2,def:2.5,hp:12,spd:16,time:504,eq:{lienzo:20,herramientas:10},pay:1.5,who:"campesino",food:1,mano:200,req:{}},                                  // 3 semanas
+  infanteria:{label:"Piqueros",atk:2.5,def:4,hp:18,spd:18,time:1440,eq:{madera:100,hierro:40,pano:40},pay:3,who:"campesino",food:1.45,mano:400,req:{cuartel:1}},      // 2 meses
+  motorizada:{label:"Caballería ligera",atk:4,def:5,hp:20,spd:40,time:2160,eq:{caballos:100,armas:25,pano:50},pay:4.5,who:"campesino",food:2.2,mano:500,req:{cuartel:2}}, // 3 meses
+  antitanque:{label:"Alabarderos",atk:3,def:7,hp:16,spd:16,time:1800,eq:{armas:50,hierro:30,pano:30},pay:6,who:"campesino",food:1.45,mano:300,req:{cuartel:1,fabrica:1}},
+  artilleria:{label:"Bombardas",atk:7,def:2,hp:14,spd:10,time:4320,eq:{hierro:400,madera:200,herramientas:30,armas:10,pano:15},pay:7,who:"burgues",food:1.45,mano:300,req:{fabrica:2}},        // 6 meses
+  blindadoLigero:{label:"Caballería",atk:6,def:4,hp:22,spd:35,time:2400,eq:{caballos:150,armas:50,pano:30},pay:6,who:"nobleza",food:2.2,mano:300,req:{fabrica:1}},
+  blindadoMedio:{label:"Caballeros",atk:9,def:6,hp:30,spd:28,time:4320,eq:{caballos:240,armas:70,seda:10,pano:40},pay:12,who:"nobleza",food:2.2,mano:400,req:{fabrica:3}} // 6 meses
 };
 // Tipos de terreno: def multiplica la defensa en combate, mov la velocidad de
 // movimiento terrestre, prod la producción de la provincia.

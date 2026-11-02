@@ -56,10 +56,32 @@ real, commit temático. Las cifras se calibran al final con /simular (fase 7).
   invariante ok. Planteamiento: 0,3% de V/nivel/mes comprado en la plaza repartido en 4 semanas
   (50/10/40), sin escalado por población; barra de estado de edificios (decisión 8) sobre bCond; efecto
   ×(0,5+0,5·estado) en producción, defensa y moral.
-- [ ] **F4. Tropas.** Reclutamiento = enganche + equipo (tabla); armerías ×5; soldada por hombre (SOLDADA_K) a los pops
+- [x] **F4. Tropas.** HECHA 2026-11-02. UNITS con eq (equipo), pay (soldada por hombre) y who (quién cobra); fuera
+  cost, up y a.supply (y su slider). economy2: recruitOrder/recruitPass, armyPass, armyClose; armerías ×5 (ARMS_MUL).
+  Planteamiento: Reclutamiento = enganche + equipo (tabla); armerías ×5; soldada por hombre (SOLDADA_K) a los pops
   de origen; reposición 1%/mes; comida del ejército comprada en la plaza con prioridad de hambre; forrajeo como requisa
   con tope 40% y pago en tierra propia; fuera a.supply; barra de tropas (decisión 9): moral, fuerza, deserción,
   desbandada.
+  Notas de la F4 (cambios frente al dictamen, por lo que mostró la prueba):
+  - El equipo NO se compra de golpe: la plaza vende cada día lo que entra y un bien equilibrado (lienzo, paño) casi
+    nunca tiene stock, así que todo salía "Sin material". El enganche se paga al encargar; el equipo lo compra la
+    recluta por tramos diarios con el cupo de las obras (CAPITAL_SHARE) y solo avanza con lo que consigue (q.prog,
+    "Espera material"). El botón solo lo bloquean el dinero y la soldadesca.
+  - IA: no recluta si la soldada (incluida la que está en recluta) pasaría del 25% del ingreso de la corona
+    (AI_ARMY_SHARE), ni mientras alguna recluta suya espera material, ni con más de 4 a la vez (AI_RECRUIT_MAX: sin
+    esto Mamelucos acumulaba decenas de reclutas paradas). Licencia la unidad más cara si la soldada pasa del doble de
+    su parte y el tesoro no cubre un mes.
+  - Orden diario en la plaza: grano del hambre → ejército (comida, soldada, reposición) → mantenimiento → obras →
+    reclutas → talleres → consumo. La corona nunca queda en negativo por el ejército: lo que no puede pagar baja la barra.
+  - Requisa: tope del 40% del granero de la provincia la primera vez que se le pide en el mes; se paga en tierra
+    propia, amiga o neutral (si el tesoro llega), expolio en tierra enemiga o sin dueño.
+  - Barra: la comida requisada cuenta como comida servida, así que un ejército sin soldada pero alimentado (c = 0,30)
+    tarda 5 meses en desbandarse, no 4. Probado en el juego: 1 → 0,79 → 0,58 → 0,37 → 0,16, con deserciones bajo 0,3.
+  - MORAL de tropa: no existe en el juego (el combate solo usa ataque, defensa y vida). Solo se aplica la fuerza
+    ×(0,85+0,15·estado); el techo de moral 40+60·estado queda pendiente hasta que haya moral de ejército.
+  - Arnés a 2 años (2 Piqueros + 2 Levas por reino, sin reclutar): invariante ok, estado medio 0,948, soldada/ingreso
+    de la corona mediana 21%. Armas: 532/mes producidas frente a 2,6k pedidas (precio ×2,6): las armerías ×5 no llegan
+    porque hay pocas (F7).
 - [ ] **F5. Flete de materiales pesados** (madera, piedra, hierro) con reliefFlete.
 - [ ] **F6. Pasada de UX** (/ux): barras de estado, tooltips de coste y de mantenimiento, desglose de la soldada en
   Tesorería.

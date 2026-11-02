@@ -5,7 +5,7 @@ import { atWar, declareWar, makePeace, underTruce, spawnArmy, setupNations, tryR
 import { insult, giftGold, isEmbargoed, setEmbargo, fabricateClaim, getRel, THRESH, formPact, breakPact, hasPact, leagueOf, createLeague, applyToLeague, resolveApplication, proposeExpel, leaveLeague, refuseDefense, MAX_RIVALS, rivalsOf, canRival, addRival, removeRival } from "./diplomacy.js";
 import { openCouncil, councilToggle, councilConvene, launchCouncil, cancelCouncil, playerJoinDefense } from "./council.js";
 import { hex2rgb, provColor, paintAll, paintBorders, repaintProvince, roadCurve, drawRoads, fitCanvas, clampPan, armyPos, draw, drawArrow, drawEditorOverlay, NCOL, TCOL, WASTECOL, baseC, baseCtx, roadsC, canvas, baseData, clearSelOutline, bakeTerrainProvince } from "./render.js";
-import { canAfford, pay, lvlOf, hLvl, hOff, hCond, setOff, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, armyCount, armyFood, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, recruitable, resetTsyLedger } from "./economy.js";
+import { canAfford, pay, lvlOf, hLvl, hOff, hCond, setOff, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, armyCount, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, recruitable, resetTsyLedger } from "./economy.js";
 import { mulberry32, hashN, genName, SYL_A, SYL_M, SYL_B, decodeCountries, RLE_ALPHA, countryAt, generateMap, isolateWastePockets, MOUNTAIN_ZONES, MARSH_ZONES, FERTILE_ZONES, pxToLonLat, assignTerrain, assignResources, assignPopulation, rebuildProvinceData, seedCities, renameProvincesHistorical, ensureMarketTopology, kmBetween, roadKey, hasRoad, landPath, generateRoads, sprinkleTerrain } from "./mapgen.js";
 import { S } from "./state.js";
 import { positoSend, repairPay } from "./economy2.js";
@@ -131,19 +131,6 @@ window.toggleBuilding=function(pid,b){   // solo los niveles de la CORONA: los d
   refreshBuildBar(); refreshTop();
 };
 window.haltArmy=function(){if(S.selArmy){S.selArmy.path=[];S.selArmy.legDone=0;S.selArmy.legTotal=0;refreshSide()}};
-// slider de suministro del ejército: solo actualiza el % y la etiqueta (no reconstruye el panel, para
-// no cortar el arrastre); el resto de la ventana se refresca en el siguiente tick.
-window.setArmySupply=function(id,val){
-  const a=S.armies.find(x=>x.id===+id);if(!a)return;
-  a.supply=Math.max(0,Math.min(100,Math.round(+val)));
-  const el=document.getElementById("supLbl");
-  if(el)el.innerHTML="<span>Reserva local <b>"+a.supply+"%</b></span><b>Reserva nacional "+(100-a.supply)+"%</b>";
-  // reparto del consumo en vivo (el desglose por provincia se refresca en el próximo tick)
-  const fm=armyFood(a)*730,f=a.supply/100,r1=v=>Math.round(v*10)/10;
-  const lo=document.querySelector("#supLoc .n"),na=document.querySelector("#supNat .n");
-  if(lo)lo.textContent=r1(fm*f);
-  if(na)na.textContent=r1(fm*(1-f));
-};
 // reclutar-desde-el-mapa: alterna el modo para la unidad u (clic de nuevo lo apaga); abrir Editar
 window.setRecruitUnit=function(u){S.recruitUnit=(S.recruitUnit===u?null:u);S.armyEdit=false;refreshSide()};
 window.toggleArmyEdit=function(){S.armyEdit=!S.armyEdit;S.recruitUnit=null;refreshSide()};

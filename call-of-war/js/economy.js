@@ -510,43 +510,16 @@ function degradeBuildings(){ // 1 tick: las tenencias CERRADAS pierden condició
 function armyCount(a){let t=0;for(const k in a.units)t+=a.units[k];return t}
 function armyPops(a){let t=0;for(const k in a.units)t+=a.units[k]*(UNITS[k].mano||0);return t} // pops soldados totales del ejército
 // consumo de comida del ejército POR TICK (pop-driven): pops × ración/año / YR_TICKS. Los profesionales
-// comen más que las levas (campo). Se forrajea de reservas locales/nacional según el slider a.supply.
+// comen más que las levas (campo). Se compra en la plaza y lo que falta se requisa (economy2 armyPass).
 function armyFood(a){let t=0;for(const k in a.units)t+=a.units[k]*(UNITS[k].mano||0)*(UNITS[k].food||0);return t/YR_TICKS}
-// reparto del grano LOCAL que forrajea el ejército a, por provincia: [{p, amt/tick}] (provincia que
-// pisa + vecinas, proporcional a su reserva). Para el desglose "de dónde come" en la UI del ejército.
-function armyForage(a){
-  const out=[],localNeed=armyFood(a)*((a.supply==null?70:a.supply)/100);
-  if(localNeed<=1e-9)return out;
-  const A=S.provs[a.prov],pool=[];
-  if(A&&!A.wasteland&&A.store&&A.store.grano>0)pool.push(A);
-  for(const nb of (S.adj[a.prov]||[])){const q=S.provs[nb];if(q&&!q.wasteland&&q.store&&q.store.grano>0)pool.push(q)}
-  let avail=0;for(const q of pool)avail+=q.store.grano;
-  if(avail<=0)return out;
-  const take=Math.min(localNeed,avail);
-  for(const q of pool)out.push({p:q,amt:take*(q.store.grano/avail)});
-  return out.sort((x,y)=>y.amt-x.amt);
-}
-// grano que las tropas forrajean de la reserva de la provincia p POR TICK (replica el reparto del
-// tick: cada ejército reparte su parte local entre la provincia que pisa y sus vecinas, proporcional
-// a la reserva). Suma la porción que toca a p de todos los ejércitos que la incluyen en su pool.
-function troopDrainOn(p){
-  if(!p||p.wasteland||!p.store||!(p.store.grano>0))return 0;
-  let drain=0;
-  for(const a of S.armies){
-    if(a.nation>=NPLAY)continue;
-    const localNeed=armyFood(a)*((a.supply==null?70:a.supply)/100);
-    if(localNeed<=1e-9)continue;
-    const A=S.provs[a.prov],pool=[];
-    if(A&&!A.wasteland&&A.store&&A.store.grano>0)pool.push(A);
-    for(const nb of (S.adj[a.prov]||[])){const q=S.provs[nb];if(q&&!q.wasteland&&q.store&&q.store.grano>0)pool.push(q)}
-    if(pool.indexOf(p)<0)continue;
-    let avail=0;for(const q of pool)avail+=q.store.grano;
-    if(avail>0)drain+=Math.min(localNeed,avail)*(p.store.grano/avail);
-  }
-  return drain;
-}
-function armyAtk(a){let t=0;for(const k in a.units)t+=a.units[k]*UNITS[k].atk;return t}
-function armyDef(a){let t=0;for(const k in a.units)t+=a.units[k]*UNITS[k].def;return t}
+// de dónde requisó el ejército a su grano el último día: [{p, amt/tick}] (lo apunta economy2 armyPass)
+function armyForage(a){return (a._fed&&a._fed.from)||[]}
+// grano que las tropas requisaron de la reserva de la provincia p POR TICK el último día (economy2 armyPass)
+function troopDrainOn(p){return (p&&p._forH)||0}
+// el ESTADO de la tropa (economy2 armyClose: soldada, comida y reposición pagadas) pesa en su fuerza
+function armyStr(a){return 0.85+0.15*(a.cond!=null?a.cond:1)}
+function armyAtk(a){let t=0;for(const k in a.units)t+=a.units[k]*UNITS[k].atk;return t*armyStr(a)}
+function armyDef(a){let t=0;for(const k in a.units)t+=a.units[k]*UNITS[k].def;return t*armyStr(a)}
 function armyHp(a){let t=0;for(const k in a.units)t+=a.units[k]*UNITS[k].hp;return t}
 function armySpd(a){let s=999;for(const k in a.units)if(a.units[k]>0.05)s=Math.min(s,UNITS[k].spd);return s===999?18:s}
 function nationStrength(n){let t=0;for(const a of S.armies)if(a.nation===n)t+=armyAtk(a)+armyDef(a);return t}
@@ -563,5 +536,5 @@ function recruitTime(p,u){
 }
 
 export {
-  BKEYS, fxKeys, ledger, sinkAdd, calOf, harvestMonth, monthsToHarvest, MONTHS_ES, canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, isOccupied, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, recruitable, moraleGrowth, MORALE_MIN, MORALE_HOSTILE, SOLD_FRAC, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, specialistCap, buildJobs, freeLabor, staffing, jobsOf, buildSlots, usedSlots, structPPF, JOBS_PER_LEVEL, ensureMarket, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, manorOf, canStaffIndustry, hLvl, hOff, hCond, hOwners, setOff, addLevel, dropLevel, mainOwner, syncOwn, crownMay, CROWN_CORE, ESTATES_BUILD, TRADE_BULK, TERRAIN_CAT, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, monthKeyOf, resetTsyLedger, tsyTick, tsyAvail, tsyMonthBal, recFlow, recCrown, effLvl, effPow, degradeBuildings, YR_TICKS, TRADE_KM, TRADE_SEA, TRADE_WAR, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN, PROMO_RATE, targetBurgFrac, recBuy
+  BKEYS, fxKeys, ledger, sinkAdd, calOf, harvestMonth, monthsToHarvest, MONTHS_ES, canAfford, pay, lvlOf, costFor, timeFor, buildSpeedBonus, buildMax, buildBlock, provProdMul, provDefMul, isOccupied, armyCount, armyPops, armyFood, armyForage, troopDrainOn, armyStr, armyAtk, armyDef, armyHp, armySpd, nationStrength, nationProvCount, recruitTime, soldCap, soldAvail, recruitable, moraleGrowth, MORALE_MIN, MORALE_HOSTILE, SOLD_FRAC, foodFill, harvestMul, storeCap, storeOf, SUBS_BASICS, specialistCap, buildJobs, freeLabor, staffing, jobsOf, buildSlots, usedSlots, structPPF, JOBS_PER_LEVEL, ensureMarket, taxRateOf, alcabalaOf, almojOf, ALCABALA, ALMOJ_DEFAULT, DIEZMO, manorOf, canStaffIndustry, hLvl, hOff, hCond, hOwners, setOff, addLevel, dropLevel, mainOwner, syncOwn, crownMay, CROWN_CORE, ESTATES_BUILD, TRADE_BULK, TERRAIN_CAT, terrMul, terrCatMul, RES_RAW_CATS, MONTH_TICKS, monthKeyOf, resetTsyLedger, tsyTick, tsyAvail, tsyMonthBal, recFlow, recCrown, effLvl, effPow, degradeBuildings, YR_TICKS, TRADE_KM, TRADE_SEA, TRADE_WAR, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN, PROMO_RATE, targetBurgFrac, recBuy
 };

@@ -98,7 +98,7 @@ function saveGame(){
       wars:[...S.wars],truces:[...S.truces],rel:[...S.rel],embargoes:[...S.embargoes],claims:[...S.claims],pacts:[...S.pacts],coalitions:[...S.coalitions],coalSeq:S.coalSeq,leagues:S.leagues,leagueSeq:S.leagueSeq,roads:[...S.roads],roadQueue:S.roadQueue,reports:S.reports,
       nations:S.nations.map(x=>({res:x.res,ai:x.ai,capital:x.capital,alive:x.alive,startProvs:x.startProvs,sWealth:x.sWealth,sRes:x.sRes,mkt:x.mkt,mktPrice:x.mktPrice,e2:x.e2,taxRate:x.taxRate,posito:x.posito,grainReserve:x.grainReserve,alcabala:x.alcabala,almojarifazgo:x.almojarifazgo,aggro:x.aggro,rivals:x.rivals})),
       provs:S.provs.map(p=>[p.owner,Math.round(p.morale*10)/10,p.buildings,p.buildQueue,p.recruitQueue,Math.round(p.pop||0),Math.round(p.sold||0),roundStore(p.store),p.occupier==null?-1:p.occupier,p.siege||null,p.bOwn||null,roundProsp(p.prosp),p.bOff||null,roundProsp(p.bCond)]),
-      armies:S.armies.map(a=>({id:a.id,nation:a.nation,prov:a.prov,units:a.units,src:a.src,path:a.path,legDone:a.legDone,legTotal:a.legTotal,supply:a.supply})),
+      armies:S.armies.map(a=>({id:a.id,nation:a.nation,prov:a.prov,units:a.units,src:a.src,path:a.path,legDone:a.legDone,legTotal:a.legTotal,cond:a.cond})),
       mapCheck:S.provs.length+"|"+S.provs[0].name};
     localStorage.setItem("basileus_save",JSON.stringify(s));
   }catch(e){}
@@ -141,7 +141,7 @@ function continueGame(){
   });
   syncDuchyOcc(); // recomputar occBy de cada ducado a partir de la ocupación cargada
   S.armies=s.armies;
-  for(const a of S.armies){a.src=a.src||{};if(a.supply==null)a.supply=70;} // origen (bajas) y suministro por defecto
+  for(const a of S.armies){a.src=a.src||{};if(a.cond==null)a.cond=1;} // origen (bajas) y estado de la tropa
   S.nations[S.player].ai=false;
   S.started=true;S.gameOver=false;S.selProv=-1;S.selArmy=null;S.battleFlash={};
   document.getElementById("startOverlay").style.display="none";

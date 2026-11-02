@@ -3,8 +3,9 @@
 // LA REGLA: el dinero solo nace cuando alguien VENDE un bien a la plaza; cada ducado que se paga lo cobra alguien.
 // La PLAZA (N.e2.plaza) es el intermediario de cada reino: paga al productor cuando entrega y cobra al consumidor
 // cuando compra. Su saldo acumulado es exactamente el dinero creado (−) o destruido (+) por el comercio. Aparte de
-// ella, solo hay tres grifos/sumideros EXPLÍCITOS y contados en S.e2L: minas de plata/oro (acuñación), mantenimiento
-// en dinero (edificios y ejército) y el flete del comercio entre reinos. El arnés (tools/verify-v2.mjs) comprueba:
+// ella, solo hay unos pocos grifos/sumideros EXPLÍCITOS y contados en S.e2L: minas de plata/oro (acuñación), los gastos
+// de la corona en dinero sin destinatario (caminos, reparaciones) y el flete del comercio entre reinos. La soldada y el
+// enganche de las tropas NO son sumidero: los cobran los pops de origen. El arnés (tools/verify-v2.mjs) comprueba:
 //      Σ(tesoros + riqueza de estamentos) + Σ plazas + sumideros − grifos = constante.
 //
 // Es la ÚNICA economía del juego (la v1 se borró el 2026-09-27); economy.js conserva lo compartido (despensa, tasas, libros…).
@@ -14,7 +15,7 @@ import { NPLAY, BUILDINGS, UNITS, STRATA, TERRAINS } from "./config.js";
 import { S } from "./state.js";
 import { kmBetween, pxToLonLat, ensureMarketTopology } from "./mapgen.js";
 import { isEmbargoed, atWarPair } from "./diplomacy.js";
-import { BKEYS, calOf, harvestMonth, monthsToHarvest, ledger, sinkAdd, canAfford, isOccupied, lvlOf, hLvl, hOff, hCond, setOff, manorOf, taxRateOf, alcabalaOf, almojOf, harvestMul, terrMul, DIEZMO, terrCatMul, staffing, storeCap, armyFood, soldCap, provProdMul, ensureMarket, recFlow, recBuy, recCrown, YR_TICKS, TRADE_KM, TRADE_SEA, TRADE_WAR, TRADE_BULK, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN, PROMO_RATE, targetBurgFrac, monthKeyOf, buildSpeedBonus } from "./economy.js";
+import { BKEYS, calOf, harvestMonth, monthsToHarvest, ledger, sinkAdd, canAfford, isOccupied, lvlOf, hLvl, hOff, hCond, setOff, manorOf, taxRateOf, alcabalaOf, almojOf, harvestMul, terrMul, DIEZMO, terrCatMul, staffing, storeCap, armyFood, soldCap, provProdMul, ensureMarket, recFlow, recBuy, recCrown, YR_TICKS, TRADE_KM, TRADE_SEA, TRADE_WAR, TRADE_BULK, MANOR_RENT, TOLL_FRAC, FLETE_MAX, FAMINE_DEF, STARVE_RATE, POP_GROWTH_BASE, SOLD_REGEN, PROMO_RATE, targetBurgFrac, monthKeyOf, buildSpeedBonus, soldAvail, recruitTime } from "./economy.js";
 
 // ============================== CONSTANTES (todo lo tunable está aquí) ==============================
 const PRICE_SCALE=8;     // palanca GLOBAL de precios: iguala el dinero del comercio a la escala de costes de la v1
@@ -122,6 +123,7 @@ const FOLD2={bebida:"bebida",uva:"bebida",sedacruda:"seda",sal:"sal",caballos:"c
 // EDIFICIOS que venden a la plaza. Cada nivel produce BLD_VALUE ducados/año (a precio de referencia) × v.
 // in = unidades de insumo por unidad de producto. raw = categoría de terreno que modula la extracción.
 const BLD_VALUE=1500;    // (6000 rendía ~4× un taller de la v1 y se amortizaba en semanas: se construían por todas partes)
+const ARMS_MUL=5;        // armerías ×5 (design/obras-tropas.md decisión 4): el equipo de las tropas pide ~2,6k armas/mes en el mundo
 const BLD2={
   aserradero:{out:"madera",raw:"bosque"}, cantera:{out:"piedra",raw:"extractivo"}, mina:{out:"hierro",raw:"extractivo"},
   granja:{out:"grano",raw:"cereal"},   // explotación directa del señor (reserva, granja cisterciense): su grano es de su DUEÑO
@@ -130,7 +132,7 @@ const BLD2={
   algodonal:{out:"lienzo"}, sederia:{out:"seda",v:4}, morera:{out:"seda"}, especiar:{out:"especias",v:4}, canaveral:{out:"especias"},
   ingenio:{out:"especias"}, yeguada:{out:"caballos"}, majada:{out:"lana",raw:"carne"}, dehesa:{out:"carne",raw:"carne"},
   pesqueria:{out:"pescado"}, cazadero:{out:"pieles"}, ambarera:{out:"pieles"},
-  herreria:{out:"herramientas",in:{hierro:1},v:1.5}, armeria:{out:"armas",in:{hierro:2},v:1.5}, aceria:{out:"armas",in:{hierro:2},v:1.5},
+  herreria:{out:"herramientas",in:{hierro:1},v:1.5}, armeria:{out:"armas",in:{hierro:2},v:1.5*ARMS_MUL}, aceria:{out:"armas",in:{hierro:2},v:1.5*ARMS_MUL},
 };
 // ARTESANOS: cada burgués trabaja en su oficio y produce ARTISAN_VALUE ducados/año (a precio de referencia) de
 // manufacturas, repartidos según ARTISAN_MIX. Compra sus insumos en la plaza (misma receta que el taller: in por
@@ -434,6 +436,114 @@ function upkeepPass(n,N,ps,price,alc,GL,bought,gapStock){
     const U=t.p.upk||(t.p.upk={}),k=t.b+"@"+t.o,x=U[k]||(U[k]=[0,0]);x[0]+=due;x[1]+=paid;
   }
 }
+// ---- TROPAS (design/obras-tropas.md F4, decisiones 3, 6, 7, 9 y 11) ----
+// RECLUTAR (recruitOrder): el ENGANCHE (2 meses de soldada) se paga al encargarla y lo cobran los pops de la provincia
+// que da los hombres; el EQUIPO (UNITS.eq) lo compra la recluta por TRAMOS cada día en la plaza, como una obra
+// (recruitPass, mismo cupo): la recluta solo avanza con lo que consigue. SOSTENERLA (armyPass, cada día,
+// justo después del grano del hambre): primero la COMIDA (de la plaza; lo que no hay se REQUISA alrededor), luego la
+// SOLDADA a los pops de origen y la REPOSICIÓN del 1% del equipo al mes. Lo pagado ÷ lo debido del mes mueve la BARRA
+// de la tropa (armyClose): con todo pagado sube +0,25; si no, baja 0,30×(1−c); bajo 0,3 deserta un 5% al mes y en 0 se
+// desbanda (el cuarto mes sin cobrar). El estado pesa en combate: fuerza ×(0,85+0,15·estado) (economy armyStr).
+const SOLDADA_K=1, ENGANCHE_MESES=2, REPOSICION=0.01;
+const ARMY_W={s:0.55,f:0.30,r:0.15}, ARMY_UP=0.25, ARMY_DOWN=0.30, ARMY_DESERT_AT=0.3, ARMY_DESERT=0.05;
+const REQUISA_MAX=0.4;   // una provincia no da al ejército más del 40% del grano que tenía la primera vez que se le pidió en el mes
+function soldadaMonth(u){const U=UNITS[u];return U.mano*U.pay*SOLDADA_K}            // ducados al mes de una unidad
+function unitCost(u){return Object.assign({dinero:ENGANCHE_MESES*soldadaMonth(u)},UNITS[u].eq)} // enganche + equipo
+function armySoldada(a){let t=0;for(const k in a.units)t+=a.units[k]*soldadaMonth(k);return t}
+function nationSoldada(n){let t=0;for(const a of S.armies)if(a.nation===n)t+=armySoldada(a);return t}
+// ¿alcanza el tesoro para reclutarla (enganche + equipo al precio de hoy)? Que la plaza no tenga el equipo no la impide:
+// la recluta espera a que llegue.
+function recruitOK(n,u){const r=costQuote(n,unitCost(u));return !!r&&(S.nations[n].res.dinero||0)>=r.total-1e-9}
+// Encarga la recluta de u en p: paga el enganche, aparta la soldadesca y la pone en cola. opt: {hours, rally}.
+function recruitOrder(n,p,u,opt){
+  const U=UNITS[u];if(soldAvail(p)<U.mano||!recruitOK(n,u))return false;
+  const N=S.nations[n],e=unitCost(u).dinero;
+  N.res.dinero-=e;recCrown(n,"Reclutamiento","Enganche",-e);
+  N.sWealth[U.who]+=e;recFlow(n,U.who,"Soldada",e);addInc(N,U.who,e);pmPay(p,U.who,"Soldada",e);
+  p.sold=soldAvail(p)-U.mano;
+  const h=(opt&&opt.hours)||recruitTime(p,u), q={u,nation:n,hoursLeft:h,total:h,prog:0};
+  if(opt&&opt.rally!=null&&opt.rally!==p.id)q.rally=opt.rally;
+  p.recruitQueue.push(q);return true}
+// El equipo de las reclutas de un reino (la primera de cada provincia): su tramo del día, con el cupo de las obras. Lo que
+// la plaza no tiene la deja esperando y cuenta como demanda.
+function recruitPass(n,N,ps,price,alc,GL,bought,gapStock,dt){
+  const fc=N.e2.fc||{s:{}}, want={}, list=[];
+  for(const p of ps){const q=p.recruitQueue[0];if(!q||q.nation!==n||q.prog==null||q.prog>=1)continue;
+    const k=Math.min(1-q.prog,dt/q.total), eq=UNITS[q.u].eq, t={q,k,b:{}};
+    for(const g in eq){const v=eq[g]*k;t.b[g]=v;want[g]=(want[g]||0)+v}
+    list.push(t)}
+  const r={};
+  for(const g in want){const cap=Math.min(N.mkt[g]||0,CAPITAL_SHARE*(fc.s[g]||0)*dt/24);r[g]=want[g]>0?Math.min(1,cap/want[g]):1}
+  const take=(g,q)=>{const mv=q*price[g];N.mkt[g]-=q;bought[g]=(bought[g]||0)+q;
+    N.sWealth.burgues+=mv*MARGIN;recFlow(n,"burgues","Comisión de la plaza",mv*MARGIN);addInc(N,"burgues",mv*MARGIN);
+    N.e2.plaza+=mv*(1-MARGIN-alc);N.res.dinero-=mv*(1-alc);return mv*(1-alc)};
+  for(const t of list){
+    let f=1,why=null;for(const g in t.b)if(r[g]<f){f=r[g];why="material"}
+    let cost=0;for(const g in t.b)cost+=t.b[g]*f*price[g]*(1-alc);
+    if(cost>Math.max(0,N.res.dinero)){f*=cost>0?Math.max(0,N.res.dinero)/cost:0;why="dinero"}
+    let paid=0;for(const g in t.b){const w=t.b[g],q=w*f;gapStock[g]=(gapStock[g]||0)+(w-q);glDem(GL,g,"reclutamiento",w,q);if(q>0)paid+=take(g,q)}
+    if(paid>0)recCrown(n,"Reclutamiento",UNITS[t.q.u].label,-paid);
+    t.q.prog+=f*t.k; t.q.hoursLeft=Math.max(1,Math.round((1-t.q.prog)*t.q.total)); t.q.wait=f<0.5?why:null}
+}
+function armyPass(n,N,list,price,alc,GL,bought,gapStock,dt){
+  const mk=monthKeyOf(S.hour), purse=()=>Math.max(0,N.res.dinero);
+  const take=(g,q)=>{const mv=q*price[g];N.mkt[g]-=q;bought[g]=(bought[g]||0)+q;   // compra de la corona: sin su alcabala
+    N.sWealth.burgues+=mv*MARGIN;recFlow(n,"burgues","Comisión de la plaza",mv*MARGIN);addInc(N,"burgues",mv*MARGIN);
+    N.e2.plaza+=mv*(1-MARGIN-alc);N.res.dinero-=mv*(1-alc);return mv*(1-alc)};
+  for(const a of list){const M=a.mo||(a.mo={s:[0,0],f:[0,0],r:[0,0]});
+    // 1) COMIDA: la plaza primero; lo que no hay (o no se puede pagar) se requisa en la provincia que pisa y sus vecinas
+    const food=armyFood(a)*dt, pg=price.grano*(1-alc), from=[];let got=0,took=0;
+    if(food>1e-9){
+      got=Math.max(0,Math.min(food,N.mkt.grano||0,pg>0?purse()/pg:0));
+      if(got>1e-9)recCrown(n,"Ejército","Comida",-take("grano",got));
+      glDem(GL,"grano","ejército",food,got);gapStock.grano=(gapStock.grano||0)+(food-got);
+      const left=food-got, pool=[];
+      const add=q=>{if(!q||q.wasteland||!q.store||!(q.store.grano>0))return;
+        const R=q.req&&q.req.k===mk?q.req:(q.req={k:mk,cap:REQUISA_MAX*q.store.grano,took:0});
+        const av=Math.min(q.store.grano,R.cap-R.took);if(av>1e-9)pool.push([q,av])};
+      if(left>1e-9){add(S.provs[a.prov]);for(const nb of (S.adj[a.prov]||[]))add(S.provs[nb])}
+      let avail=0;for(const x of pool)avail+=x[1];
+      if(avail>0){const t=Math.min(left,avail);
+        for(const [q,av] of pool){const t1=t*av/avail;q.store.grano-=t1;q.req.took+=t1;q._forH=(q._forH||0)+t1/dt;took+=t1;from.push({p:q,amt:t1/dt});
+          // en tierra propia, amiga o neutral se paga al campesino a precio de su plaza; al enemigo (o sin dueño), expolio
+          const O=q.owner<NPLAY&&!atWarPair(a.nation,q.owner)?S.nations[q.owner]:null; if(!O||!O.sWealth)continue;
+          const v=Math.min(t1*((O.mktPrice&&O.mktPrice.grano)||ref("grano")),purse()); if(!(v>0))continue;
+          N.res.dinero-=v;recCrown(n,"Ejército","Requisas",-v);
+          O.sWealth.campesino+=v;recFlow(q.owner,"campesino","Requisas",v);addInc(O,"campesino",v);pmPay(q,"campesino","Requisas",v)}}}
+    // 2) SOLDADA a los pops de origen (campesino, burgués o nobleza según la tropa)
+    const due=armySoldada(a)*dt/730, fs=due>0?Math.min(1,purse()/due):1;
+    if(due>0&&fs>0){let st=0;for(const pid in a.src)st+=a.src[pid];
+      for(const k in a.units){const U=UNITS[k],v=a.units[k]*soldadaMonth(k)*dt/730*fs;if(!(v>0))continue;
+        N.res.dinero-=v;N.sWealth[U.who]+=v;recFlow(n,U.who,"Soldada",v);addInc(N,U.who,v);
+        if(st>0)for(const pid in a.src){const P=S.provs[pid];if(P)pmPay(P,U.who,"Soldada",v*a.src[pid]/st)}}
+      recCrown(n,"Ejército","Soldada",-due*fs)}
+    // 3) REPOSICIÓN del equipo: el 1% al mes, comprado en la plaza
+    const rq={};let rd=0,fr=1;
+    for(const k in a.units){const eq=UNITS[k].eq;for(const g in eq)rq[g]=(rq[g]||0)+eq[g]*a.units[k]*REPOSICION*dt/730}
+    for(const g in rq){rd+=rq[g]*price[g]*(1-alc);const m=N.mkt[g]||0;if(m<rq[g])fr=Math.min(fr,m/rq[g])}
+    if(rd*fr>purse())fr=rd>0?purse()/rd:0;
+    let rp=0;for(const g in rq){const q=rq[g]*fr;gapStock[g]=(gapStock[g]||0)+(rq[g]-q);glDem(GL,g,"ejército",rq[g],q);if(q>0)rp+=take(g,q)}
+    if(rp>0)recCrown(n,"Ejército","Reposición",-rp);
+    M.s[0]+=due;M.s[1]+=due*fs;M.f[0]+=food;M.f[1]+=got+took;M.r[0]+=rd;M.r[1]+=rp;
+    a._fed={need:food/dt,buy:got/dt,req:took/dt,from:from.sort((x,y)=>y.amt-x.amt)};
+  }
+}
+// Cierre del mes de las tropas: la barra de cada ejército con lo que cobró. Las deserciones y desbandadas quedan en
+// S.armyEv para que la simulación las anuncie.
+function armyClose(){
+  const mk=monthKeyOf(S.hour); if(S.armyK===mk)return; const first=S.armyK==null; S.armyK=mk; if(!S.armyEv)S.armyEv=[];
+  for(let i=S.armies.length-1;i>=0;i--){const a=S.armies[i],M=a.mo;a.mo=null;if(!M||first||a.nation>=NPLAY)continue;
+    const r=x=>x[0]>0?Math.min(1,x[1]/x[0]):1, c=ARMY_W.s*r(M.s)+ARMY_W.f*r(M.f)+ARMY_W.r*r(M.r);
+    let e=a.cond!=null?a.cond:1; e=c>=0.98?Math.min(1,e+ARMY_UP):e-ARMY_DOWN*(1-c); a.cond=Math.max(0,e); a.paid=c;
+    if(e<=0){const men=armyShed(a,1);S.armies.splice(i,1);if(S.selArmy===a)S.selArmy=null;S.armyEv.push({n:a.nation,kind:"desbanda",men,prov:a.prov})}
+    else if(e<ARMY_DESERT_AT){const men=armyShed(a,ARMY_DESERT);S.armyEv.push({n:a.nation,kind:"deserta",men,prov:a.prov})}}
+}
+function armyShed(a,frac){ // una parte de la tropa se va a casa: sus hombres vuelven a la soldadesca de su provincia
+  let men=0;
+  if(a.src)for(const pid in a.src){const back=a.src[pid]*frac;a.src[pid]-=back;men+=back;
+    const P=S.provs[pid];if(P&&!P.wasteland)P.sold=Math.min(soldCap(P),(P.sold||0)+back)}
+  for(const k in a.units){a.units[k]*=1-frac;if(a.units[k]<0.05)delete a.units[k]}
+  return men}
 // ============================== helpers ==============================
 function ref(g){return REF2[g]*PRICE_SCALE}
 function transport(p,g){ // fracción del valor que se pierde llevando el bien de la provincia a su centro de comercio
@@ -542,6 +652,7 @@ function economyTick2(dt=24,doArb=true){
   const f=dt/YR_TICKS, L=ledger();
   pmClose(dt);            // libro de cada provincia: cierra el mes si ha cambiado
   upkeepClose();          // barra de estado de los edificios: cierra el mes del mantenimiento si ha cambiado
+  armyClose();            // barra de las tropas: cierra el mes de la soldada, la comida y la reposición
   ensureMarketTopology(); // centros de comercio (p.hubOf/hubKm → flete y portazgo). Antes solo se calculaban al abrir la vista
                           // de mapa "Centros": en partida el flete era 0 y el arnés (que sí los calcula) no medía lo mismo. Barato: solo si cambian fronteras.
   for(let n=0;n<NPLAY;n++){const N=S.nations[n];if(!N)continue;ensure2(N);N.tollRate=0;N.alcabalaRate=0;N.almojRate=0;
@@ -555,8 +666,10 @@ function economyTick2(dt=24,doArb=true){
       if(!N.e2.incShut){const r=730/A.h,inc=N.e2.inc||(N.e2.inc={});for(const o of ["corona",...STRATA])inc[o]=(A.v[o]||0)*r}}
     N.e2.incTick={};N.e2.incDt=dt}
   // 0. mano de obra movilizada (la leva deja huecos en los talleres)
-  for(const p of S.provs)p.mob=0;
-  for(const a of S.armies)if(a.src)for(const pid in a.src){const P=S.provs[pid];if(P)P.mob+=a.src[pid]}
+  for(const p of S.provs){p.mob=0;p._forH=0}
+  const armiesOf=Array.from({length:NPLAY},()=>[]);
+  for(const a of S.armies){if(a.nation<NPLAY)armiesOf[a.nation].push(a);
+    if(a.src)for(const pid in a.src){const P=S.provs[pid];if(P)P.mob+=a.src[pid]}}
 
   // acumuladores por nación
   const strata=Array.from({length:NPLAY},()=>{const o={};for(const k of STRATA)o[k]=0;return o});
@@ -566,6 +679,7 @@ function economyTick2(dt=24,doArb=true){
   const grainReq=Array.from({length:NPLAY},()=>[]);           // provincias con la despensa vacía: {p,q}
   const upMonth=Array.from({length:NPLAY},()=>({}));          // mantenimiento en dinero por estamento, al mes
   const obras=Array.from({length:NPLAY},()=>[]);              // provincias con una obra en curso
+  const recs=Array.from({length:NPLAY},()=>[]);               // provincias con una recluta en cola
   const bldP=Array.from({length:NPLAY},()=>[]);               // provincias de cada reino (mantenimiento de sus edificios)
   const pay=(n,who,amt,cat,sub)=>{ // abona a corona (tesoro) o a un estamento (su riqueza); sub = detalle del libro de la corona
     if(!amt)return; const N=S.nations[n]; if(!N)return;
@@ -579,6 +693,7 @@ function economyTick2(dt=24,doArb=true){
     const N=S.nations[n]; if(!N||!N.alive)continue;
     for(const k of STRATA)strata[n][k]+=p.pops[k]||0;
     if(p.buildQueue&&p.buildQueue.length)obras[n].push(p);
+    if(p.recruitQueue&&p.recruitQueue.length)recs[n].push(p);
     bldP[n].push(p);
     const c=p.pops.campesino||0, mor=(p.morale||0)/100;
     // GRANO: la provincia SIEGA una vez al año, en su mes, y lo cosechado entra en el granero (p.store.comida, que se
@@ -724,11 +839,14 @@ function economyTick2(dt=24,doArb=true){
       r.got=buy("campesino","grano",can); r.p._grainGot=r.got; glDem(GL,"grano","socorro",r.q,r.got);
       const fr=r.got*price.grano*t; if(fr>0){const cs=cartShare(r.p);W.campesino-=fr;recFlow(n,"campesino","Compras",-fr);
         pay(n,"campesino",fr*cs,"Transporte");if(cs<1)pay(n,"burgues",fr*(1-cs),"Transporte")}}
+    // 1b) el EJÉRCITO: su grano con la misma prioridad de hambre; luego soldada y reposición (armyPass)
+    if(armiesOf[n].length)armyPass(n,N,armiesOf[n],price,alc,GL,bought[n],gapStock,dt);
     // 2) OBRAS: su tramo del día con un CUPO de como mucho CAPITAL_SHARE de la oferta (obraPass). Va antes que los insumos
     // y el consumo porque el cupo es una garantía, no lo que sobre: en un bien que falta (madera, y el hierro que los
     // artesanos se llevan entero) ninguna obra avanzaba nunca, y bastaba que faltara el 10% de hierro para pararla toda
     if(isMarketDay()&&bldP[n].length)upkeepPass(n,N,bldP[n],price,alc,GL,bought[n],gapStock);
     if(obras[n].length)obraPass(n,N,obras[n],price,alc,GL,bought[n],gapStock,dt);else N.e2.obraSat=0;
+    if(recs[n].length)recruitPass(n,N,recs[n],price,alc,GL,bought[n],gapStock,dt);
     // 3) talleres: su materia prima (es capital de trabajo, va antes que el consumo de sus dueños)
     const coverIn={};
     for(const o in factNeed[n])for(const g in factNeed[n][o]){const need=factNeed[n][o][g];const q=buy(o,g,need,true);glDem(GL,g,"talleres",need,q); // la materia prima se servía a crédito al taller: el pedido entero atrae al mercader
@@ -774,25 +892,6 @@ function economyTick2(dt=24,doArb=true){
   }
 
   positoPass();
-  // ---------------- EJÉRCITO: mantenimiento y comida ----------------
-  // La paga en dinero (los bienes de UNITS.up, de la v1, no se cobran hasta la soldada de design/obras-tropas.md F4). La
-  // comida: la parte que no forrajea la COMPRA en la plaza de su reino; lo que la plaza no tiene, también lo forrajea.
-  for(const a of S.armies){if(a.nation>=NPLAY)continue;const N=S.nations[a.nation],R=N.res;
-    for(const k in a.units){const v=((UNITS[k].up||{}).dinero||0)*a.units[k]*dt;if(v>0){R.dinero-=v;sinkAdd("Ejército",v);recCrown(a.nation,"Ejército",UNITS[k].label,-v)}}
-    const food=armyFood(a)*dt; if(food<=1e-9)continue;
-    const forage=(a.supply==null?70:a.supply)/100, want=food*(1-forage);
-    let got=0;
-    if(want>1e-9&&N.e2){const pr=crownPrice(a.nation,"grano");
-      got=Math.max(0,Math.min(want,N.mkt.grano||0,pr>0?Math.max(0,R.dinero)/pr:0));
-      if(got>1e-9){const v=crownBuyGoods(a.nation,"grano",got);R.dinero-=v;recCrown(a.nation,"Ejército","Comida",-v)}
-      if(N.e2.wk)N.e2.wk.d.grano=(N.e2.wk.d.grano||0)+(want-got)}   // lo que no encontró también es demanda
-    const localNeed=food*forage+(want-got);
-    if(localNeed>1e-9){const P=S.provs[a.prov],pool=[];
-      if(P&&!P.wasteland&&P.store&&P.store.grano>0)pool.push(P);
-      for(const nb of (S.adj[a.prov]||[])){const q=S.provs[nb];if(q&&!q.wasteland&&q.store&&q.store.grano>0)pool.push(q)}
-      let avail=0;for(const q of pool)avail+=q.store.grano;
-      if(avail>0){const take=Math.min(localNeed,avail);for(const q of pool)q.store.grano-=take*(q.store.grano/avail)}}
-  }
 
   // ---------------- DEMOGRAFÍA: hambre, crecimiento, ascensos, leva ----------------
   const regen=Math.min(1,SOLD_REGEN*dt);
@@ -1123,4 +1222,4 @@ function granaryOf(p){
 }
 
 export { economyTick2, siteOK2, seedEstates2, upkeepMonth2, upkeepDue, seedOwner2, seedWealth2, GOODS2, LABEL2, REF2, NEED2, WANT2, TIERS, BLD2, ESTATE_BUILDS2, buildingProfit2, buildingOutput2,
-  transport, tradeCost2, moneyStock, sinkAdd, ARTISAN_IN, ctrOut, ctrIn, granaryOf, foodGrowth, obraCost, newObra, obraFull, repairCost, repairPay, positoCap, positoMonth, positoQuote, positoSend, POSITO_MONTHS, reserveOf, landYield, landCap, landOcc, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX, GRAIN_RESERVE, reliefQuote, reliefSend, isMarketDay, MARKET_DAYS, PRICE_SCALE, JORNAL, MARGIN, costQuote, costOK, costPay, specialty2, obsolete2 };
+  transport, tradeCost2, moneyStock, sinkAdd, ARTISAN_IN, ctrOut, ctrIn, granaryOf, foodGrowth, obraCost, newObra, obraFull, repairCost, repairPay, positoCap, positoMonth, positoQuote, positoSend, POSITO_MONTHS, reserveOf, landYield, landCap, landOcc, landBirth, LAND_FULL, popGrowthWhy, saleSplit, priceWhy, ARTISAN_MIX, GRAIN_RESERVE, reliefQuote, reliefSend, isMarketDay, MARKET_DAYS, PRICE_SCALE, JORNAL, MARGIN, costQuote, costOK, costPay, specialty2, obsolete2, unitCost, recruitOK, recruitOrder, armySoldada, nationSoldada, soldadaMonth, SOLDADA_K, REPOSICION };
